@@ -38,7 +38,7 @@ All numbers are starting values to tune during playtests. They live as named con
 damage = (impulse / ship_mass) * DAMAGE_PER_SPEED * multiplier
 ```
 
-`impulse / ship_mass` is the change in speed along the contact normal. It is read from the physics engine's reported contact impulse, so glancing hits produce little damage. `DAMAGE_PER_SPEED` starts at 0.1 per px/s, so a head-on 500 px/s hit on an orange barrier deals 50 damage.
+`impulse / ship_mass` is the change in speed along the contact normal, rebound included. It is read from the physics engine's reported contact impulse, so glancing hits produce little damage. `DAMAGE_PER_SPEED` starts at 0.05 per px/s. With barrier bounce 0.8, a head-on 500 px/s hit on an orange barrier changes normal speed by about 900 px/s and deals about 45 damage. Changes below `MIN_IMPACT_SPEED` (20 px/s) deal no damage, so resting contact is harmless.
 
 | Surface | Multiplier |
 |---|---|
@@ -150,8 +150,8 @@ Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor f
 
 ### Manual
 
-- Play all five levels on desktop.
-- Export an Android APK and install it on a phone. This machine has no Android device, so the phone test is the developer's.
+- Code is written and automated tests run headless on a Linux server, then pushed to `BRAITG/zero-gx`.
+- On the developer's MacBook: play all five levels on desktop, edit levels in the Godot editor, and export an Android APK to install on a phone. Android export needs the Android SDK and a JDK, which are installed only on the MacBook.
 
 ## Out of scope
 
