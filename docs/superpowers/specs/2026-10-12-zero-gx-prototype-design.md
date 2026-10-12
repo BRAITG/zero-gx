@@ -116,7 +116,7 @@ Each scene is a `.tscn` with one `.gd` script, stored in `scenes/`.
 | `asteroid` | `RigidBody2D` | Drifting or orbiting on rails, release on hit, planet damage, destruction by lethal bodies |
 | `barrier` | `StaticBody2D`, with a polygon or segment collider and a `Line2D` | Exports `kind`, which sets the damage multiplier, color, and a bouncy, frictionless physics material |
 | `goal` | `Area2D` | Emits a win signal when the ship enters |
-| `level` | `Node2D` script on each level's root | Places the ship at the start marker, connects win and lose signals, handles restart and returning to the menu |
+| `level` | `Node2D` script on each level's root | Uses the level's `Ship` position as point A, connects win and lose signals, handles restart and returning to the menu |
 | `hud` | `CanvasLayer` | Fuel bar, health bar, restart button |
 | `main` | `Control` | Lists levels from `levels/` and loads the selected one |
 
