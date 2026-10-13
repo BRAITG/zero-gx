@@ -7,7 +7,7 @@ signal changed
 const DEFAULTS := {
 	"max_speed": 800.0,  # px/s; thrust power scales it
 	"thrust": 600.0,  # px/s² (force on a mass-1 ship)
-	"turn_rate": 7.0,  # rad/s, finger down
+	"turn_rate": 10.0,  # rad/s, finger down
 	"boost_turn_rate": 3.0,  # rad/s, finger down during a boost
 	"boost_seconds": 1.5,
 	"boost_wobble": 1.5,  # rad/s of random turning during a boost
@@ -23,7 +23,7 @@ const DEFAULTS := {
 const RANGES := {
 	"max_speed": [400.0, 1200.0, 50.0],
 	"thrust": [300.0, 1200.0, 50.0],
-	"turn_rate": [1.0, 10.0, 0.5],
+	"turn_rate": [1.0, 15.0, 0.5],
 	"boost_turn_rate": [0.5, 10.0, 0.5],
 	"boost_seconds": [0.5, 4.0, 0.25],
 	"boost_wobble": [0.0, 4.0, 0.25],
