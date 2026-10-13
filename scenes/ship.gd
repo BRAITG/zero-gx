@@ -14,6 +14,8 @@ const STRAND_SPEED := 5.0  # px/s
 const STRAND_TIME := 2.0  # s
 const LOOKAHEAD := 0.3  # s of velocity the camera leads by
 const LOOKAHEAD_MAX := 250.0  # px
+## 1/s; eases the lookahead so a bounce's velocity flip doesn't jump the view.
+const LOOKAHEAD_SMOOTHING := 3.0
 const RADIUS := 16.0
 const DAMAGE_PER_SPEED := 0.05  # health per px/s of normal speed change
 const MIN_IMPACT_SPEED := 20.0  # px/s; below this a contact is resting, not a hit
@@ -101,8 +103,9 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 		take_damage(worst)
 
 
-func _process(_delta: float) -> void:
-	_camera.offset = (linear_velocity * LOOKAHEAD).limit_length(LOOKAHEAD_MAX)
+func _process(delta: float) -> void:
+	var target := (linear_velocity * LOOKAHEAD).limit_length(LOOKAHEAD_MAX)
+	_camera.offset = _camera.offset.lerp(target, 1.0 - exp(-LOOKAHEAD_SMOOTHING * delta))
 
 
 func _unhandled_input(event: InputEvent) -> void:
