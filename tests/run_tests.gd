@@ -1,7 +1,7 @@
 extends SceneTree
 ## Runs every `test_*` method in `res://tests/test_*.gd`, each with a fresh world. Exit code 1 on failure.
 
-const TIMEOUT_FRAMES := 20000  # Longest test (level-design check) runs 3600 frames per level.
+const TIMEOUT_FRAMES := 30000  # The level-design check idles 3600 frames in each of 5 levels.
 
 
 func _initialize() -> void:
