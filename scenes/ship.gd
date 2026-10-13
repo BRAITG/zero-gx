@@ -15,6 +15,10 @@ const STRAND_TIME := 2.0  # s
 const LOOKAHEAD := 0.3  # s of velocity the camera leads by
 const LOOKAHEAD_MAX := 250.0  # px
 const RADIUS := 16.0
+const DAMAGE_PER_SPEED := 0.05  # health per px/s of normal speed change
+const MIN_IMPACT_SPEED := 20.0  # px/s; below this a contact is resting, not a hit
+## 20 px per 60 Hz step: under half of barrier thickness + ship diameter, so no hit can tunnel.
+const MAX_SPEED := 1200.0
 
 var thrusting := false
 var aim_point := Vector2.ZERO
@@ -24,6 +28,7 @@ var health := MAX_HEALTH
 var _still_time := 0.0
 var _stranded_sent := false
 var _camera: Camera2D
+var _previous_velocity := Vector2.ZERO
 
 
 func _ready() -> void:
@@ -56,6 +61,7 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	if thrusting and fuel > 0.0:
 		state.apply_central_force(Vector2.RIGHT.rotated(state.transform.get_rotation()) * THRUST)
 		fuel = maxf(fuel - FUEL_BURN * step, 0.0)
+	state.linear_velocity = state.linear_velocity.limit_length(MAX_SPEED)
 	if fuel == 0.0 and state.linear_velocity.length() < STRAND_SPEED:
 		_still_time += step
 		if _still_time >= STRAND_TIME and not _stranded_sent:
@@ -63,7 +69,27 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 			stranded.emit()
 	else:
 		_still_time = 0.0
+	_take_impacts(state)
 	queue_redraw()
+
+
+## Godot 2D reports zero contact impulses for polygon contacts, so the hit strength is the
+## velocity change across this step, projected on each contact's normal. One hit per step.
+func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
+	var velocity_change := state.linear_velocity - _previous_velocity
+	_previous_velocity = state.linear_velocity
+	var worst := 0.0
+	for i in state.get_contact_count():
+		var collider := state.get_contact_collider_object(i)
+		var multiplier: float = collider.impact_multiplier() if collider and collider.has_method("impact_multiplier") else 0.0
+		if multiplier == Impact.LETHAL:
+			take_damage(health)
+			return
+		var speed_change := absf(velocity_change.dot(state.get_contact_local_normal(i)))
+		if speed_change >= MIN_IMPACT_SPEED:
+			worst = maxf(worst, speed_change * DAMAGE_PER_SPEED * multiplier)
+	if worst > 0.0:
+		take_damage(worst)
 
 
 func _process(_delta: float) -> void:
