@@ -1,6 +1,6 @@
 class_name Hud
 extends CanvasLayer
-## Fuel and health bars, an always-visible Restart button, and the end-of-level panel.
+## Fuel and health bars, always-visible Restart and Menu buttons, and the end-of-level panel.
 
 signal retry_requested
 signal menu_requested
@@ -25,6 +25,7 @@ func _ready() -> void:
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(spacer)
 	restart_button = _button(top, "Restart", retry_requested.emit)
+	_button(top, "Menu", menu_requested.emit)
 
 	_result = PanelContainer.new()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)

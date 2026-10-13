@@ -21,10 +21,19 @@ func _ready() -> void:
 	hud.ship = ship
 	add_child(hud)
 	hud.retry_requested.connect(func(): get_tree().reload_current_scene())
-	hud.menu_requested.connect(func(): get_tree().change_scene_to_file(MENU))
+	hud.menu_requested.connect(_to_menu)
 	goal.reached.connect(finish.bind(true))
 	ship.destroyed.connect(finish.bind(false))
 	ship.stranded.connect(finish.bind(false))
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_to_menu()
+
+
+func _to_menu() -> void:
+	get_tree().change_scene_to_file(MENU)
 
 
 ## Ends the level once; later calls (a hit and the goal on one frame) are ignored.

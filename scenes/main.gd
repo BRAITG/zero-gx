@@ -24,3 +24,9 @@ func _ready() -> void:
 		column.add_child(button)
 	column.reset_size()
 	column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+
+
+## project.godot turns off quit_on_go_back so levels can return here; the menu still quits.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		get_tree().quit()
