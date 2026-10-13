@@ -59,8 +59,6 @@ func _ready() -> void:
 	_engine.stream = Sfx.thrust
 	_engine.volume_db = ENGINE_VOLUME_DB
 	add_child(_engine)
-	if aim_point == Vector2.ZERO:
-		aim_point = position + Vector2.RIGHT.rotated(rotation) * 100.0
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
@@ -68,7 +66,7 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	if _touch_screen != null:
 		aim_point = get_canvas_transform().affine_inverse() * (_touch_screen as Vector2)
 	var to_aim := aim_point - state.transform.origin
-	if to_aim.length() > 1.0:
+	if thrusting and to_aim.length() > 1.0:  # finger up: hold heading and coast
 		var turn := wrapf(to_aim.angle() - state.transform.get_rotation(), -PI, PI)
 		state.angular_velocity = clampf(turn / step, -TURN_RATE, TURN_RATE)
 	else:

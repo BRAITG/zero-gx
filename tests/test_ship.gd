@@ -39,9 +39,16 @@ func test_stranded_when_still_on_empty() -> void:
 
 
 func test_turns_toward_aim() -> void:
-	var ship = spawn(SHIP, Vector2.ZERO, {"aim_point": Vector2(0, 1000)})
+	var ship = spawn(SHIP, Vector2.ZERO, {"aim_point": Vector2(0, 1000), "thrusting": true})
 	await frames(30)
 	check(abs(wrapf(ship.rotation - PI / 2, -PI, PI)) < 0.05, "rotation %f, expected PI/2" % ship.rotation)
+
+
+func test_coasting_holds_heading() -> void:
+	# Released finger: the old aim point is now behind the ship, which must not turn back to it.
+	var ship = spawn(SHIP, Vector2.ZERO, {"aim_point": Vector2(100, 0), "linear_velocity": Vector2(300, 0)})
+	await frames(90)
+	check(absf(ship.rotation) < 0.01, "rotation %f while coasting, expected 0" % ship.rotation)
 
 
 func test_destroyed_once() -> void:
