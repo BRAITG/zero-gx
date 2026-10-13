@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scenes/level.gd" id="level"]
 [ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
 [ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
 [ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
+[ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
 
 [node name="Level_03" type="Node2D"]
 script = ExtResource("level")
@@ -90,6 +91,14 @@ linear_velocity = Vector2(0, 15)
 [node name="Rock7" parent="." instance=ExtResource("asteroid")]
 position = Vector2(2300, 300)
 linear_velocity = Vector2(0, 15)
+
+[node name="ThrustDown" parent="." instance=ExtResource("pickup")]
+position = Vector2(1500, -420)
+kind = 1
+
+[node name="ThrustUp" parent="." instance=ExtResource("pickup")]
+position = Vector2(3200, 200)
+kind = 0
 
 [editable path="Wall1"]
 [editable path="Wall2"]

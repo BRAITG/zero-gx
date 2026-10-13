@@ -3,6 +3,7 @@ extends "res://tests/test_case.gd"
 
 const LEVELS := ["level_01", "level_02", "level_03", "level_04", "level_05"]
 const SHARD_CLEARANCE := 60.0  # px between a destructible planet and any barrier
+const PICKUP_CLEARANCE := 16.0  # px between a pickup's edge and any barrier
 const IDLE_FRAMES := 12000  # 200 s with no input: longer than a slow first attempt
 
 
@@ -31,6 +32,14 @@ func test_levels_are_well_formed() -> void:
 		for wall: Barrier in of_type(root, Barrier):
 			# Without [editable path=...], export's binary scene conversion drops the Shape points override.
 			check(root.is_editable_instance(wall), "%s: %s needs editable children" % [id, wall.name])
+		var pickups := of_type(root, Pickup)
+		check(not pickups.is_empty(), "%s: has no pickups" % id)
+		for pickup: Pickup in pickups:
+			for wall: Barrier in of_type(root, Barrier):
+				var points: PackedVector2Array = wall.get_node("Shape").points
+				for i in points.size() - 1:
+					var gap := Geometry2D.get_closest_point_to_segment(pickup.position, wall.position + points[i], wall.position + points[i + 1]).distance_to(pickup.position)
+					check(gap >= Pickup.RADIUS + PICKUP_CLEARANCE, "%s: %s is %d px from %s" % [id, pickup.name, gap, wall.name])
 		for planet: GravityBody in of_type(root, GravityBody):
 			if not planet.destructible:
 				continue

@@ -1,4 +1,4 @@
-[gd_scene load_steps=7 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://scenes/level.gd" id="level"]
 [ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
@@ -6,6 +6,7 @@
 [ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
 [ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
 [ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
+[ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
 
 [node name="Level_02" type="Node2D"]
 script = ExtResource("level")
@@ -26,5 +27,9 @@ points = PackedVector2Array(-300, 300, -300, -300, 2700, -300, 2700, 2700, 2100,
 position = Vector2(2400, 0)
 strength = 600.0
 reach = 600.0
+
+[node name="Boost" parent="." instance=ExtResource("pickup")]
+position = Vector2(1500, 0)
+kind = 2
 
 [editable path="Wall1"]
