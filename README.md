@@ -34,7 +34,8 @@ Gameplay numbers are named constants:
 
 | File | What it tunes |
 |---|---|
-| `scenes/ship.gd` | fuel, burn rate, thrust, turn rate, hull, impact damage, speed cap |
-| `scenes/barrier.gd` | damage multiplier per colour, bounce, collision thickness |
+| `scenes/ship.gd` | fuel, burn rate, thrust, turn rate, hull, impact damage, speed cap, camera lookahead, engine volume |
+| `scenes/barrier.gd` | damage multiplier per colour, bounce, collision thickness; laser colour, width, glow and pulse |
 | `scenes/gravity_body.gd` | planet / black hole / star size, pull and reach; shatter behaviour |
 | `scenes/asteroid.gd` | size, mass, damage dealt to planets |
+| `scripts/sfx.gd` | the procedurally generated sound effects |

@@ -118,7 +118,7 @@ Each scene is a `.tscn` with one `.gd` script, stored in `scenes/`.
 | `barrier` | `StaticBody2D`, with a polygon or segment collider and a `Line2D` | Exports `kind`, which sets the damage multiplier, color, and a bouncy, frictionless physics material |
 | `goal` | `Area2D` | Emits a win signal when the ship enters |
 | `level` | `Node2D` script on each level's root | Uses the level's `Ship` position as point A, connects win and lose signals, handles restart and returning to the menu |
-| `hud` | `CanvasLayer` | Fuel bar, health bar, restart button |
+| `hud` | `CanvasLayer` | Fuel bar, health bar, restart and menu buttons. Android's back gesture also returns to the menu. |
 | `main` | `Control` | Lists levels from `levels/` and loads the selected one |
 
 Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor from the scenes above.
@@ -158,7 +158,7 @@ Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor f
 
 - Ship customization. The design keeps the ship as its own scene so customization can be added later.
 - Art beyond simple shapes and glowing lines.
-- Sound and music.
+- Music. Sound effects are generated in code; there are no audio files.
 - Save data and progression.
 - Menus beyond the level list.
 - Play Store requirements.
