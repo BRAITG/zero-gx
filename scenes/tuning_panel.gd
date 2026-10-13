@@ -26,6 +26,11 @@ func close() -> void:
 	get_parent().queue_free()
 
 
+## A scene change (Android back) can free an open panel; never leave the next scene paused.
+func _exit_tree() -> void:
+	get_tree().paused = false
+
+
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP

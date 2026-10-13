@@ -65,3 +65,12 @@ func press(at: Vector2, down: bool) -> void:
 	event.pressed = down
 	event.position = at
 	tree.root.push_input(event)
+
+
+func test_panel_freed_by_scene_change_unpauses() -> void:
+	await frames(1)
+	var holder := Node.new()
+	world.add_child(holder)
+	TuningPanel.open(holder)
+	holder.free()  # what a scene change (e.g. Android back from a level) does to an open panel
+	check(not tree.paused, "game stays paused after the panel's scene was freed")
