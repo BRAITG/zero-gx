@@ -6,8 +6,14 @@ extends StaticBody2D
 enum Kind { BLUE, ORANGE, RED }
 
 const MULTIPLIERS := {Kind.BLUE: 0.1, Kind.ORANGE: 1.0, Kind.RED: Impact.LETHAL}
-const COLORS := {Kind.BLUE: Color("#3aa0ff"), Kind.ORANGE: Color("#ff8a1f"), Kind.RED: Color("#a00010")}
-const WIDTHS := {Kind.BLUE: 6.0, Kind.ORANGE: 6.0, Kind.RED: 9.0}
+const COLORS := {Kind.BLUE: Color("#3aa0ff"), Kind.ORANGE: Color("#ff8a1f"), Kind.RED: Color("#ff1028")}
+## Width of the bright core.
+const WIDTHS := {Kind.BLUE: 4.0, Kind.ORANGE: 4.0, Kind.RED: 6.0}
+const GLOW_WIDTH := 8.0  # multiple of the core width
+const GLOW_ALPHA := 0.6
+const CORE_WHITENESS := 0.35
+const PULSE_SPEED := 3.0  # rad/s
+const PULSE_DEPTH := 0.25  # fraction of glow alpha
 ## Godot adds both bodies' bounce: 0.4 here + 0.4 on ships and asteroids = 0.8 off a barrier.
 const BARRIER_BOUNCE := 0.4
 ## Collision thickness. Zero-width segments let a fast ship's center land on the line and pass.
@@ -22,6 +28,8 @@ const THICKNESS := 16.0
 	set(value):
 		closed = value
 		_style()
+
+var _glow: Line2D
 
 
 func _ready() -> void:
@@ -49,9 +57,38 @@ func impact_multiplier() -> float:
 	return MULTIPLIERS[kind]
 
 
+func _process(_delta: float) -> void:
+	# Pulse the glow; each wall gets its own phase so they shimmer out of step.
+	var t := Time.get_ticks_msec() * 0.001 * PULSE_SPEED + get_instance_id() % 7
+	if _glow:
+		_glow.modulate.a = 1.0 - PULSE_DEPTH * (0.5 + 0.5 * sin(t))
+
+
 func _style() -> void:
 	var line := get_node_or_null("Shape") as Line2D
-	if line:
-		line.default_color = COLORS[kind]
-		line.width = WIDTHS[kind]
-		line.closed = closed
+	if not line:
+		return
+	line.default_color = COLORS[kind].lerp(Color.WHITE, CORE_WHITENESS)
+	line.width = WIDTHS[kind]
+	line.closed = closed
+	if _glow:
+		_glow.free()
+	_glow = line.duplicate() as Line2D
+	_glow.width = WIDTHS[kind] * GLOW_WIDTH
+	_glow.default_color = Color(COLORS[kind], GLOW_ALPHA)
+	_glow.begin_cap_mode = Line2D.LINE_CAP_NONE  # round caps smear the gradient into a blob
+	_glow.end_cap_mode = Line2D.LINE_CAP_NONE
+	# Fades to transparent across the line's width: Line2D maps texture V across it.
+	var falloff := Gradient.new()
+	falloff.set_color(0, Color(1, 1, 1, 0))
+	falloff.set_color(1, Color(1, 1, 1, 0))
+	falloff.add_point(0.5, Color.WHITE)
+	var texture := GradientTexture2D.new()
+	texture.gradient = falloff
+	texture.fill_to = Vector2(0, 1)
+	_glow.texture = texture
+	_glow.texture_mode = Line2D.LINE_TEXTURE_STRETCH
+	var additive := CanvasItemMaterial.new()
+	additive.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	_glow.material = additive
+	add_child(_glow, false, Node.INTERNAL_MODE_FRONT)  # internal: never saved, drawn under Shape
