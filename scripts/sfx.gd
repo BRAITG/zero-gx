@@ -25,6 +25,8 @@ func _ready() -> void:
 		return sin(TAU * [523.25, 659.25, 783.99][note] * t) * exp(-fmod(t, 0.2) * 8.0)))
 	_streams.tap = _wav(_render(0.05, 1.0, func(t: float, _n: float) -> float:
 		return sin(TAU * 900.0 * t) * exp(-t * 80.0)))
+	_streams.pickup = _wav(_render(0.24, 1.0, func(t: float, _n: float) -> float:
+		return sin(TAU * (660.0 if t < 0.12 else 990.0) * t) * exp(-fmod(t, 0.12) * 20.0)))
 	thrust = _wav(_render(2.0, 400.0, func(_t: float, n: float) -> float: return n))
 	thrust.loop_mode = AudioStreamWAV.LOOP_FORWARD
 	thrust.loop_end = int(2.0 * RATE)
@@ -34,7 +36,7 @@ func _ready() -> void:
 		_players.append(player)
 
 
-## One-shot: "impact", "explosion", "goal" or "tap". Steals the oldest voice when all are busy.
+## One-shot: "impact", "explosion", "goal", "pickup" or "tap". Steals the oldest voice when all are busy.
 func play(sound: String, volume_db := 0.0) -> void:
 	var player := _players[_next]
 	_next = (_next + 1) % VOICES
