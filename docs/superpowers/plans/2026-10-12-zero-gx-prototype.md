@@ -17,7 +17,8 @@
 - Project settings: `physics/2d/default_gravity = 0`, `physics/2d/default_linear_damp = 0`, `physics/2d/default_angular_damp = 0`. Keep Godot's default `input_devices/pointing/emulate_mouse_from_touch = true`, so a phone touch arrives as a left mouse button event.
 - Every physics body uses friction 0.
 - Art is code-drawn only (`_draw`, `Line2D`, `Polygon2D`). No image, audio, or font assets.
-- The server is a shared machine with limited disk. Install only the Godot binary there: no export templates, no Android SDK.
+- The server is a shared machine with limited disk and memory. Install only what the APK build needs, under `~/.local/opt/`: the Godot binary, the two Android template APKs (not the full template bundle), a JDK 17, and the Android SDK packages `build-tools` and `platform-tools`. No Android Studio, no emulator, no Gradle build. Run one Godot process at a time.
+- Final deliverable: a debug-signed `zero-gx.apk` (arm64-v8a) attached to a GitHub release on `BRAITG/zero-gx`.
 - Test command (all tasks): `tests/run.sh`. It exits 0 when everything passes.
 
 ## Shared interfaces
@@ -63,7 +64,7 @@ Expected: `4.7.2.stable.official...`
 - [ ] **Step 2: Write `project.godot` and `.gitignore`**
 
 - `project.godot`: name `Zero-GX`, `run/main_scene="res://scenes/main.tscn"` (created in Task 7), the Global Constraints physics and input settings, a 1280×720 window with `stretch/mode="canvas_items"`, `rendering/renderer/rendering_method="gl_compatibility"`, and `display/window/handheld/orientation=4` (sensor landscape).
-- `.gitignore`: `.godot/`, `/android/`, `*.apk`, `export_presets.cfg`.
+- `.gitignore`: `.godot/`, `/build/`, `*.apk`. `export_presets.cfg` is committed (Task 10).
 - `physics/frictionless.tres`: a `PhysicsMaterial` with `friction = 0.0` and `bounce = 0.0`.
 
 - [ ] **Step 3: Write the runner**
@@ -359,7 +360,7 @@ Replace the body with: spawn a plain `RigidBody2D` (create it in code and add it
 
 ---
 
-### Task 9: README and push
+### Task 9: README
 
 **Files:**
 - Create: `README.md`
@@ -371,14 +372,40 @@ Replace the body with: spawn a plain `RigidBody2D` (create it in code and add it
     1. Install Godot 4.7.2.
     2. Open `project.godot`.
     3. Press F5 to play.
-  - Android export:
-    1. Install Android Studio for the SDK, plus JDK 17.
-    2. In the editor, set Editor Settings → Export → Android SDK path and Java SDK path.
-    3. Add an Android export preset with package `com.braitg.zerogx` and arm64-v8a. The standard export works; the Android build template isn't needed.
-    4. Run Export Project → `zero-gx.apk` and `adb install zero-gx.apk`.
+  - Android: download the APK from the GitHub release on the phone, or rebuild it with `tools/build_apk.sh` (Task 10) after installing the toolchain the script lists.
   - where the tuning constants live: `scenes/ship.gd`, `barrier.gd`, `asteroid.gd`, `gravity_body.gd`.
 - [ ] **Step 2: Run** `tests/run.sh` once more. Expected: exit 0.
-- [ ] **Step 3: Commit and push** with `git add README.md && git commit -m "docs: README with Mac and Android steps" && git push`.
+- [ ] **Step 3: Commit** `docs: README`
+
+### Task 10: Android APK build and release
+
+**Files:**
+- Create: `export_presets.cfg`, `tools/setup_android.sh`, `tools/build_apk.sh`
+- Modify: `README.md` (only if a step differs from Task 9's text)
+
+**Interfaces:**
+- Consumes: the finished project from Tasks 1–9.
+- Produces: `build/zero-gx.apk` and GitHub release `v0.1.0-prototype` holding it.
+
+- [ ] **Step 1: Write `tools/setup_android.sh`** (idempotent, skips anything already present). Install into `~/.local/opt/`:
+  1. **JDK 17:** latest Temurin 17 Linux x64 tarball from the Adoptium API (`https://api.adoptium.net/v3/binary/latest/17/ga/linux/x64/jdk/hotspot/normal/eclipse`).
+  2. **Android command-line tools:** latest Linux zip from `https://developer.android.com/studio#command-line-tools-only`. Unpack it to `android-sdk/cmdline-tools/latest`.
+  3. **SDK packages:** `sdkmanager "platform-tools" "build-tools;35.0.1"`, after accepting the licenses with `yes | sdkmanager --licenses`.
+  4. **Godot templates:** stream `Godot_v4.7.2-stable_export_templates.tpz` through `bsdtar` or `unzip -j` and extract only `templates/android_debug.apk`, `templates/android_release.apk` and `templates/version.txt` into `~/.local/share/godot/export_templates/4.7.2.stable/`. Delete the `.tpz`.
+  5. **Debug keystore:** `keytool -genkeypair -keystore ~/.local/opt/android-debug.keystore -alias androiddebugkey -storepass android -keypass android -keyalg RSA -validity 10000 -dname "CN=Android Debug,O=Android,C=US"`.
+  6. **Godot editor settings:** write `~/.config/godot/editor_settings-4.7.tres` with `export/android/java_sdk_path`, `export/android/android_sdk_path`, `export/android/debug_keystore`, `export/android/debug_keystore_user = "androiddebugkey"`, `export/android/debug_keystore_pass = "android"`. If the file already exists, set these keys without discarding others.
+
+  Print each install's disk size at the end. Expected total: under 1 GB.
+- [ ] **Step 2: Run** `tools/setup_android.sh`. Expected: it exits 0, and `~/.local/opt/android-sdk/build-tools/35.0.1/apksigner --version` prints a version.
+- [ ] **Step 3: Write `export_presets.cfg`** with one preset, `name="Android"`, `platform="Android"`, `export_path="build/zero-gx.apk"`, `gradle_build/use_gradle_build=false`, `architectures/arm64-v8a=true` (all other architectures false), `package/unique_name="com.braitg.zerogx"`, `package/name="Zero-GX"`, `version/code=1`, `version/name="0.1.0"`, `screen/immersive_mode=true`. No keystore paths in the file; they come from editor settings.
+- [ ] **Step 4: Write `tools/build_apk.sh`:** `mkdir -p build`, run `tests/run.sh`, then `godot --headless --path . --export-debug "Android" build/zero-gx.apk`, then `apksigner verify --print-certs build/zero-gx.apk`.
+- [ ] **Step 5: Run** `tools/build_apk.sh`. Expected:
+  1. Tests pass.
+  2. The APK exists and is between 20 and 60 MB.
+  3. `apksigner verify` succeeds.
+  4. `unzip -l build/zero-gx.apk | grep lib/arm64-v8a/` lists the Godot library.
+- [ ] **Step 6: Commit** `build: Android export preset and APK scripts`, then push.
+- [ ] **Step 7: Publish** with `gh release create v0.1.0-prototype build/zero-gx.apk --repo BRAITG/zero-gx --prerelease --title "Zero-GX prototype 0.1.0" --notes "Debug-signed prototype build. Install: open this page on the phone, download zero-gx.apk, allow installs from the browser, then open the file."`. Expected: the release page lists `zero-gx.apk`.
 
 ## Review Focus
 

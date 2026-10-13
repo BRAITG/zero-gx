@@ -150,8 +150,8 @@ Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor f
 
 ### Manual
 
-- Code is written and automated tests run headless on a Linux server, then pushed to `BRAITG/zero-gx`.
-- On the developer's MacBook: play all five levels on desktop, edit levels in the Godot editor, and export an Android APK to install on a phone. Android export needs the Android SDK and a JDK, which are installed only on the MacBook.
+- Code is written, tested headless, and exported to a debug-signed Android APK on a Linux server. The APK is published as a prerelease on `BRAITG/zero-gx`.
+- The developer installs the APK on a phone and plays all five levels. The MacBook is optional, for editing levels in the Godot editor.
 
 ## Out of scope
 
