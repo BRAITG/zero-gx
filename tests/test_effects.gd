@@ -73,3 +73,44 @@ func test_dead_ship_ignores_pickups() -> void:
 	ship.start_boost()
 	check(ship.power == 1.0, "dead ship took power %f" % ship.power)
 	check(not ship.boosting, "dead ship boosting")
+
+
+## Vertical blue wall at x = 300, as in test_damage.gd.
+func wall() -> void:
+	var barrier: Node = load("res://scenes/barrier.tscn").instantiate()
+	barrier.get_node("Shape").points = PackedVector2Array([Vector2(300, -2000), Vector2(300, 2000)])
+	world.add_child(barrier)
+
+
+## Peak |angular velocity| over 60 frames, and the heading's angle to travel after them.
+func hit_wall(velocity: Vector2) -> Dictionary:
+	wall()
+	var ship := spawn(SHIP, Vector2(200, 0), {"linear_velocity": velocity}) as Ship
+	var peak := 0.0
+	var angles: Array[float] = []
+	for i in 60:
+		await frames(1)
+		peak = maxf(peak, absf(ship.angular_velocity))
+		angles.append(absf(wrapf(ship.linear_velocity.angle() - ship.rotation, -PI, PI)))
+	return {"ship": ship, "peak": peak, "angles": angles}
+
+
+func test_glancing_hit_spins_toward_travel() -> void:
+	var hit: Dictionary = await hit_wall(Vector2(500, 0).rotated(deg_to_rad(-60)))
+	var angles: Array[float] = hit.angles
+	# After the bounce the heading points ~115° away from travel; spin must close that gap.
+	var after_bounce: float = angles.max()
+	check(after_bounce - angles[-1] > 0.2, "heading only turned %f rad toward travel" % (after_bounce - angles[-1]))
+
+
+func test_head_on_spins_less() -> void:
+	var glancing: Dictionary = await hit_wall(Vector2(500, 0).rotated(deg_to_rad(-60)))
+	glancing.ship.free()
+	var head_on: Dictionary = await hit_wall(Vector2(500, 0))
+	check(head_on.peak < 0.25 * glancing.peak, "head-on spin %f vs glancing %f" % [head_on.peak, glancing.peak])
+
+
+func test_spin_decays() -> void:
+	var hit: Dictionary = await hit_wall(Vector2(500, 0).rotated(deg_to_rad(-60)))
+	await frames(60)
+	check(absf(hit.ship.angular_velocity) < 0.05, "still spinning at %f rad/s" % hit.ship.angular_velocity)

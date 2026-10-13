@@ -48,6 +48,7 @@ var _allowed_speed := TUNNEL_LIMIT
 var _touch_screen: Variant = null
 var _effect_left := 0.0  # s of power effect or boost remaining
 var _wobble_phase := 0.0
+var _spin := 0.0  # rad/s left from the last glancing hit; decays with Tuning.spin_decay
 
 
 func _ready() -> void:
@@ -80,8 +81,10 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		var turn := wrapf(to_aim.angle() - state.transform.get_rotation(), -PI, PI)
 		var rate := Tuning.boost_turn_rate if boosting else Tuning.turn_rate
 		state.angular_velocity = clampf(turn / step, -rate, rate)
+		_spin = 0.0
 	else:
-		state.angular_velocity = 0.0
+		state.angular_velocity = _spin  # zero unless a recent hit set the ship spinning
+		_spin *= exp(-step / Tuning.spin_decay)
 	var forward := Vector2.RIGHT.rotated(state.transform.get_rotation())
 	if boosting:
 		state.angular_velocity += _wobble()
@@ -160,6 +163,7 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 	var velocity_change := state.linear_velocity - _previous_velocity
 	_previous_velocity = state.linear_velocity
 	var worst := 0.0
+	var spin_kick := 0.0
 	for i in state.get_contact_count():
 		var collider := state.get_contact_collider_object(i)
 		var normal := state.get_contact_local_normal(i)
@@ -173,6 +177,12 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 		var speed_change := absf(velocity_change.dot(normal))
 		if speed_change >= MIN_IMPACT_SPEED:
 			worst = maxf(worst, speed_change * DAMAGE_PER_SPEED * multiplier)
+			var sliding := (state.linear_velocity - state.linear_velocity.project(normal)).length()
+			spin_kick = maxf(spin_kick, Tuning.spin_per_speed * sliding)
+	if spin_kick > 0.0:
+		# Turn the nose toward the outgoing direction: glancing hits slide fast, so spin most.
+		var toward := signf(wrapf(state.linear_velocity.angle() - state.transform.get_rotation(), -PI, PI))
+		_spin = clampf(_spin + spin_kick * toward, -Tuning.spin_max, Tuning.spin_max)
 	if worst > 0.0:
 		take_damage(worst)
 
