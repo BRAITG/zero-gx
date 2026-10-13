@@ -3,8 +3,19 @@ extends SceneTree
 
 const TIMEOUT_FRAMES := 70000  # The level-design check idles 12000 frames in each of 5 levels.
 
+## Runtime script errors abort the test method without failing it; this catches them.
+class ScriptErrors extends Logger:
+	var seen: Array[String] = []
+
+	func _log_error(_function: String, file: String, line: int, code: String, rationale: String, _editor_notify: bool, error_type: int, _script_backtraces: Array[ScriptBacktrace]) -> void:
+		if error_type == ERROR_TYPE_SCRIPT:
+			seen.append("script error: %s (%s:%d)" % [rationale if rationale else code, file, line])
+
+var _errors := ScriptErrors.new()
+
 
 func _initialize() -> void:
+	OS.add_logger(_errors)
 	_run()
 
 
@@ -27,6 +38,7 @@ func _run() -> void:
 			test.world = Node2D.new()
 			root.add_child(test.world)
 			var state := {"done": false}
+			_errors.seen.clear()
 			_invoke(test, name, state)
 			var waited := 0
 			while not state.done and waited < TIMEOUT_FRAMES:
@@ -35,6 +47,7 @@ func _run() -> void:
 			if not state.done:
 				test.failures.append("timed out after %d frames" % TIMEOUT_FRAMES)
 			test.world.queue_free()
+			test.failures.append_array(_errors.seen)
 			await process_frame
 			if test.failures.is_empty():
 				passed += 1
