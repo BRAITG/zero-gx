@@ -46,6 +46,7 @@ func _ready() -> void:
 		freeze_mode = RigidBody2D.FREEZE_MODE_KINEMATIC
 		freeze = true
 		_place_on_orbit()
+		reset_physics_interpolation()  # don't streak in from the scene's authored position
 		if _parent.has_signal("shattered"):
 			_parent.shattered.connect(release.bind(Vector2.ZERO))
 
