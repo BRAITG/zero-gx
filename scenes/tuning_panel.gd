@@ -7,6 +7,7 @@ const SLIDER_WIDTH := 520.0
 
 var _labels := {}
 var _sliders := {}
+var _overlays: CheckButton
 
 
 ## Shows the panel on its own top canvas layer under `parent` and pauses the tree.
@@ -52,6 +53,12 @@ func _ready() -> void:
 	rows.add_child(buttons)
 	_button(buttons, "Close", close)
 	_button(buttons, "Reset", _reset)
+	_overlays = CheckButton.new()
+	_overlays.text = "Debug overlays"
+	_overlays.add_theme_font_size_override("font_size", 24)
+	_overlays.button_pressed = Tuning.show_overlays
+	_overlays.toggled.connect(func(on: bool): Tuning.set_value("show_overlays", on))
+	buttons.add_child(_overlays)
 	for key: String in Tuning.RANGES:
 		var bounds: Array = Tuning.RANGES[key]
 		var row := HBoxContainer.new()
@@ -88,6 +95,7 @@ func _reset() -> void:
 	for key: String in _sliders:
 		_sliders[key].set_value_no_signal(Tuning.get(key))
 		_show(key)
+	_overlays.set_pressed_no_signal(Tuning.show_overlays)
 
 
 func _button(parent: Control, text: String, action: Callable) -> void:

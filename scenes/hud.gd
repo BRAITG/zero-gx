@@ -10,6 +10,7 @@ var restart_button: Button
 var _fuel: ProgressBar
 var _health: ProgressBar
 var _effect: Label
+var _speed: Label
 var _result: PanelContainer
 var _result_label: Label
 
@@ -33,6 +34,12 @@ func _ready() -> void:
 	_effect.add_theme_font_size_override("font_size", 24)
 	_effect.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_effect)
+	_speed = Label.new()
+	_speed.add_theme_font_size_override("font_size", 28)
+	_speed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_speed)
+	_speed.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 16)
+	_speed.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 	_result = PanelContainer.new()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -54,6 +61,8 @@ func _process(_delta: float) -> void:
 		_fuel.value = ship.fuel
 		_health.value = ship.health
 		_effect.text = ship.effect_text()
+		_speed.visible = Tuning.show_overlays
+		_speed.text = "%d px/s" % roundi(ship.linear_velocity.length())  # world frame: relative to the background
 
 
 func show_result(won: bool) -> void:

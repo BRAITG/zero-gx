@@ -24,6 +24,10 @@ const SHARDS_MAX := 20
 const SHARD_SPEED_MIN := 100.0
 const SHARD_SPEED_MAX := 250.0
 const SHARD_GAP := 4.0  # px between neighbouring shards on the spawn ring
+## Debug field disc: opacity grows with the square root of the pull, so weak edges stay visible.
+const FIELD_REFERENCE_PULL := 1000.0  # px/s² drawn at full opacity
+const FIELD_MAX_ALPHA := 0.35
+const FIELD_BANDS := 32
 
 var _shattering := false
 
@@ -69,7 +73,20 @@ func _ready() -> void:
 
 
 func _apply_gravity_tuning(field: Area2D) -> void:
-	field.gravity = strength * (Tuning.planet_gravity if preset == Preset.PLANET else 1.0)
+	field.gravity = _surface_pull()
+	queue_redraw()  # the field disc shows planet_gravity and the overlay toggle
+
+
+func _surface_pull() -> float:
+	return strength * (Tuning.planet_gravity if preset == Preset.PLANET else 1.0)
+
+
+## Opacity of the debug field disc at `distance` from the centre; 0 beyond reach.
+func field_alpha(distance: float) -> float:
+	if distance > reach:
+		return 0.0
+	var pull := _surface_pull() * pow(radius / maxf(distance, radius), 2)
+	return FIELD_MAX_ALPHA * sqrt(minf(pull / FIELD_REFERENCE_PULL, 1.0))
 
 
 func impact_multiplier() -> float:
@@ -103,6 +120,11 @@ func _shatter() -> void:
 
 func _draw() -> void:
 	var r: float = radius if radius > 0 else PRESETS[preset][0]
+	if not Engine.is_editor_hint() and Tuning.show_overlays:
+		var band := (reach - r) / FIELD_BANDS
+		for i in FIELD_BANDS:
+			var middle := r + band * (i + 0.5)
+			draw_arc(Vector2.ZERO, middle, 0.0, TAU, 96, Color(1, 1, 1, field_alpha(middle)), band)
 	draw_circle(Vector2.ZERO, r, COLORS[preset])
 	if preset == Preset.BLACK_HOLE:
 		draw_arc(Vector2.ZERO, r + 4.0, 0.0, TAU, 64, Color("#b48cff"), 3.0)

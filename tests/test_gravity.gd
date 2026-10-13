@@ -74,3 +74,15 @@ func test_planet_gravity_multiplier() -> void:
 	check(near(pull(near_planet).length(), expected, 0.02), "planet pull %f, expected %f" % [pull(near_planet).length(), expected])
 	var star := 3000.0 * pow(600.0 / 1200.0, 2)
 	check(near(pull(near_star).length(), star, 0.02), "star pull %f, expected unchanged %f" % [pull(near_star).length(), star])
+
+
+func test_field_opacity_follows_pull() -> void:
+	var planet: GravityBody = spawn(GRAVITY_BODY, Vector2.ZERO)
+	var hole: GravityBody = spawn(GRAVITY_BODY, Vector2(0, 3000), {"preset": GravityBody.Preset.BLACK_HOLE})
+	check(planet.field_alpha(100) > planet.field_alpha(300), "opacity must fall with distance")
+	check(planet.field_alpha(300) > 0.0, "the weak outer field must stay visible")
+	check(planet.field_alpha(planet.reach + 1) == 0.0, "no field beyond reach")
+	check(hole.field_alpha(100) > planet.field_alpha(100), "a stronger body must look stronger")
+	var before := planet.field_alpha(100)
+	Tuning.set_value("planet_gravity", 2.0)
+	check(planet.field_alpha(100) > before, "the planet gravity slider must show in the field")

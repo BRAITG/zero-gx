@@ -18,6 +18,7 @@ const DEFAULTS := {
 	"spin_per_speed": 0.01,  # rad/s of impact spin per px/s of sliding speed
 	"spin_max": 4.0,  # rad/s
 	"spin_decay": 0.35,  # s, exponential time constant
+	"show_overlays": true,  # gravity field discs and speedometer
 }
 ## [min, max, step] per setting, for the panel's sliders.
 const RANGES := {
@@ -49,6 +50,7 @@ var planet_gravity: float
 var spin_per_speed: float
 var spin_max: float
 var spin_decay: float
+var show_overlays: bool
 
 
 func _init() -> void:
@@ -61,7 +63,7 @@ func reset() -> void:
 	changed.emit()
 
 
-func set_value(key: String, value: float) -> void:
+func set_value(key: String, value: Variant) -> void:
 	assert(key in DEFAULTS, "unknown tuning value %s" % key)
 	set(key, value)
 	changed.emit()
