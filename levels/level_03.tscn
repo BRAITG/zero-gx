@@ -90,3 +90,8 @@ linear_velocity = Vector2(0, 15)
 [node name="Rock7" parent="." instance=ExtResource("asteroid")]
 position = Vector2(2300, 300)
 linear_velocity = Vector2(0, 15)
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]
+[editable path="Wall4"]

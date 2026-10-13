@@ -26,3 +26,5 @@ points = PackedVector2Array(-300, 300, -300, -300, 2700, -300, 2700, 2700, 2100,
 position = Vector2(2400, 0)
 strength = 600.0
 reach = 600.0
+
+[editable path="Wall1"]

@@ -28,6 +28,9 @@ func test_levels_are_well_formed() -> void:
 		for rock: Asteroid in of_type(root, Asteroid):
 			if not rock.orbit_parent.is_empty():
 				check(rock.get_node_or_null(rock.orbit_parent) is GravityBody, "%s: %s orbits a non-planet" % [id, rock.name])
+		for wall: Barrier in of_type(root, Barrier):
+			# Without [editable path=...], export's binary scene conversion drops the Shape points override.
+			check(root.is_editable_instance(wall), "%s: %s needs editable children" % [id, wall.name])
 		for planet: GravityBody in of_type(root, GravityBody):
 			if not planet.destructible:
 				continue

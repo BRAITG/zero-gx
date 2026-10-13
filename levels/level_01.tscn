@@ -45,3 +45,9 @@ kind = 0
 
 [node name="Shape" parent="Wall5" index="0"]
 points = PackedVector2Array(1400, -1800, 1400, -200, -200, -200)
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]
+[editable path="Wall4"]
+[editable path="Wall5"]

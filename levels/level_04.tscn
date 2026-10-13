@@ -37,3 +37,7 @@ points = PackedVector2Array(2000, 300, 2000, 400)
 [node name="BlackHole" parent="." instance=ExtResource("body")]
 position = Vector2(2300, -100)
 preset = 1
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]
