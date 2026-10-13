@@ -8,7 +8,8 @@ enum Kind { BLUE, ORANGE, RED }
 const MULTIPLIERS := {Kind.BLUE: 0.1, Kind.ORANGE: 1.0, Kind.RED: Impact.LETHAL}
 const COLORS := {Kind.BLUE: Color("#3aa0ff"), Kind.ORANGE: Color("#ff8a1f"), Kind.RED: Color("#a00010")}
 const WIDTHS := {Kind.BLUE: 6.0, Kind.ORANGE: 6.0, Kind.RED: 9.0}
-const BARRIER_BOUNCE := 0.8
+## Godot adds both bodies' bounce: 0.4 here + 0.4 on ships and asteroids = 0.8 off a barrier.
+const BARRIER_BOUNCE := 0.4
 ## Collision thickness. Zero-width segments let a fast ship's center land on the line and pass.
 const THICKNESS := 16.0
 

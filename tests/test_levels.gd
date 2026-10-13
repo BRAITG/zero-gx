@@ -3,7 +3,7 @@ extends "res://tests/test_case.gd"
 
 const LEVELS := ["level_01", "level_02", "level_03", "level_04", "level_05"]
 const SHARD_CLEARANCE := 60.0  # px between a destructible planet and any barrier
-const IDLE_FRAMES := 3600  # 60 s with no input
+const IDLE_FRAMES := 12000  # 200 s with no input: longer than a slow first attempt
 
 
 func load_level(id: String) -> Node:

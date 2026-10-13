@@ -81,12 +81,12 @@ orbit_angle = -1.5707963267948966
 
 [node name="Rock5" parent="." instance=ExtResource("asteroid")]
 position = Vector2(2300, -300)
-linear_velocity = Vector2(12, 0)
+linear_velocity = Vector2(0, 15)
 
 [node name="Rock6" parent="." instance=ExtResource("asteroid")]
 position = Vector2(2300, 0)
-linear_velocity = Vector2(12, 0)
+linear_velocity = Vector2(0, 15)
 
 [node name="Rock7" parent="." instance=ExtResource("asteroid")]
 position = Vector2(2300, 300)
-linear_velocity = Vector2(12, 0)
+linear_velocity = Vector2(0, 15)

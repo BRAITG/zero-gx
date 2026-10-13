@@ -29,6 +29,9 @@ var _still_time := 0.0
 var _stranded_sent := false
 var _camera: Camera2D
 var _previous_velocity := Vector2.ZERO
+## Where the finger rests on screen; null when no touch is held. Re-projected every step,
+## because the camera follows the ship and a still finger sends no new events.
+var _touch_screen: Variant = null
 
 
 func _ready() -> void:
@@ -52,6 +55,8 @@ func _ready() -> void:
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	var step := state.step
+	if _touch_screen != null:
+		aim_point = get_canvas_transform().affine_inverse() * (_touch_screen as Vector2)
 	var to_aim := aim_point - state.transform.origin
 	if to_aim.length() > 1.0:
 		var turn := wrapf(to_aim.angle() - state.transform.get_rotation(), -PI, PI)
@@ -104,9 +109,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	# Touches arrive as emulated left-mouse events; GUI controls consume theirs first.
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		thrusting = event.pressed
+		_touch_screen = event.position if event.pressed else null
 		aim_point = get_canvas_transform().affine_inverse() * event.position
-	elif event is InputEventMouseMotion:
-		aim_point = get_canvas_transform().affine_inverse() * event.position
+	elif event is InputEventMouseMotion and _touch_screen != null:
+		_touch_screen = event.position
 
 
 func take_damage(amount: float) -> void:

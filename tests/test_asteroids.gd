@@ -72,3 +72,17 @@ func test_gravity_gone_after_shatter() -> void:
 	world.add_child(probe)
 	await frames(10)
 	check(probe.linear_velocity == Vector2.ZERO, "a shattered planet still pulls: %s" % probe.linear_velocity)
+
+
+func test_ship_knocks_an_asteroid_away() -> void:
+	var rock = spawn(ASTEROID, Vector2(200, 0))
+	var ship = spawn("res://scenes/ship.tscn", Vector2.ZERO, {"linear_velocity": Vector2(400, 0), "aim_point": Vector2(1000, 0)})
+	await frames(60)
+	check(rock.linear_velocity.x > ship.linear_velocity.x + 50.0, "no bounce: rock %s, ship %s" % [rock.linear_velocity, ship.linear_velocity])
+
+
+func test_asteroids_bounce_off_each_other() -> void:
+	var moving = spawn(ASTEROID, Vector2.ZERO, {"linear_velocity": Vector2(300, 0)})
+	var still = spawn(ASTEROID, Vector2(200, 0))
+	await frames(60)
+	check(still.linear_velocity.x > moving.linear_velocity.x + 50.0, "no bounce: %s vs %s" % [moving.linear_velocity, still.linear_velocity])

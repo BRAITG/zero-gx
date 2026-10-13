@@ -90,7 +90,8 @@ With no player input, no asteroid hits a planet. Asteroids should reach planets 
 ### Barriers
 
 - Barriers are glowing line segments or polygon outlines, each with a `kind`: blue, orange, or deep red.
-- All barriers bounce bodies with no friction.
+- All barriers bounce bodies with no friction. Every collision between solid bodies bounces at 0.8: Godot adds both bodies' bounce, and each side contributes 0.4.
+- Ships and asteroids are capped at 1200 px/s, and barriers collide as 16 px thick slabs, so nothing can pass through a wall between physics steps.
 - The color communicates danger. Deep red should look obviously lethal.
 
 ### Camera and win
@@ -146,7 +147,7 @@ Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor f
 - **Rails:** an orbiting asteroid next to a black hole stays on its circle for 60 simulated seconds. It switches to full physics when hit.
 - **Shatter:** a planet hit until its health reaches 0 spawns 12–20 asteroids and its pull disappears.
 - **Swallow:** a black hole destroys an asteroid that touches it.
-- **Level-design check:** each level runs for 60 simulated seconds with no input. Any asteroid–planet contact fails the check and names the level and the bodies involved.
+- **Level-design check:** each level runs for 200 simulated seconds with no input (longer than a slow first attempt). Any asteroid–planet contact fails the check and names the level and the bodies involved.
 
 ### Manual
 

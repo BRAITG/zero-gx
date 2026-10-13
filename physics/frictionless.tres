@@ -1,4 +1,7 @@
 [gd_resource type="PhysicsMaterial" format=3]
 
+; Ships, asteroids and planets. Godot adds both bodies' bounce, so two of these bounce at 0.8,
+; and barriers (0.4 of their own) also total 0.8.
 [resource]
 friction = 0.0
+bounce = 0.4
