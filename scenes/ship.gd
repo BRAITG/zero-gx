@@ -81,11 +81,15 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 	var worst := 0.0
 	for i in state.get_contact_count():
 		var collider := state.get_contact_collider_object(i)
+		var normal := state.get_contact_local_normal(i)
+		if collider is Asteroid and collider.on_rails:
+			# Equal and opposite to what the ship received along the contact normal.
+			collider.release.call_deferred(-velocity_change.project(normal) * mass)
 		var multiplier: float = collider.impact_multiplier() if collider and collider.has_method("impact_multiplier") else 0.0
 		if multiplier == Impact.LETHAL:
 			take_damage(health)
 			return
-		var speed_change := absf(velocity_change.dot(state.get_contact_local_normal(i)))
+		var speed_change := absf(velocity_change.dot(normal))
 		if speed_change >= MIN_IMPACT_SPEED:
 			worst = maxf(worst, speed_change * DAMAGE_PER_SPEED * multiplier)
 	if worst > 0.0:

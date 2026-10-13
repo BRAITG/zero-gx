@@ -9,6 +9,15 @@ const MIN_IMPACT_SPEED := 20.0  # px/s
 const PLANET_DAMAGE_PER_IMPULSE := 0.04
 const MAX_SPEED := 1200.0  # Same no-tunneling bound as the ship.
 
+## Orbit on rails: set a parent planet to circle it exactly until something hits this asteroid.
+@export var orbit_parent: NodePath
+@export var orbit_radius := 150.0
+## rad/s; the sign sets the direction.
+@export var orbit_speed := 1.0
+@export var orbit_angle := 0.0
+
+var on_rails := false
+var _parent: Node2D
 var _previous_velocity := Vector2.ZERO
 var _outline := PackedVector2Array()
 
@@ -31,6 +40,38 @@ func _ready() -> void:
 	shape.shape.radius = RADIUS
 	add_child(shape)
 	_previous_velocity = linear_velocity
+	if not orbit_parent.is_empty():
+		_parent = get_node(orbit_parent)
+		on_rails = true
+		freeze_mode = RigidBody2D.FREEZE_MODE_KINEMATIC
+		freeze = true
+		_place_on_orbit()
+		if _parent.has_signal("shattered"):
+			_parent.shattered.connect(release.bind(Vector2.ZERO))
+
+
+func _physics_process(delta: float) -> void:
+	if not on_rails or Engine.is_editor_hint():
+		return
+	if not is_instance_valid(_parent):
+		release(Vector2.ZERO)
+		return
+	orbit_angle += orbit_speed * delta
+	_place_on_orbit()
+
+
+func _place_on_orbit() -> void:
+	global_position = _parent.global_position + Vector2.RIGHT.rotated(orbit_angle) * orbit_radius
+
+
+## Leave the rails with the current orbital velocity plus `impulse`. No-op once free.
+func release(impulse: Vector2) -> void:
+	if not on_rails:
+		return
+	on_rails = false
+	freeze = false
+	linear_velocity = Vector2(-sin(orbit_angle), cos(orbit_angle)) * orbit_radius * orbit_speed + impulse / mass
+	_previous_velocity = linear_velocity
 
 
 func impact_multiplier() -> float:
@@ -42,7 +83,12 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	var velocity_change := state.linear_velocity - _previous_velocity
 	_previous_velocity = state.linear_velocity
 	for i in state.get_contact_count():
-		var body := state.get_contact_collider_object(i) as GravityBody
+		var collider := state.get_contact_collider_object(i)
+		if collider is Asteroid and collider.on_rails:
+			# Equal and opposite to what this asteroid received along the contact normal.
+			var normal := state.get_contact_local_normal(i)
+			collider.release.call_deferred(-velocity_change.project(normal) * mass)
+		var body := collider as GravityBody
 		if body == null:
 			continue
 		if body.impact_multiplier() == Impact.LETHAL:
