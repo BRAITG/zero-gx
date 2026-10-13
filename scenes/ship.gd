@@ -21,6 +21,9 @@ const DAMAGE_PER_SPEED := 0.05  # health per px/s of normal speed change
 const MIN_IMPACT_SPEED := 20.0  # px/s; below this a contact is resting, not a hit
 ## 20 px per 60 Hz step: under half of barrier thickness + ship diameter, so no hit can tunnel.
 const MAX_SPEED := 1200.0
+const ENGINE_VOLUME_DB := -10.0
+## Damage at which an impact plays at full volume; lighter hits are quieter.
+const LOUD_IMPACT_DAMAGE := 30.0
 
 var thrusting := false
 var aim_point := Vector2.ZERO
@@ -30,6 +33,7 @@ var health := MAX_HEALTH
 var _still_time := 0.0
 var _stranded_sent := false
 var _camera: Camera2D
+var _engine: AudioStreamPlayer
 var _previous_velocity := Vector2.ZERO
 ## Where the finger rests on screen; null when no touch is held. Re-projected every step,
 ## because the camera follows the ship and a still finger sends no new events.
@@ -51,6 +55,10 @@ func _ready() -> void:
 	_camera.position_smoothing_enabled = true
 	_camera.ignore_rotation = true
 	add_child(_camera)
+	_engine = AudioStreamPlayer.new()
+	_engine.stream = Sfx.thrust
+	_engine.volume_db = ENGINE_VOLUME_DB
+	add_child(_engine)
 	if aim_point == Vector2.ZERO:
 		aim_point = position + Vector2.RIGHT.rotated(rotation) * 100.0
 
@@ -106,6 +114,9 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 func _process(delta: float) -> void:
 	var target := (linear_velocity * LOOKAHEAD).limit_length(LOOKAHEAD_MAX)
 	_camera.offset = _camera.offset.lerp(target, 1.0 - exp(-LOOKAHEAD_SMOOTHING * delta))
+	var burning := thrusting and fuel > 0.0
+	if burning != _engine.playing:
+		_engine.playing = burning
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -122,11 +133,14 @@ func take_damage(amount: float) -> void:
 	if health <= 0.0:
 		return
 	health = maxf(health - amount, 0.0)
-	if health == 0.0:
-		thrusting = false
-		destroyed.emit()
-		set_deferred("freeze", true)
-		hide()
+	if health > 0.0:
+		Sfx.play("impact", linear_to_db(clampf(amount / LOUD_IMPACT_DAMAGE, 0.2, 1.0)))
+		return
+	thrusting = false
+	Sfx.play("explosion")
+	destroyed.emit()
+	set_deferred("freeze", true)
+	hide()
 
 
 func _draw() -> void:

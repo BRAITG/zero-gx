@@ -77,6 +77,7 @@ func _button(parent: Control, text: String, action: Callable) -> Button:
 	button.text = text
 	button.custom_minimum_size = Vector2(160, 56)
 	button.add_theme_font_size_override("font_size", 24)
+	button.pressed.connect(Sfx.play.bind("tap"))
 	button.pressed.connect(action)
 	parent.add_child(button)
 	return button

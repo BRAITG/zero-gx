@@ -43,5 +43,7 @@ func finish(won: bool) -> void:
 	_done = true
 	ship.thrusting = false
 	ship.set_deferred("freeze", true)
+	if won:
+		Sfx.play("goal")
 	hud.show_result(won)
 	finished.emit(won)

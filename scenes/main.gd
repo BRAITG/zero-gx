@@ -20,6 +20,7 @@ func _ready() -> void:
 		button.text = file.get_basename().replace("_", " ").capitalize()
 		button.custom_minimum_size = Vector2(320, 64)
 		button.add_theme_font_size_override("font_size", 28)
+		button.pressed.connect(Sfx.play.bind("tap"))
 		button.pressed.connect(func(): get_tree().change_scene_to_file("res://levels/" + file))
 		column.add_child(button)
 	column.reset_size()
