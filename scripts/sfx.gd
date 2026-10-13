@@ -15,6 +15,7 @@ var _rng := RandomNumberGenerator.new()
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS  # taps on the tuning panel play while the game is paused
 	_rng.seed = 1
 	_streams.impact = _wav(_render(0.25, 2000.0, func(t: float, n: float) -> float:
 		return n * exp(-t * 25.0) + 0.6 * sin(TAU * 80.0 * t) * exp(-t * 12.0)))

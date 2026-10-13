@@ -27,6 +27,7 @@ func _ready() -> void:
 	top.add_child(spacer)
 	restart_button = _button(top, "Restart", retry_requested.emit)
 	_button(top, "Menu", menu_requested.emit)
+	_button(top, "Tune", func(): TuningPanel.open(self))
 	_effect = Label.new()
 	_effect.position = Vector2(16, 64)
 	_effect.add_theme_font_size_override("font_size", 24)

@@ -28,3 +28,40 @@ func test_overspeed_eases_down() -> void:
 		last = speed
 	check(worst <= 400.0 / 60.0 + 0.5, "speed dropped %f in one step" % worst)
 	check(absf(last - Tuning.max_speed) <= 1.0, "speed %f after 2 s, expected %f" % [last, Tuning.max_speed])
+
+
+func test_slider_sets_tuning() -> void:
+	var panel := TuningPanel.open(world)
+	var slider: HSlider = panel.find_child("turn_rate", true, false)
+	slider.value = 3.0
+	check(Tuning.turn_rate == 3.0, "turn_rate %f after moving its slider to 3" % Tuning.turn_rate)
+	panel.close()
+
+
+func test_panel_blocks_touch() -> void:
+	var level := Node2D.new()
+	level.set_script(load("res://scenes/level.gd"))
+	var ship: Ship = load(SHIP).instantiate()
+	level.add_child(ship)
+	level.add_child(load("res://scenes/goal.tscn").instantiate())
+	world.add_child(level)
+	await frames(2)
+	var centre := tree.root.get_visible_rect().size / 2.0
+	press(centre, true)
+	check(ship.thrusting, "control: a touch without the panel should thrust")
+	press(centre, false)
+	var panel := TuningPanel.open(world)
+	check(tree.paused, "opening the panel must pause the game")
+	press(centre, true)
+	check(not ship.thrusting, "a touch on the panel reached the ship")
+	press(centre, false)
+	panel.close()
+	check(not tree.paused, "closing the panel must unpause")
+
+
+func press(at: Vector2, down: bool) -> void:
+	var event := InputEventMouseButton.new()
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.pressed = down
+	event.position = at
+	tree.root.push_input(event)

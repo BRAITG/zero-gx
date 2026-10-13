@@ -23,6 +23,13 @@ func _ready() -> void:
 		button.pressed.connect(Sfx.play.bind("tap"))
 		button.pressed.connect(func(): get_tree().change_scene_to_file("res://levels/" + file))
 		column.add_child(button)
+	var tune := Button.new()
+	tune.text = "Tune"
+	tune.custom_minimum_size = Vector2(320, 64)
+	tune.add_theme_font_size_override("font_size", 28)
+	tune.pressed.connect(Sfx.play.bind("tap"))
+	tune.pressed.connect(func(): TuningPanel.open(self))
+	column.add_child(tune)
 	column.reset_size()
 	column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 
