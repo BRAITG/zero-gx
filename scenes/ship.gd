@@ -30,6 +30,10 @@ var thrusting := false
 var aim_point := Vector2.ZERO
 var fuel := MAX_FUEL
 var health := MAX_HEALTH
+## Thrust multiplier from a thrust pickup; also scales the speed cap. 1.0 without an effect.
+var power := 1.0
+## A boost fires the engine at full power, free of fuel, with a wobbling nose.
+var boosting := false
 
 var _still_time := 0.0
 var _stranded_sent := false
@@ -42,6 +46,8 @@ var _allowed_speed := TUNNEL_LIMIT
 ## Where the finger rests on screen; null when no touch is held. Re-projected every step,
 ## because the camera follows the ship and a still finger sends no new events.
 var _touch_screen: Variant = null
+var _effect_left := 0.0  # s of power effect or boost remaining
+var _wobble_phase := 0.0
 
 
 func _ready() -> void:
@@ -72,12 +78,18 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	var to_aim := aim_point - state.transform.origin
 	if thrusting and to_aim.length() > 1.0:  # finger up: hold heading and coast
 		var turn := wrapf(to_aim.angle() - state.transform.get_rotation(), -PI, PI)
-		state.angular_velocity = clampf(turn / step, -Tuning.turn_rate, Tuning.turn_rate)
+		var rate := Tuning.boost_turn_rate if boosting else Tuning.turn_rate
+		state.angular_velocity = clampf(turn / step, -rate, rate)
 	else:
 		state.angular_velocity = 0.0
-	if thrusting and fuel > 0.0:
-		state.apply_central_force(Vector2.RIGHT.rotated(state.transform.get_rotation()) * Tuning.thrust)
+	var forward := Vector2.RIGHT.rotated(state.transform.get_rotation())
+	if boosting:
+		state.angular_velocity += _wobble()
+		state.apply_central_force(forward * Tuning.thrust)
+	elif thrusting and fuel > 0.0:
+		state.apply_central_force(forward * Tuning.thrust * power)
 		fuel = maxf(fuel - FUEL_BURN * step, 0.0)
+	_tick_effect(step)
 	_limit_speed(state)
 	if fuel == 0.0 and state.linear_velocity.length() < STRAND_SPEED:
 		_still_time += step
@@ -92,9 +104,54 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 
 func _limit_speed(state: PhysicsDirectBodyState2D) -> void:
 	var speed := state.linear_velocity.length()
-	_allowed_speed = clampf(minf(_allowed_speed, speed) - OVERSPEED_DECEL * state.step, Tuning.max_speed, TUNNEL_LIMIT)
+	_allowed_speed = clampf(minf(_allowed_speed, speed) - OVERSPEED_DECEL * state.step, Tuning.max_speed * power, TUNNEL_LIMIT)
 	if speed > _allowed_speed:
 		state.linear_velocity *= _allowed_speed / speed
+
+
+## Thrust pickup: multiplies thrust and the speed cap for Tuning.effect_seconds, replacing any
+## active effect.
+func apply_power(multiplier: float) -> void:
+	if health <= 0.0:
+		return
+	boosting = false
+	power = multiplier
+	_effect_left = Tuning.effect_seconds
+
+
+## Boost pickup: a free full-power burn for Tuning.boost_seconds, replacing any active effect.
+func start_boost() -> void:
+	if health <= 0.0:
+		return
+	power = 1.0
+	boosting = true
+	_effect_left = Tuning.boost_seconds
+	_wobble_phase = randf() * TAU
+
+
+## HUD text for the active effect, e.g. "Thrust ×1.5 · 6 s"; empty without one.
+func effect_text() -> String:
+	if boosting:
+		return "Boost"
+	if power != 1.0:
+		return "Thrust ×%.1f · %d s" % [power, ceili(_effect_left)]
+	return ""
+
+
+func _tick_effect(step: float) -> void:
+	if _effect_left <= 0.0:
+		return
+	_effect_left -= step
+	if _effect_left <= 0.0:
+		power = 1.0
+		boosting = false
+
+
+## Smooth random turning in ±Tuning.boost_wobble: two sines at unrelated rates never repeat soon.
+func _wobble() -> float:
+	var t := Tuning.boost_seconds - _effect_left
+	return Tuning.boost_wobble * (0.6 * sin(2.3 * t + _wobble_phase) + 0.4 * sin(5.1 * t + 2.0 * _wobble_phase))
+
 
 
 ## Godot 2D reports zero contact impulses for polygon contacts, so the hit strength is the
@@ -123,7 +180,7 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 func _process(delta: float) -> void:
 	var target := (linear_velocity * LOOKAHEAD).limit_length(LOOKAHEAD_MAX)
 	_camera.offset = _camera.offset.lerp(target, 1.0 - exp(-LOOKAHEAD_SMOOTHING * delta))
-	var burning := thrusting and fuel > 0.0
+	var burning := not freeze and (boosting or (thrusting and fuel > 0.0))
 	if burning != _engine.playing:
 		_engine.playing = burning
 
@@ -155,5 +212,5 @@ func take_damage(amount: float) -> void:
 func _draw() -> void:
 	var nose := Vector2(RADIUS * 1.4, 0)
 	draw_colored_polygon(PackedVector2Array([nose, Vector2(-RADIUS, RADIUS * 0.8), Vector2(-RADIUS * 0.5, 0), Vector2(-RADIUS, -RADIUS * 0.8)]), Color("#e8f1ff"))
-	if thrusting and fuel > 0.0:
+	if boosting or (thrusting and fuel > 0.0):
 		draw_colored_polygon(PackedVector2Array([Vector2(-RADIUS * 0.6, RADIUS * 0.4), Vector2(-RADIUS * 2.0, 0), Vector2(-RADIUS * 0.6, -RADIUS * 0.4)]), Color("#ff9a3c"))

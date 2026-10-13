@@ -9,6 +9,7 @@ var ship: Ship
 var restart_button: Button
 var _fuel: ProgressBar
 var _health: ProgressBar
+var _effect: Label
 var _result: PanelContainer
 var _result_label: Label
 
@@ -26,6 +27,11 @@ func _ready() -> void:
 	top.add_child(spacer)
 	restart_button = _button(top, "Restart", retry_requested.emit)
 	_button(top, "Menu", menu_requested.emit)
+	_effect = Label.new()
+	_effect.position = Vector2(16, 64)
+	_effect.add_theme_font_size_override("font_size", 24)
+	_effect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_effect)
 
 	_result = PanelContainer.new()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -46,6 +52,7 @@ func _process(_delta: float) -> void:
 	if ship:
 		_fuel.value = ship.fuel
 		_health.value = ship.health
+		_effect.text = ship.effect_text()
 
 
 func show_result(won: bool) -> void:
