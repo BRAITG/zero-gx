@@ -1,0 +1,96 @@
+name: Build
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the APK as a prerelease
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.7.2
+  GODOT_SILENCE_ROOT_WARNING: "1"
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write  # gh release create
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Cache Godot and Android templates
+        id: godot-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-android
+
+      - name: Install Godot and Android templates
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          mkdir -p ~/godot
+          curl -fsSL -o /tmp/godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
+          # Only the two Android template APKs (the full bundle is ~1 GB of other platforms).
+          curl -fsSL -o /tmp/templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p "$dest"
+          unzip -q -j /tmp/templates.tpz templates/android_debug.apk templates/android_release.apk templates/version.txt -d "$dest"
+          rm /tmp/godot.zip /tmp/templates.tpz
+
+      - name: Test
+        run: GODOT=~/godot/godot tests/run.sh
+
+      - name: Export debug APK
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_DEBUG_KEYSTORE_B64 }}
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$RUNNER_TEMP/debug.keystore"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$GODOT_ANDROID_KEYSTORE_DEBUG_PATH"
+          else  # Fork PRs get no secrets: a throwaway key still yields an installable APK.
+            keytool -genkeypair -keystore "$GODOT_ANDROID_KEYSTORE_DEBUG_PATH" -alias androiddebugkey \
+              -storepass android -keypass android -keyalg RSA -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          mkdir -p build
+          ~/godot/godot --headless --path . --export-debug "Android" build/zero-gx.apk
+          apksigner=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner
+          "$apksigner" verify --print-certs build/zero-gx.apk | head -3
+          unzip -l build/zero-gx.apk | grep -q 'lib/arm64-v8a/libgodot_android.so'
+          ls -lh build/zero-gx.apk
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: zero-gx-apk
+          path: build/zero-gx.apk
+          if-no-files-found: error
+
+      - name: Publish prerelease
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="prototype-r${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" build/zero-gx.apk --target "$GITHUB_SHA" --prerelease \
+            --title "Zero-GX prototype r${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
+            --notes "Debug-signed prototype build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Install: open this page on the phone, download zero-gx.apk, allow installs from the browser, open the file. Later builds install over this one."
