@@ -19,6 +19,13 @@ const COLORS := {
 	Preset.BLACK_HOLE: Color("#05030a"),
 	Preset.STAR: Color("#ffcf4a"),
 }
+const SHARDS_MIN := 12
+const SHARDS_MAX := 20
+const SHARD_SPEED_MIN := 100.0
+const SHARD_SPEED_MAX := 250.0
+const SHARD_GAP := 4.0  # px between neighbouring shards on the spawn ring
+
+var _shattering := false
 
 @export var preset: Preset = Preset.PLANET:
 	set(value):
@@ -64,8 +71,29 @@ func impact_multiplier() -> float:
 	return Impact.LETHAL if PRESETS[preset][3] else 1.0
 
 
-func take_damage(_amount: float) -> void:
-	pass
+func take_damage(amount: float) -> void:
+	if not destructible or _shattering or preset != Preset.PLANET:
+		return
+	health -= amount
+	if health <= 0.0:
+		_shattering = true
+		_shatter.call_deferred()  # Bodies cannot be added from inside a physics callback.
+
+
+func _shatter() -> void:
+	var rng := RandomNumberGenerator.new()
+	var count := rng.randi_range(SHARDS_MIN, SHARDS_MAX)
+	# Ring large enough that neighbouring shards do not overlap at spawn.
+	var ring := maxf(radius + Asteroid.RADIUS + SHARD_GAP, count * (2.0 * Asteroid.RADIUS + SHARD_GAP) / TAU)
+	var scene: PackedScene = load("res://scenes/asteroid.tscn")
+	for k in count:
+		var direction := Vector2.RIGHT.rotated(TAU * k / count)
+		var shard: Asteroid = scene.instantiate()
+		shard.position = position + direction * ring
+		shard.linear_velocity = direction * rng.randf_range(SHARD_SPEED_MIN, SHARD_SPEED_MAX)
+		get_parent().add_child(shard)
+	shattered.emit()
+	queue_free()
 
 
 func _draw() -> void:
