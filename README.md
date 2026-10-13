@@ -30,12 +30,14 @@ The suite runs headless at a fixed 60 FPS. `tests/test_levels.gd` checks the lev
 
 ## Tuning
 
-Gameplay numbers are named constants:
+The values you will most often want to change (speed cap, thrust, turn rates, pickup strength and duration, boost, impact spin, planet pull) live in `scripts/tuning.gd`. Change them live on the phone with the **Tune** button in the main menu or the level HUD; the changes last until the app closes. Fixed numbers are named constants:
 
 | File | What it tunes |
 |---|---|
-| `scenes/ship.gd` | fuel, burn rate, thrust, turn rate, hull, impact damage, speed cap, camera lookahead, engine volume |
+| `scripts/tuning.gd` | defaults and slider ranges of the live tuning values |
+| `scenes/ship.gd` | fuel, burn rate, hull, impact damage, hard speed limit, slowdown above the cap, camera lookahead, engine volume |
 | `scenes/barrier.gd` | damage multiplier per colour, bounce, collision thickness; laser colour, width, glow and pulse |
 | `scenes/gravity_body.gd` | planet / black hole / star size, pull and reach; shatter behaviour |
 | `scenes/asteroid.gd` | size, mass, damage dealt to planets |
+| `scenes/pickup.gd` | pickup size and colours |
 | `scripts/sfx.gd` | the procedurally generated sound effects |

@@ -91,7 +91,7 @@ With no player input, no asteroid hits a planet. Asteroids should reach planets 
 
 - Barriers are glowing line segments or polygon outlines, each with a `kind`: blue, orange, or deep red.
 - All barriers bounce bodies with no friction. Every collision between solid bodies bounces at 0.8: Godot adds both bodies' bounce, and each side contributes 0.4.
-- Ships and asteroids are capped at 1200 px/s, and barriers collide as 16 px thick slabs, so nothing can pass through a wall between physics steps.
+- Ships are capped at a tunable speed (800 px/s by default, scaled by thrust pickups) and never exceed 1200 px/s; asteroids are capped at 1200 px/s. Barriers collide as 16 px thick slabs, so nothing can pass through a wall between physics steps.
 - The color communicates danger. Deep red should look obviously lethal.
 
 ### Camera and win
@@ -117,8 +117,9 @@ Each scene is a `.tscn` with one `.gd` script, stored in `scenes/`.
 | `asteroid` | `RigidBody2D` | Drifting or orbiting on rails, release on hit, planet damage, destruction by lethal bodies |
 | `barrier` | `StaticBody2D`, with a polygon or segment collider and a `Line2D` | Exports `kind`, which sets the damage multiplier, color, and a bouncy, frictionless physics material |
 | `goal` | `Area2D` | Emits a win signal when the ship enters |
+| `pickup` | `Area2D` | Thrust up, thrust down or boost; applies its effect to the ship on contact. See `2026-10-13-thrust-pickups-tuning-design.md`. |
 | `level` | `Node2D` script on each level's root | Uses the level's `Ship` position as point A, connects win and lose signals, handles restart and returning to the menu |
-| `hud` | `CanvasLayer` | Fuel bar, health bar, restart and menu buttons. Android's back gesture also returns to the menu. |
+| `hud` | `CanvasLayer` | Fuel bar, health bar, active effect, restart, menu and tune buttons. Android's back gesture also returns to the menu. |
 | `main` | `Control` | Lists levels from `levels/` and loads the selected one |
 
 Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor from the scenes above.
