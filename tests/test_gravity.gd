@@ -61,3 +61,16 @@ func test_multipliers() -> void:
 	check(planet.impact_multiplier() == 1.0, "planet multiplier %f" % planet.impact_multiplier())
 	check(hole.impact_multiplier() == Impact.LETHAL, "black hole must be lethal")
 	check(star.impact_multiplier() == Impact.LETHAL, "star must be lethal")
+
+
+func test_planet_gravity_multiplier() -> void:
+	Tuning.set_value("planet_gravity", 2.0)
+	spawn(GRAVITY_BODY, Vector2.ZERO)
+	spawn(GRAVITY_BODY, Vector2(0, 5000), {"preset": GravityBody.Preset.STAR})
+	var near_planet := probe(Vector2(128, 0))
+	var near_star := probe(Vector2(0, 5000 - 1200))
+	await frames(3)
+	var expected := 2.0 * 400.0 * pow(64.0 / 128.0, 2)
+	check(near(pull(near_planet).length(), expected, 0.02), "planet pull %f, expected %f" % [pull(near_planet).length(), expected])
+	var star := 3000.0 * pow(600.0 / 1200.0, 2)
+	check(near(pull(near_star).length(), star, 0.02), "star pull %f, expected unchanged %f" % [pull(near_star).length(), star])

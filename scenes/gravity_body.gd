@@ -59,12 +59,17 @@ func _ready() -> void:
 	field.gravity_point = true
 	field.gravity_point_center = Vector2.ZERO
 	field.gravity_point_unit_distance = radius
-	field.gravity = strength
+	_apply_gravity_tuning(field)
+	Tuning.changed.connect(_apply_gravity_tuning.bind(field))
 	var field_shape := CollisionShape2D.new()
 	field_shape.shape = CircleShape2D.new()
 	field_shape.shape.radius = reach
 	field.add_child(field_shape)
 	add_child(field)
+
+
+func _apply_gravity_tuning(field: Area2D) -> void:
+	field.gravity = strength * (Tuning.planet_gravity if preset == Preset.PLANET else 1.0)
 
 
 func impact_multiplier() -> float:

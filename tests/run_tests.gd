@@ -23,6 +23,7 @@ func _run() -> void:
 				continue
 			var test = script.new()
 			test.tree = self
+			root.get_node("Tuning").reset()  # a test that changes a value must not leak it
 			test.world = Node2D.new()
 			root.add_child(test.world)
 			var state := {"done": false}

@@ -7,8 +7,6 @@ signal stranded
 
 const MAX_FUEL := 100.0
 const FUEL_BURN := 10.0  # per second of thrust
-const THRUST := 600.0  # force; mass is 1, so px/s²
-const TURN_RATE := 6.0  # rad/s
 const MAX_HEALTH := 100.0
 const STRAND_SPEED := 5.0  # px/s
 const STRAND_TIME := 2.0  # s
@@ -19,8 +17,11 @@ const LOOKAHEAD_SMOOTHING := 3.0
 const RADIUS := 16.0
 const DAMAGE_PER_SPEED := 0.05  # health per px/s of normal speed change
 const MIN_IMPACT_SPEED := 20.0  # px/s; below this a contact is resting, not a hit
-## 20 px per 60 Hz step: under half of barrier thickness + ship diameter, so no hit can tunnel.
-const MAX_SPEED := 1200.0
+## Hard limit whatever the tuning: 20 px per 60 Hz step is under half of barrier thickness +
+## ship diameter, so no hit can tunnel.
+const TUNNEL_LIMIT := 1200.0
+## px/s²; above the tuned speed cap the ship slows toward it instead of snapping down.
+const OVERSPEED_DECEL := 400.0
 const ENGINE_VOLUME_DB := -10.0
 ## Damage at which an impact plays at full volume; lighter hits are quieter.
 const LOUD_IMPACT_DAMAGE := 30.0
@@ -35,6 +36,9 @@ var _stranded_sent := false
 var _camera: Camera2D
 var _engine: AudioStreamPlayer
 var _previous_velocity := Vector2.ZERO
+## Falls toward the tuned cap at OVERSPEED_DECEL, so neither thrust nor gravity can hold the
+## ship above the cap while it slows down.
+var _allowed_speed := TUNNEL_LIMIT
 ## Where the finger rests on screen; null when no touch is held. Re-projected every step,
 ## because the camera follows the ship and a still finger sends no new events.
 var _touch_screen: Variant = null
@@ -68,13 +72,13 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	var to_aim := aim_point - state.transform.origin
 	if thrusting and to_aim.length() > 1.0:  # finger up: hold heading and coast
 		var turn := wrapf(to_aim.angle() - state.transform.get_rotation(), -PI, PI)
-		state.angular_velocity = clampf(turn / step, -TURN_RATE, TURN_RATE)
+		state.angular_velocity = clampf(turn / step, -Tuning.turn_rate, Tuning.turn_rate)
 	else:
 		state.angular_velocity = 0.0
 	if thrusting and fuel > 0.0:
-		state.apply_central_force(Vector2.RIGHT.rotated(state.transform.get_rotation()) * THRUST)
+		state.apply_central_force(Vector2.RIGHT.rotated(state.transform.get_rotation()) * Tuning.thrust)
 		fuel = maxf(fuel - FUEL_BURN * step, 0.0)
-	state.linear_velocity = state.linear_velocity.limit_length(MAX_SPEED)
+	_limit_speed(state)
 	if fuel == 0.0 and state.linear_velocity.length() < STRAND_SPEED:
 		_still_time += step
 		if _still_time >= STRAND_TIME and not _stranded_sent:
@@ -84,6 +88,13 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		_still_time = 0.0
 	_take_impacts(state)
 	queue_redraw()
+
+
+func _limit_speed(state: PhysicsDirectBodyState2D) -> void:
+	var speed := state.linear_velocity.length()
+	_allowed_speed = clampf(minf(_allowed_speed, speed) - OVERSPEED_DECEL * state.step, Tuning.max_speed, TUNNEL_LIMIT)
+	if speed > _allowed_speed:
+		state.linear_velocity *= _allowed_speed / speed
 
 
 ## Godot 2D reports zero contact impulses for polygon contacts, so the hit strength is the
