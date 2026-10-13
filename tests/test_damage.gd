@@ -79,3 +79,17 @@ func test_planet_surface_damage() -> void:
 	await frames(90)
 	var damage: float = 100.0 - ship.health
 	check(damage >= 15.0 and damage <= 55.0, "head-on planet damage %f, expected 15..55" % damage)
+
+
+func test_bounce_does_not_jerk_camera() -> void:
+	wall(Barrier.Kind.BLUE)
+	var ship = ship_at(Vector2.ZERO, Vector2(500, 0))
+	var camera: Camera2D = ship.find_children("*", "Camera2D", true, false)[0]
+	var last := camera.offset
+	var worst := 0.0
+	for i in 90:
+		await frames(1)
+		worst = maxf(worst, camera.offset.distance_to(last))
+		last = camera.offset
+	check(ship.linear_velocity.x < 0.0, "ship should have bounced")
+	check(worst < 30.0, "camera offset jumped %.0f px in one frame" % worst)
