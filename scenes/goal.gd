@@ -26,6 +26,11 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
+	var green := Color(0.4, 1.0, 0.6)
+	for k in 3:  # rings born at the core, fading as they reach the edge
+		var f := fmod(_time * 0.6 + k / 3.0, 1.0)
+		draw_arc(Vector2.ZERO, RADIUS * f, 0.0, TAU, 48, Color(green, 0.6 * (1.0 - f)), 3.0, true)
 	var pulse := 0.5 + 0.5 * sin(_time * 3.0)
-	draw_arc(Vector2.ZERO, RADIUS, 0.0, TAU, 64, Color(0.4, 1.0, 0.6, 0.5 + 0.5 * pulse), 4.0)
-	draw_circle(Vector2.ZERO, RADIUS * 0.25, Color(0.4, 1.0, 0.6, 0.35))
+	draw_arc(Vector2.ZERO, RADIUS, 0.0, TAU, 64, Color(green, 0.6 + 0.4 * pulse), 4.0, true)
+	for k in 4:
+		draw_circle(Vector2.ZERO, RADIUS * (0.32 - k * 0.07), Color(green, 0.18 + k * 0.12))

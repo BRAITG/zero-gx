@@ -39,9 +39,15 @@ The values you will most often want to change (speed cap, thrust, turn rates, pi
 | File | What it tunes |
 |---|---|
 | `scripts/tuning.gd` | defaults and slider ranges of the live tuning values |
-| `scenes/ship.gd` | fuel, burn rate, hull, impact damage, hard speed limit, slowdown above the cap, camera lookahead, engine volume |
+| `scenes/ship.gd` | fuel, burn rate, hull, impact damage, hard speed limit, slowdown above the cap, camera lookahead and shake, trail, engine volume |
 | `scenes/barrier.gd` | damage multiplier per colour, bounce, collision thickness; laser colour, width, glow and pulse |
-| `scenes/gravity_body.gd` | planet / black hole / star size, pull and reach; shatter behaviour |
+| `scenes/gravity_body.gd` | planet / black hole / star size, pull, reach and colours; shatter behaviour |
 | `scenes/asteroid.gd` | size, mass, damage dealt to planets |
 | `scenes/pickup.gd` | pickup size and colours |
-| `scripts/sfx.gd` | the procedurally generated sound effects |
+| `scripts/sfx.gd` | which sound plays for what, and the synthesized ambient drone |
+| `scripts/style.gd` | UI theme (fonts, panels, buttons) and the 2D bloom |
+| `scenes/starfield.gd` | parallax star layers and nebulae |
+
+## Assets
+
+Fonts (Orbitron, Exo 2; SIL Open Font License) and sound effects (Kenney, CC0) live in `assets/`. Sources and licenses: `assets/LICENSES.md`. Everything else is drawn in code.

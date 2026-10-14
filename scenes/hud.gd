@@ -10,6 +10,7 @@ const INTRO_FADE := 0.6  # s
 const INTRO_WIDTH := 860.0  # px; the hint wraps inside this
 const LOW_FUEL := 0.2  # fraction of a full tank below which the fuel bar blinks
 const BLINK_HZ := 2.0
+const WARNING := Color("#ff5a4a")
 
 var ship: Ship
 var restart_button: Button
@@ -17,7 +18,10 @@ var _fuel: ProgressBar
 var _health: ProgressBar
 var _effect: Label
 var _speed: Label
-var _countdown: Label
+var _countdown: VBoxContainer
+var _countdown_number: Label
+var _countdown_caption: Label
+var _countdown_second := -1
 var _result: PanelContainer
 var _result_label: Label
 var _detail: Label
@@ -27,6 +31,28 @@ var _intro: PanelContainer
 var _intro_title: Label
 var _intro_hint: Label
 var _intro_fading := false
+
+
+## The empty-tank countdown: a big number that pulses and ticks on each new second.
+func _show_countdown(left: float) -> void:
+	var shown := left >= 0.0 and ship.health > 0.0 and not _result.visible
+	_countdown.visible = shown
+	if not shown:
+		_countdown_second = -1
+		return
+	var second := ceili(left)
+	_countdown_caption.text = "OUT OF FUEL · BOOST" if ship.boosting else "OUT OF FUEL"
+	if second == _countdown_second:
+		return
+	_countdown_second = second
+	_countdown_number.text = str(second)
+	_countdown.reset_size()
+	_countdown.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 70)
+	_countdown.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_countdown.pivot_offset = _countdown.size / 2.0
+	_countdown.scale = Vector2.ONE * 1.35
+	create_tween().tween_property(_countdown, "scale", Vector2.ONE, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	Sfx.play("tick")
 
 
 func _ready() -> void:
@@ -54,14 +80,23 @@ func _ready() -> void:
 	add_child(_speed)
 	_speed.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 	_speed.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	_countdown = Label.new()
-	_countdown.add_theme_font_size_override("font_size", 44)
-	_countdown.add_theme_color_override("font_color", Color("#ff5a4a"))
-	_countdown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_countdown = VBoxContainer.new()
 	_countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_countdown.add_theme_constant_override("separation", -6)
+	_countdown.hide()
 	add_child(_countdown)
-	_countdown.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 80)
-	_countdown.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_countdown_number = Label.new()
+	_countdown_number.add_theme_font_override("font", Style.display_font)
+	_countdown_number.add_theme_font_size_override("font_size", 72)
+	_countdown_number.add_theme_color_override("font_color", WARNING)
+	_countdown_number.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_countdown.add_child(_countdown_number)
+	_countdown_caption = Label.new()
+	_countdown_caption.add_theme_font_override("font", Style.display_font)
+	_countdown_caption.add_theme_font_size_override("font_size", 20)
+	_countdown_caption.add_theme_color_override("font_color", WARNING)
+	_countdown_caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_countdown.add_child(_countdown_caption)
 	_intro = PanelContainer.new()
 	_intro.mouse_filter = Control.MOUSE_FILTER_IGNORE  # the first touch must reach the ship
 	_intro.hide()
@@ -69,7 +104,8 @@ func _ready() -> void:
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_intro.add_child(card)
 	_intro_title = Label.new()
-	_intro_title.add_theme_font_size_override("font_size", 40)
+	_intro_title.add_theme_font_override("font", Style.display_font)
+	_intro_title.add_theme_font_size_override("font_size", 34)
 	_intro_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	card.add_child(_intro_title)
 	_intro_hint = Label.new()
@@ -89,7 +125,8 @@ func _ready() -> void:
 	_result.add_child(column)
 	_result_label = Label.new()
 	_result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_result_label.add_theme_font_size_override("font_size", 40)
+	_result_label.add_theme_font_override("font", Style.display_font)
+	_result_label.add_theme_font_size_override("font_size", 36)
 	column.add_child(_result_label)
 	_detail = Label.new()
 	_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -118,8 +155,7 @@ func _process(_delta: float) -> void:
 		_speed.visible = Tuning.show_overlays
 		_speed.text = "%d px/s" % roundi(ship.linear_velocity.length())  # world frame: relative to the background
 		var left := ship.empty_seconds_left()
-		_countdown.visible = left >= 0.0 and ship.health > 0.0 and not _result.visible
-		_countdown.text = "Out of fuel  %.1f s%s" % [left, "  (boost)" if ship.boosting else ""]
+		_show_countdown(left)
 		_time.text = "%.1f s" % ship.flight_time
 		if _intro.visible and ship.flight_time > 0.0 and not _intro_fading:
 			_intro_fading = true

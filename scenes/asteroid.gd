@@ -20,6 +20,7 @@ var on_rails := false
 var _parent: Node2D
 var _previous_velocity := Vector2.ZERO
 var _outline := PackedVector2Array()
+var _craters: Array[Vector3] = []  # x, y, radius
 
 
 func _ready() -> void:
@@ -27,6 +28,8 @@ func _ready() -> void:
 	rng.seed = hash(name) if Engine.is_editor_hint() else get_instance_id()
 	for i in 8:
 		_outline.append(Vector2.RIGHT.rotated(TAU * i / 8.0) * RADIUS * rng.randf_range(0.8, 1.2))
+	for i in 2:
+		_craters.append(Vector3(rng.randf_range(-0.4, 0.4) * RADIUS, rng.randf_range(-0.4, 0.4) * RADIUS, rng.randf_range(0.15, 0.28) * RADIUS))
 	if Engine.is_editor_hint():
 		return
 	mass = MASS
@@ -102,4 +105,9 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 
 
 func _draw() -> void:
-	draw_colored_polygon(_outline, Color("#8a8178"))
+	draw_colored_polygon(_outline, Color("#6f675f"))
+	for crater in _craters:
+		draw_circle(Vector2(crater.x, crater.y), crater.z, Color("#544d47"))
+	var edge := _outline.duplicate()
+	edge.append(_outline[0])
+	draw_polyline(edge, Color("#b3a89a"), 2.0, true)

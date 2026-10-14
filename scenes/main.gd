@@ -2,19 +2,29 @@ extends Control
 ## Level list: one button per level in `Progress.levels()`, with its best points, locked until
 ## the level before it is finished.
 
+const MENU_DRIFT := Vector2(-40, -12)  # px/s
+
 var _levels: GridContainer
 var _column: VBoxContainer
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var stars := Starfield.new()
+	stars.drift = MENU_DRIFT
+	add_child(stars)
+	var ui := CanvasLayer.new()  # above the bloom: menu text stays crisp while the stars glow
+	add_child(ui)
 	_column = VBoxContainer.new()
 	_column.add_theme_constant_override("separation", 12)
-	add_child(_column)
+	ui.add_child(_column)
 	var title := Label.new()
 	title.text = "ZERO-GX"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 56)
+	title.add_theme_font_override("font", Style.display_font)
+	title.add_theme_font_size_override("font_size", 64)
+	title.add_theme_color_override("font_outline_color", Color(Style.ACCENT, 0.35))
+	title.add_theme_constant_override("outline_size", 14)
 	_column.add_child(title)
 	_levels = GridContainer.new()
 	_levels.columns = 2  # ten rows would not fit the 720 px screen

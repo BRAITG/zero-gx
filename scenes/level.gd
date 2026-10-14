@@ -24,6 +24,7 @@ func _ready() -> void:
 	assert(ship != null and goal != null, "%s needs one Ship and one Goal child" % name)
 	if level_id == "":
 		level_id = scene_file_path.get_file().get_basename()
+	add_child(Starfield.new())
 	hud = Hud.new()
 	hud.ship = ship
 	add_child(hud)

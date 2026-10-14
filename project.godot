@@ -13,6 +13,7 @@ config/quit_on_go_back=false
 Tuning="*res://scripts/tuning.gd"
 Progress="*res://scripts/progress.gd"
 Sfx="*res://scripts/sfx.gd"
+Style="*res://scripts/style.gd"
 
 [display]
 

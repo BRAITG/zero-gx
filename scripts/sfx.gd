@@ -7,6 +7,7 @@ const SOUNDS := ["zap", "impact", "explosion", "boom", "power_up", "power_down",
 const DRONE_RATE := 22050
 const DRONE_SECONDS := 4.0  # every partial and the swell complete whole cycles, so the loop is seamless
 const DRONE_VOLUME_DB := -20.0
+const DRONE_PAD := 64  # frames rendered past the loop end
 
 ## Looping engine for the ship's own player.
 var thrust: AudioStream
@@ -46,8 +47,10 @@ func play(sound: String, volume_db := 0.0, pitch := 1.0) -> void:
 func _drone() -> AudioStreamWAV:
 	var count := int(DRONE_SECONDS * DRONE_RATE)
 	var data := PackedByteArray()
-	data.resize(count * 2)
-	for i in count:
+	# The mixer reads a little past loop_end when it wraps (crashed on Android without this):
+	# render extra frames, which continue the waveform seamlessly because every partial is periodic.
+	data.resize((count + DRONE_PAD) * 2)
+	for i in count + DRONE_PAD:
 		var t := float(i) / DRONE_RATE
 		var pad := 0.45 * sin(TAU * 55.0 * t) + 0.35 * sin(TAU * 55.25 * t) + 0.25 * sin(TAU * 82.5 * t) + 0.15 * sin(TAU * 110.0 * t)
 		var swell := 0.7 + 0.3 * sin(TAU * t / DRONE_SECONDS)
