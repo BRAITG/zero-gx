@@ -25,6 +25,10 @@ var _countdown_second := -1
 var _result: PanelContainer
 var _result_label: Label
 var _detail: Label
+var _score: VBoxContainer
+var _total: Label
+var _best: Label
+var _parts := {}  # ScoreIcon.Kind -> value Label
 var _next: Button
 var _time: Label
 var _intro: PanelContainer
@@ -128,6 +132,34 @@ func _ready() -> void:
 	_result_label.add_theme_font_override("font", Style.display_font)
 	_result_label.add_theme_font_size_override("font_size", 36)
 	column.add_child(_result_label)
+	_score = VBoxContainer.new()
+	_score.add_theme_constant_override("separation", 6)
+	column.add_child(_score)
+	_total = Label.new()
+	_total.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_total.add_theme_font_override("font", Style.display_font)
+	_total.add_theme_font_size_override("font_size", 52)
+	_score.add_child(_total)
+	_best = Label.new()
+	_best.text = "New best!"
+	_best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_best.add_theme_color_override("font_color", Style.ACCENT)
+	_score.add_child(_best)
+	var parts := GridContainer.new()  # two rows of icon + value, well apart
+	parts.columns = 2
+	parts.add_theme_constant_override("h_separation", 48)
+	parts.add_theme_constant_override("v_separation", 10)
+	parts.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_score.add_child(parts)
+	for kind in [ScoreIcon.Kind.FINISH, ScoreIcon.Kind.FUEL, ScoreIcon.Kind.HULL, ScoreIcon.Kind.TIME]:
+		var cell := HBoxContainer.new()
+		cell.add_theme_constant_override("separation", 10)
+		cell.add_child(ScoreIcon.new(kind))
+		var value := Label.new()
+		value.custom_minimum_size.x = 80
+		cell.add_child(value)
+		_parts[kind] = value
+		parts.add_child(cell)
 	_detail = Label.new()
 	_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_detail.add_theme_font_size_override("font_size", 24)
@@ -182,9 +214,17 @@ func intro_text() -> String:
 ## `result` keys: won → points, fuel_points, hull_points, time_points, new_best, has_next;
 ## lost → cause.
 func show_result(won: bool, result: Dictionary) -> void:
+	_intro.hide()
 	_result_label.text = "Course clear" if won else "Lost"
+	_score.visible = won
+	_detail.visible = not won
 	if won:
-		_detail.text = "%d points%s\n1000 + fuel %d + hull %d − time %d" % [result.points, "  ·  New best!" if result.new_best else "", result.fuel_points, result.hull_points, result.time_points]
+		_total.text = str(result.points)
+		_best.visible = result.new_best
+		_parts[ScoreIcon.Kind.FINISH].text = str(Progress.BASE_POINTS)
+		_parts[ScoreIcon.Kind.FUEL].text = "+%d" % result.fuel_points
+		_parts[ScoreIcon.Kind.HULL].text = "+%d" % result.hull_points
+		_parts[ScoreIcon.Kind.TIME].text = "−%d" % result.time_points
 	else:
 		_detail.text = result.cause
 	_next.visible = won and result.has_next
@@ -193,9 +233,18 @@ func show_result(won: bool, result: Dictionary) -> void:
 	_result.show()
 
 
-## Title and detail of the end panel, for tests.
+## Everything the end panel shows, for tests.
 func result_text() -> String:
-	return _result_label.text + "\n" + _detail.text
+	var lines := [_result_label.text]
+	if _score.visible:
+		lines.append(_total.text)
+		if _best.visible:
+			lines.append(_best.text)
+		for kind in _parts:
+			lines.append(_parts[kind].text)
+	else:
+		lines.append(_detail.text)
+	return "\n".join(lines)
 
 
 func _bar(parent: Control, title: String, color: Color, maximum: float) -> ProgressBar:
