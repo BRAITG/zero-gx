@@ -10,7 +10,7 @@ enum Preset { PLANET, BLACK_HOLE, STAR }
 
 ## radius, strength (px/s² at the surface), reach, lethal
 const PRESETS := {
-	Preset.PLANET: [64.0, 400.0, 450.0, false],
+	Preset.PLANET: [64.0, 800.0, 450.0, false],
 	Preset.BLACK_HOLE: [64.0, 4000.0, 800.0, true],
 	Preset.STAR: [600.0, 3000.0, 3000.0, true],
 }

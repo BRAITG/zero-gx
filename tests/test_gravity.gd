@@ -1,6 +1,7 @@
 extends "res://tests/test_case.gd"
 
 const GRAVITY_BODY := "res://scenes/gravity_body.tscn"
+const PLANET_PULL: float = GravityBody.PRESETS[GravityBody.Preset.PLANET][1]
 
 
 func probe(pos: Vector2) -> RigidBody2D:
@@ -29,7 +30,7 @@ func test_inverse_square() -> void:
 	var close := probe(Vector2(128, 0))
 	var far := probe(Vector2(256, 0))
 	await frames(3)  # Area overlap registers on the third step.
-	var expected_close := 400.0 * pow(64.0 / 128.0, 2)
+	var expected_close := PLANET_PULL * pow(64.0 / 128.0, 2)
 	check(near(pull(close).length(), expected_close, 0.02), "pull at 128 = %s, expected %f" % [pull(close), expected_close])
 	check(pull(close).x < 0, "pull must point at the planet: %s" % pull(close))
 	check(near(pull(close).length(), 4.0 * pull(far).length(), 0.02), "not inverse-square: %s vs %s" % [pull(close), pull(far)])
@@ -49,7 +50,7 @@ func test_pulls_add() -> void:
 	var middle := probe(Vector2(0, 100))
 	await frames(3)  # Area overlap registers on the third step.
 	var d := Vector2(200, 100).length()
-	var expected_y := 2.0 * 400.0 * pow(64.0 / d, 2) * (100.0 / d)
+	var expected_y := 2.0 * PLANET_PULL * pow(64.0 / d, 2) * (100.0 / d)
 	check(abs(pull(middle).x) < 0.01 * expected_y, "x pulls must cancel: %s" % pull(middle))
 	check(near(-pull(middle).y, expected_y, 0.02), "summed pull %s, expected y %f" % [pull(middle), -expected_y])
 
@@ -70,7 +71,7 @@ func test_planet_gravity_multiplier() -> void:
 	var near_planet := probe(Vector2(128, 0))
 	var near_star := probe(Vector2(0, 5000 - 1200))
 	await frames(3)
-	var expected := 2.0 * 400.0 * pow(64.0 / 128.0, 2)
+	var expected := 2.0 * PLANET_PULL * pow(64.0 / 128.0, 2)
 	check(near(pull(near_planet).length(), expected, 0.02), "planet pull %f, expected %f" % [pull(near_planet).length(), expected])
 	var star := 3000.0 * pow(600.0 / 1200.0, 2)
 	check(near(pull(near_star).length(), star, 0.02), "star pull %f, expected unchanged %f" % [pull(near_star).length(), star])
