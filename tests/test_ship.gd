@@ -116,7 +116,10 @@ func test_shake_kicks_then_settles() -> void:
 	var camera: Camera2D = ship.find_children("*", "Camera2D", true, false)[0]
 	await frames(2)
 	ship.shake(1.0)
-	await frames(2)
-	check(camera.offset.length() > 2.0, "shake did not move the camera: %s" % camera.offset)
+	var widest := 0.0
+	for i in 5:  # the jitter is random each frame, so look at a few
+		await frames(1)
+		widest = maxf(widest, camera.offset.length())
+	check(widest > 4.0, "shake moved the camera only %f px" % widest)
 	await frames(60)
 	check(camera.offset.length() < 0.5, "camera still shaking after 1 s: %s" % camera.offset)

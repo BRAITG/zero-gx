@@ -26,9 +26,9 @@ Replace the five prototype levels with ten new ones that teach the game through 
 | 5 | Swing | Slingshot | L-shaped course with a planet at the corner, and the ship starts with 14 fuel. Coasting around the planet from about 300 px/s costs about 5; braking through the corner at that speed costs about 15. |
 | 6 | Edge | Red walls | A narrow red S-bend (260 px wide) between two wide blue sections. |
 | 7 | Power | Thrust up and down pickups | Thrust-up on the first straight before an orange climb; thrust-down at the start of the climb. |
-| 8 | Rocks | Drifting asteroids | Wide corridor crossed by eight slowly drifting asteroids. |
-| 9 | Abyss | Black hole | A black hole inside the course; an orange spike from the floor forces the route to pass about 500 px from it. |
-| 10 | Burn | Boost pickup | Finale: planet straight, orange climb through a red gate, a black hole straight, and a boost before the goal. |
+| 8 | Rocks | Drifting asteroids | Wide corridor crossed by 30 drifting asteroids (40–120 px/s, random directions). Flying straight through costs the autopilot about a third of its hull. |
+| 9 | Abyss | Black hole | A black hole inside the course; an orange spike from the floor forces the route to pass about 500 px from it. 14 drifting asteroids, some of which the black hole swallows. |
+| 10 | Burn | Boost pickup | Finale: planet straight, orange climb through a red gate, a black hole straight. Boosts near the start, at the start of the black-hole straight and before the goal; 16 asteroids on the upper climb and the black-hole straight, none near the planet. |
 
 ## Winnability
 

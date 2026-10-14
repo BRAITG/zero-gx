@@ -59,6 +59,62 @@ points = PackedVector2Array(5200, -1300, 5200, 400)
 position = Vector2(2500, -650)
 preset = 1
 
+[node name="Rock1" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3935, -869)
+linear_velocity = Vector2(35, -113)
+
+[node name="Rock2" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3324, -227)
+linear_velocity = Vector2(-64, -33)
+
+[node name="Rock3" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4154, -561)
+linear_velocity = Vector2(70, 70)
+
+[node name="Rock4" parent="." instance=ExtResource("asteroid")]
+position = Vector2(1938, -740)
+linear_velocity = Vector2(-40, 101)
+
+[node name="Rock5" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4313, -576)
+linear_velocity = Vector2(60, 3)
+
+[node name="Rock6" parent="." instance=ExtResource("asteroid")]
+position = Vector2(1568, -874)
+linear_velocity = Vector2(-109, 27)
+
+[node name="Rock7" parent="." instance=ExtResource("asteroid")]
+position = Vector2(1291, -680)
+linear_velocity = Vector2(-26, -50)
+
+[node name="Rock8" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4024, -461)
+linear_velocity = Vector2(-89, 73)
+
+[node name="Rock9" parent="." instance=ExtResource("asteroid")]
+position = Vector2(2933, -282)
+linear_velocity = Vector2(-14, 71)
+
+[node name="Rock10" parent="." instance=ExtResource("asteroid")]
+position = Vector2(1061, -708)
+linear_velocity = Vector2(24, -116)
+
+[node name="Rock11" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3716, -800)
+linear_velocity = Vector2(-35, 33)
+
+[node name="Rock12" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4637, 57)
+linear_velocity = Vector2(9, -82)
+
+[node name="Rock13" parent="." instance=ExtResource("asteroid")]
+position = Vector2(885, -1139)
+linear_velocity = Vector2(25, 44)
+
+[node name="Rock14" parent="." instance=ExtResource("asteroid")]
+position = Vector2(1148, -702)
+linear_velocity = Vector2(-3, 80)
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(1800, 100, 2500, -170, 3200, 100)

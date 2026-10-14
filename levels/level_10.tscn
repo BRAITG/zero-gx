@@ -92,6 +92,78 @@ preset = 1
 position = Vector2(6000, -2850)
 kind = 2
 
+[node name="Rock1" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4033, -2971)
+linear_velocity = Vector2(47, 12)
+
+[node name="Rock2" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3184, -2293)
+linear_velocity = Vector2(18, -87)
+
+[node name="Rock3" parent="." instance=ExtResource("asteroid")]
+position = Vector2(5406, -2762)
+linear_velocity = Vector2(-13, 76)
+
+[node name="Rock4" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3184, -2589)
+linear_velocity = Vector2(79, 51)
+
+[node name="Rock5" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3183, -1889)
+linear_velocity = Vector2(12, -54)
+
+[node name="Rock6" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4118, -3027)
+linear_velocity = Vector2(51, 79)
+
+[node name="Rock7" parent="." instance=ExtResource("asteroid")]
+position = Vector2(2964, -1732)
+linear_velocity = Vector2(-101, -28)
+
+[node name="Rock8" parent="." instance=ExtResource("asteroid")]
+position = Vector2(5361, -2881)
+linear_velocity = Vector2(17, 63)
+
+[node name="Rock9" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3727, -3274)
+linear_velocity = Vector2(-33, 114)
+
+[node name="Rock10" parent="." instance=ExtResource("asteroid")]
+position = Vector2(2756, -2314)
+linear_velocity = Vector2(-85, 24)
+
+[node name="Rock11" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4289, -2934)
+linear_velocity = Vector2(-114, -32)
+
+[node name="Rock12" parent="." instance=ExtResource("asteroid")]
+position = Vector2(5718, -3135)
+linear_velocity = Vector2(-29, 78)
+
+[node name="Rock13" parent="." instance=ExtResource("asteroid")]
+position = Vector2(2922, -1862)
+linear_velocity = Vector2(1, -47)
+
+[node name="Rock14" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3085, -2021)
+linear_velocity = Vector2(-89, 73)
+
+[node name="Rock15" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3731, -3175)
+linear_velocity = Vector2(-91, -49)
+
+[node name="Rock16" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4387, -3223)
+linear_velocity = Vector2(31, -83)
+
+[node name="Pickup2" parent="." instance=ExtResource("pickup")]
+position = Vector2(500, 0)
+kind = 2
+
+[node name="Pickup3" parent="." instance=ExtResource("pickup")]
+position = Vector2(3800, -3000)
+kind = 2
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(1600, -200, 3000, 0, 3000, -1400, 3000, -1600, 3000, -3000, 4300, -2850, 5000, -2800, 5700, -2850)
