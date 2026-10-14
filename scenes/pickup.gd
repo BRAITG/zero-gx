@@ -34,7 +34,7 @@ func _on_body_entered(body: Node) -> void:
 		Kind.THRUST_UP: body.apply_power(Tuning.power_up)
 		Kind.THRUST_DOWN: body.apply_power(Tuning.power_down)
 		Kind.BOOST: body.start_boost()
-	Sfx.play("pickup")
+	Sfx.play(["power_up", "power_down", "boost"][kind])
 	queue_free()
 
 

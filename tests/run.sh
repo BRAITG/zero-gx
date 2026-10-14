@@ -7,8 +7,9 @@ GODOT="${GODOT:-godot}"
 log=$(mktemp)
 "$GODOT" --headless --path . --fixed-fps 60 -s res://tests/run_tests.gd 2>&1 | tee "$log"
 status=${PIPESTATUS[0]}
-# test_corrupt_file_is_no_progress makes Godot log a parse error for the test progress file on purpose.
-if grep -E "SCRIPT ERROR|^ERROR:|Parse Error" "$log" | grep -qv "test_progress.cfg"; then
+# Expected noise: test_corrupt_file_is_no_progress makes Godot log a parse error for the test
+# progress file on purpose, and Godot's headless audio keeps Ogg playbacks alive past quit.
+if grep -E "SCRIPT ERROR|^ERROR:|Parse Error" "$log" | grep -v "test_progress.cfg" | grep -qv "resources still in use at exit"; then
   echo "run.sh: script errors were logged (see above)" >&2
   status=1
 fi

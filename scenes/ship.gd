@@ -25,6 +25,14 @@ const OVERSPEED_DECEL := 400.0
 const ENGINE_VOLUME_DB := -10.0
 ## Damage at which an impact plays at full volume; lighter hits are quieter.
 const LOUD_IMPACT_DAMAGE := 30.0
+## Camera shake: trauma 0..1 adds up per hit, the offset grows with its square, and it decays.
+const SHAKE_MAX := 18.0  # px at full trauma
+const SHAKE_DECAY := 1.6  # trauma per second
+const TRAIL_POINTS := 45  # rendered frames of exhaust trail, about 0.75 s
+const HULL := Color("#dfe9ff")
+const HULL_EDGE := Color("#7fb4ff")
+const FLAME := Color("#ff8a3c")
+const FLAME_CORE := Color("#fff1b8")
 
 var thrusting := false
 var aim_point := Vector2.ZERO
@@ -61,6 +69,11 @@ var _touch_screen: Variant = null
 var _effect_left := 0.0  # s of power effect or boost remaining
 var _wobble_phase := 0.0
 var _spin := 0.0  # rad/s left from the last glancing hit; decays with Tuning.spin_decay
+var _lookahead := Vector2.ZERO
+var _trauma := 0.0
+var _flash := 0.0  # 1 right after a hit, fading to 0
+var _trail: Line2D
+var _exhaust: CPUParticles2D
 
 
 func _ready() -> void:
@@ -82,6 +95,40 @@ func _ready() -> void:
 	_engine.stream = Sfx.thrust
 	_engine.volume_db = ENGINE_VOLUME_DB
 	add_child(_engine)
+	_trail = Line2D.new()
+	_trail.top_level = true  # world-space points: the trail stays where the ship has been
+	_trail.width = 4.0
+	_trail.z_index = -1
+	_trail.gradient = Gradient.new()
+	_trail.gradient.set_color(0, Color(HULL_EDGE, 0.0))
+	_trail.gradient.set_color(1, Color(HULL_EDGE, 0.45))
+	add_child(_trail)
+	_exhaust = CPUParticles2D.new()
+	_exhaust.position = Vector2(-RADIUS * 0.8, 0)
+	_exhaust.emitting = false
+	_exhaust.amount = 48
+	_exhaust.lifetime = 0.45
+	_exhaust.local_coords = false
+	_exhaust.direction = Vector2.LEFT
+	_exhaust.spread = 12.0
+	_exhaust.initial_velocity_min = 140.0
+	_exhaust.initial_velocity_max = 260.0
+	_exhaust.scale_amount_min = 2.0
+	_exhaust.scale_amount_max = 4.0
+	_exhaust.color_ramp = _ramp([Color(FLAME_CORE, 0.9), Color(FLAME, 0.7), Color(FLAME, 0.0)])
+	add_child(_exhaust)
+
+
+## Camera shake, 0..1; hits add up.
+func shake(amount: float) -> void:
+	_trauma = minf(_trauma + amount, 1.0)
+
+
+static func _ramp(colors: Array) -> Gradient:
+	var ramp := Gradient.new()
+	ramp.offsets = PackedFloat32Array(range(colors.size()).map(func(i: int) -> float: return float(i) / (colors.size() - 1)))
+	ramp.colors = PackedColorArray(colors)
+	return ramp
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
@@ -185,6 +232,7 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 	var velocity_change := state.linear_velocity - _previous_velocity
 	_previous_velocity = state.linear_velocity
 	var worst := 0.0
+	var hit_wall := false
 	var spin_kick := 0.0
 	for i in state.get_contact_count():
 		var collider := state.get_contact_collider_object(i)
@@ -199,7 +247,10 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 			return
 		var speed_change := absf(velocity_change.dot(normal))
 		if speed_change >= MIN_IMPACT_SPEED:
-			worst = maxf(worst, speed_change * DAMAGE_PER_SPEED * multiplier)
+			var damage := speed_change * DAMAGE_PER_SPEED * multiplier
+			if damage > worst:
+				worst = damage
+				hit_wall = collider is Barrier
 			var sliding := (state.linear_velocity - state.linear_velocity.project(normal)).length()
 			spin_kick = maxf(spin_kick, Tuning.spin_per_speed * sliding)
 	if spin_kick > 0.0:
@@ -207,15 +258,29 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 		var toward := signf(wrapf(state.linear_velocity.angle() - state.transform.get_rotation(), -PI, PI))
 		_spin = clampf(_spin + spin_kick * toward, -Tuning.spin_max, Tuning.spin_max)
 	if worst > 0.0:
+		var loudness := clampf(worst / LOUD_IMPACT_DAMAGE, 0.2, 1.0)
+		Sfx.play("zap" if hit_wall else "impact", linear_to_db(loudness))
 		take_damage(worst)
 
 
 func _process(delta: float) -> void:
 	var target := (linear_velocity * LOOKAHEAD).limit_length(LOOKAHEAD_MAX)
-	_camera.offset = _camera.offset.lerp(target, 1.0 - exp(-LOOKAHEAD_SMOOTHING * delta))
+	_lookahead = _lookahead.lerp(target, 1.0 - exp(-LOOKAHEAD_SMOOTHING * delta))
+	var jitter := Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * SHAKE_MAX * _trauma * _trauma
+	_camera.offset = _lookahead + jitter
+	_trauma = maxf(_trauma - SHAKE_DECAY * delta, 0.0)
+	_flash = maxf(_flash - 4.0 * delta, 0.0)
 	var burning := not freeze and firing
 	if burning != _engine.playing:
 		_engine.playing = burning
+	_engine.pitch_scale = 0.85 + 0.35 * clampf(linear_velocity.length() / Tuning.max_speed, 0.0, 1.0)
+	_exhaust.emitting = burning
+	if not freeze:
+		_trail.add_point(global_position)
+		if _trail.get_point_count() > TRAIL_POINTS:
+			_trail.remove_point(0)
+	if _flash > 0.0:
+		queue_redraw()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -232,20 +297,53 @@ func take_damage(amount: float) -> void:
 	if health <= 0.0:
 		return
 	health = maxf(health - amount, 0.0)
+	var strength := clampf(amount / LOUD_IMPACT_DAMAGE, 0.2, 1.0)
 	if health > 0.0:
-		Sfx.play("impact", linear_to_db(clampf(amount / LOUD_IMPACT_DAMAGE, 0.2, 1.0)))
+		_flash = 1.0
+		shake(0.5 * strength)
+		Input.vibrate_handheld(int(20 + 60 * strength), strength)
 		return
 	thrusting = false
 	if death_cause == "":
 		death_cause = "Hull destroyed"
 	Sfx.play("explosion")
+	Sfx.play("boom")
+	shake(1.0)
+	Input.vibrate_handheld(350, 1.0)
+	_explode()
 	destroyed.emit()
 	set_deferred("freeze", true)
 	hide()
 
 
+## A one-shot burst of sparks left behind in the level, since the ship itself hides.
+func _explode() -> void:
+	var sparks := CPUParticles2D.new()
+	sparks.global_position = global_position
+	sparks.one_shot = true
+	sparks.explosiveness = 1.0
+	sparks.amount = 70
+	sparks.lifetime = 0.9
+	sparks.spread = 180.0
+	sparks.initial_velocity_min = 80.0
+	sparks.initial_velocity_max = 380.0
+	sparks.damping_min = 60.0
+	sparks.damping_max = 120.0
+	sparks.scale_amount_min = 2.0
+	sparks.scale_amount_max = 5.0
+	sparks.color_ramp = _ramp([Color.WHITE, FLAME_CORE, FLAME, Color(FLAME, 0.0)])
+	get_parent().add_child(sparks)
+	sparks.emitting = true
+	get_tree().create_timer(sparks.lifetime + 0.5).timeout.connect(sparks.queue_free)
+
+
 func _draw() -> void:
 	var nose := Vector2(RADIUS * 1.4, 0)
-	draw_colored_polygon(PackedVector2Array([nose, Vector2(-RADIUS, RADIUS * 0.8), Vector2(-RADIUS * 0.5, 0), Vector2(-RADIUS, -RADIUS * 0.8)]), Color("#e8f1ff"))
+	var hull := PackedVector2Array([nose, Vector2(-RADIUS, RADIUS * 0.8), Vector2(-RADIUS * 0.5, 0), Vector2(-RADIUS, -RADIUS * 0.8), nose])
 	if firing:
-		draw_colored_polygon(PackedVector2Array([Vector2(-RADIUS * 0.6, RADIUS * 0.4), Vector2(-RADIUS * 2.0, 0), Vector2(-RADIUS * 0.6, -RADIUS * 0.4)]), Color("#ff9a3c"))
+		var reach := RADIUS * randf_range(1.7, 2.4)  # flicker
+		draw_colored_polygon(PackedVector2Array([Vector2(-RADIUS * 0.6, RADIUS * 0.45), Vector2(-reach, 0), Vector2(-RADIUS * 0.6, -RADIUS * 0.45)]), FLAME)
+		draw_colored_polygon(PackedVector2Array([Vector2(-RADIUS * 0.6, RADIUS * 0.22), Vector2(-reach * 0.7, 0), Vector2(-RADIUS * 0.6, -RADIUS * 0.22)]), FLAME_CORE)
+	draw_colored_polygon(hull.slice(0, 4), HULL.lerp(Color("#ff5a4a"), _flash))
+	draw_polyline(hull, HULL_EDGE, 2.0, true)
+	draw_circle(Vector2(RADIUS * 0.35, 0), RADIUS * 0.18, Color("#3aa0ff"))

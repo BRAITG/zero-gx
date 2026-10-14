@@ -109,3 +109,14 @@ func test_engine_stays_on_while_dragging() -> void:
 	ship.thrusting = true  # a new press behind the ship must wait for the turn again
 	await frames(2)
 	check(not ship.firing, "a new press must not fire before the nose catches up")
+
+
+func test_shake_kicks_then_settles() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO)
+	var camera: Camera2D = ship.find_children("*", "Camera2D", true, false)[0]
+	await frames(2)
+	ship.shake(1.0)
+	await frames(2)
+	check(camera.offset.length() > 2.0, "shake did not move the camera: %s" % camera.offset)
+	await frames(60)
+	check(camera.offset.length() < 0.5, "camera still shaking after 1 s: %s" % camera.offset)
