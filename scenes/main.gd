@@ -2,7 +2,7 @@ extends Control
 ## Level list: one button per level in `Progress.levels()`, with its best points, locked until
 ## the level before it is finished.
 
-var _levels: VBoxContainer
+var _levels: GridContainer
 var _column: VBoxContainer
 
 
@@ -16,8 +16,10 @@ func _ready() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 56)
 	_column.add_child(title)
-	_levels = VBoxContainer.new()
-	_levels.add_theme_constant_override("separation", 12)
+	_levels = GridContainer.new()
+	_levels.columns = 2  # ten rows would not fit the 720 px screen
+	_levels.add_theme_constant_override("h_separation", 12)
+	_levels.add_theme_constant_override("v_separation", 12)
 	_column.add_child(_levels)
 	var tune := _button("Tune")
 	tune.pressed.connect(func(): TuningPanel.open(self))

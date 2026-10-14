@@ -1,0 +1,69 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scenes/level.gd" id="level"]
+[ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
+[ext_resource type="PackedScene" path="res://scenes/goal.tscn" id="goal"]
+[ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
+[ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
+[ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
+[ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
+
+[node name="Level_09_Abyss" type="Node2D"]
+script = ExtResource("level")
+
+[node name="Ship" parent="." instance=ExtResource("ship")]
+position = Vector2(0, 0)
+
+[node name="Goal" parent="." instance=ExtResource("goal")]
+position = Vector2(4950, 0)
+
+[node name="Wall1" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall1" index="0"]
+points = PackedVector2Array(-250, -1300, 5200, -1300)
+
+[node name="Wall2" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall2" index="0"]
+points = PackedVector2Array(-250, 400, 2350, 400)
+
+[node name="Wall3" parent="." instance=ExtResource("barrier")]
+kind = 1
+
+[node name="Shape" parent="Wall3" index="0"]
+points = PackedVector2Array(2350, 400, 2500, 0, 2650, 400)
+
+[node name="Wall4" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall4" index="0"]
+points = PackedVector2Array(2650, 400, 5200, 400)
+
+[node name="Wall5" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall5" index="0"]
+points = PackedVector2Array(-250, -1300, -250, 400)
+
+[node name="Wall6" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall6" index="0"]
+points = PackedVector2Array(5200, -1300, 5200, 400)
+
+[node name="Body1" parent="." instance=ExtResource("body")]
+position = Vector2(2500, -650)
+preset = 1
+
+[node name="Route" type="Line2D" parent="."]
+visible = false
+points = PackedVector2Array(1800, 100, 2500, -170, 3200, 100)
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]
+[editable path="Wall4"]
+[editable path="Wall5"]
+[editable path="Wall6"]

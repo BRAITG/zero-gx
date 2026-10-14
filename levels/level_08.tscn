@@ -1,0 +1,83 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scenes/level.gd" id="level"]
+[ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
+[ext_resource type="PackedScene" path="res://scenes/goal.tscn" id="goal"]
+[ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
+[ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
+[ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
+[ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
+
+[node name="Level_08_Rocks" type="Node2D"]
+script = ExtResource("level")
+
+[node name="Ship" parent="." instance=ExtResource("ship")]
+position = Vector2(0, 0)
+
+[node name="Goal" parent="." instance=ExtResource("goal")]
+position = Vector2(4950, 0)
+
+[node name="Wall1" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall1" index="0"]
+points = PackedVector2Array(-250, 450, -250, -450)
+
+[node name="Wall2" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall2" index="0"]
+points = PackedVector2Array(5200, 450, 5200, -450)
+
+[node name="Wall3" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall3" index="0"]
+points = PackedVector2Array(-250, 450, 5200, 450)
+
+[node name="Wall4" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall4" index="0"]
+points = PackedVector2Array(-250, -450, 5200, -450)
+
+[node name="Rock1" parent="." instance=ExtResource("asteroid")]
+position = Vector2(1300, -200)
+linear_velocity = Vector2(0, 80)
+
+[node name="Rock2" parent="." instance=ExtResource("asteroid")]
+position = Vector2(1750, 200)
+linear_velocity = Vector2(0, -80)
+
+[node name="Rock3" parent="." instance=ExtResource("asteroid")]
+position = Vector2(2200, -200)
+linear_velocity = Vector2(0, 80)
+
+[node name="Rock4" parent="." instance=ExtResource("asteroid")]
+position = Vector2(2650, 200)
+linear_velocity = Vector2(0, -80)
+
+[node name="Rock5" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3100, -200)
+linear_velocity = Vector2(0, 80)
+
+[node name="Rock6" parent="." instance=ExtResource("asteroid")]
+position = Vector2(3550, 200)
+linear_velocity = Vector2(0, -80)
+
+[node name="Rock7" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4000, -200)
+linear_velocity = Vector2(0, 80)
+
+[node name="Rock8" parent="." instance=ExtResource("asteroid")]
+position = Vector2(4450, 200)
+linear_velocity = Vector2(0, -80)
+
+[node name="Route" type="Line2D" parent="."]
+visible = false
+points = PackedVector2Array(4950, 0)
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]
+[editable path="Wall4"]

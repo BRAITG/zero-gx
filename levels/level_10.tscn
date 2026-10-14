@@ -1,0 +1,106 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scenes/level.gd" id="level"]
+[ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
+[ext_resource type="PackedScene" path="res://scenes/goal.tscn" id="goal"]
+[ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
+[ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
+[ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
+[ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
+
+[node name="Level_10_Burn" type="Node2D"]
+script = ExtResource("level")
+
+[node name="Ship" parent="." instance=ExtResource("ship")]
+position = Vector2(0, 0)
+
+[node name="Goal" parent="." instance=ExtResource("goal")]
+position = Vector2(6950, -3000)
+
+[node name="Wall1" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall1" index="0"]
+points = PackedVector2Array(-250, 350, -250, -350)
+
+[node name="Wall2" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall2" index="0"]
+points = PackedVector2Array(7200, -2650, 7200, -3350)
+
+[node name="Wall3" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall3" index="0"]
+points = PackedVector2Array(-250, 350, 3350, 350)
+
+[node name="Wall4" parent="." instance=ExtResource("barrier")]
+kind = 1
+
+[node name="Shape" parent="Wall4" index="0"]
+points = PackedVector2Array(3350, 350, 3350, -2650)
+
+[node name="Wall5" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall5" index="0"]
+points = PackedVector2Array(3350, -2650, 7200, -2650)
+
+[node name="Wall6" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall6" index="0"]
+points = PackedVector2Array(-250, -350, 2650, -350)
+
+[node name="Wall7" parent="." instance=ExtResource("barrier")]
+kind = 1
+
+[node name="Shape" parent="Wall7" index="0"]
+points = PackedVector2Array(2650, -350, 2650, -3350)
+
+[node name="Wall8" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall8" index="0"]
+points = PackedVector2Array(2650, -3350, 7200, -3350)
+
+[node name="Wall9" parent="." instance=ExtResource("barrier")]
+kind = 2
+
+[node name="Shape" parent="Wall9" index="0"]
+points = PackedVector2Array(2650, -1500, 2860, -1500)
+
+[node name="Wall10" parent="." instance=ExtResource("barrier")]
+kind = 2
+
+[node name="Shape" parent="Wall10" index="0"]
+points = PackedVector2Array(3350, -1500, 3140, -1500)
+
+[node name="Body1" parent="." instance=ExtResource("body")]
+position = Vector2(1600, 200)
+preset = 0
+reach = 700.0
+
+[node name="Body2" parent="." instance=ExtResource("body")]
+position = Vector2(5000, -3250)
+preset = 1
+
+[node name="Pickup1" parent="." instance=ExtResource("pickup")]
+position = Vector2(6000, -2850)
+kind = 2
+
+[node name="Route" type="Line2D" parent="."]
+visible = false
+points = PackedVector2Array(1600, -200, 3000, 0, 3000, -1400, 3000, -1600, 3000, -3000, 4300, -2850, 5000, -2800, 5700, -2850)
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]
+[editable path="Wall4"]
+[editable path="Wall5"]
+[editable path="Wall6"]
+[editable path="Wall7"]
+[editable path="Wall8"]
+[editable path="Wall9"]
+[editable path="Wall10"]

@@ -20,6 +20,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	await process_frame  # autoloads and root are not fully in the tree during _initialize
 	var failed := 0
 	var passed := 0
 	var only := OS.get_environment("TEST_FILTER")

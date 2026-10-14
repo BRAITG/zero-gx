@@ -131,11 +131,7 @@ Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor f
 
 ## Test levels
 
-1. **Corridor:** a bending blue course with some orange stretches. It teaches thrust, fuel, and bouncing.
-2. **Slingshot:** one planet. The route that fits within the fuel budget requires a gravity assist around it.
-3. **Asteroid field:** asteroids on rails plus drifting asteroids. A destructible planet blocks a shortcut, so flinging asteroids at it is the costly option.
-4. **Black hole:** a narrow pass beside a black hole whose pull bends the line hard.
-5. **Gauntlet:** a star outside the barriers pulls the section sideways, the edges are deep red, and the course changes direction.
+The five prototype levels were replaced by ten teaching levels. See `2026-10-14-ten-levels-design.md`.
 
 ## Verification
 
