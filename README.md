@@ -28,9 +28,13 @@ The suite runs headless at a fixed 60 FPS. `tests/test_levels.gd` checks the lev
 
 `.github/workflows/build.yml` runs the tests, exports the APK, and uploads it as a workflow artifact on every pull request. On `master`, and on a manual run with `publish` checked, it also publishes a prerelease. The debug keystore is the `ANDROID_DEBUG_KEYSTORE_B64` repository secret.
 
+## Scoring and progress
+
+A won level scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Finishing a level unlocks the next one. Best points are saved in `user://progress.cfg` (`scripts/progress.gd`). The Tune panel can unlock every level for the session and reset saved progress.
+
 ## Tuning
 
-The values you will most often want to change (speed cap, thrust, turn rates, pickup strength and duration, boost, impact spin, planet pull) live in `scripts/tuning.gd`. Change them live on the phone with the **Tune** button in the main menu or the level HUD; the changes last until the app closes. Fixed numbers are named constants:
+The values you will most often want to change (speed cap, thrust, turn rates, pickup strength and duration, boost, impact spin, planet and black hole pull, points weights) live in `scripts/tuning.gd`. Change them live on the phone with the **Tune** button in the main menu or the level HUD; the changes last until the app closes. Fixed numbers are named constants:
 
 | File | What it tunes |
 |---|---|
