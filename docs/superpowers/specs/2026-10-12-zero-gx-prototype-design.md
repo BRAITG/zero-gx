@@ -90,7 +90,8 @@ With no player input, no asteroid hits a planet. Asteroids should reach planets 
 ### Barriers
 
 - Barriers are glowing line segments or polygon outlines, each with a `kind`: blue, orange, or deep red.
-- All barriers bounce bodies with no friction.
+- All barriers bounce bodies with no friction. Every collision between solid bodies bounces at 0.8: Godot adds both bodies' bounce, and each side contributes 0.4.
+- Ships are capped at a tunable speed (800 px/s by default, scaled by thrust pickups) and never exceed 1200 px/s; asteroids are capped at 1200 px/s. Barriers collide as 16 px thick slabs, so nothing can pass through a wall between physics steps.
 - The color communicates danger. Deep red should look obviously lethal.
 
 ### Camera and win
@@ -116,8 +117,9 @@ Each scene is a `.tscn` with one `.gd` script, stored in `scenes/`.
 | `asteroid` | `RigidBody2D` | Drifting or orbiting on rails, release on hit, planet damage, destruction by lethal bodies |
 | `barrier` | `StaticBody2D`, with a polygon or segment collider and a `Line2D` | Exports `kind`, which sets the damage multiplier, color, and a bouncy, frictionless physics material |
 | `goal` | `Area2D` | Emits a win signal when the ship enters |
+| `pickup` | `Area2D` | Thrust up, thrust down or boost; applies its effect to the ship on contact. See `2026-10-13-thrust-pickups-tuning-design.md`. |
 | `level` | `Node2D` script on each level's root | Uses the level's `Ship` position as point A, connects win and lose signals, handles restart and returning to the menu |
-| `hud` | `CanvasLayer` | Fuel bar, health bar, restart button |
+| `hud` | `CanvasLayer` | Fuel bar, health bar, active effect, restart, menu and tune buttons. Android's back gesture also returns to the menu. |
 | `main` | `Control` | Lists levels from `levels/` and loads the selected one |
 
 Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor from the scenes above.
@@ -146,7 +148,7 @@ Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor f
 - **Rails:** an orbiting asteroid next to a black hole stays on its circle for 60 simulated seconds. It switches to full physics when hit.
 - **Shatter:** a planet hit until its health reaches 0 spawns 12–20 asteroids and its pull disappears.
 - **Swallow:** a black hole destroys an asteroid that touches it.
-- **Level-design check:** each level runs for 60 simulated seconds with no input. Any asteroid–planet contact fails the check and names the level and the bodies involved.
+- **Level-design check:** each level runs for 200 simulated seconds with no input (longer than a slow first attempt). Any asteroid–planet contact fails the check and names the level and the bodies involved.
 
 ### Manual
 
@@ -157,7 +159,7 @@ Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor f
 
 - Ship customization. The design keeps the ship as its own scene so customization can be added later.
 - Art beyond simple shapes and glowing lines.
-- Sound and music.
+- Music. Sound effects are generated in code; there are no audio files.
 - Save data and progression.
 - Menus beyond the level list.
 - Play Store requirements.

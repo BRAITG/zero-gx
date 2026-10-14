@@ -1,0 +1,48 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scenes/level.gd" id="level"]
+[ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
+[ext_resource type="PackedScene" path="res://scenes/goal.tscn" id="goal"]
+[ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
+[ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
+[ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
+[ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
+
+[node name="Level_04" type="Node2D"]
+script = ExtResource("level")
+
+[node name="Ship" parent="." instance=ExtResource("ship")]
+position = Vector2(0, 0)
+
+[node name="Goal" parent="." instance=ExtResource("goal")]
+position = Vector2(3800, 0)
+
+[node name="Wall1" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall1" index="0"]
+points = PackedVector2Array(-300, -400, 4000, -400, 4000, 400, -300, 400, -300, -400)
+
+[node name="Wall2" parent="." instance=ExtResource("barrier")]
+kind = 1
+
+[node name="Shape" parent="Wall2" index="0"]
+points = PackedVector2Array(2000, -400, 2000, 0)
+
+[node name="Wall3" parent="." instance=ExtResource("barrier")]
+kind = 1
+
+[node name="Shape" parent="Wall3" index="0"]
+points = PackedVector2Array(2000, 300, 2000, 400)
+
+[node name="BlackHole" parent="." instance=ExtResource("body")]
+position = Vector2(2300, -100)
+preset = 1
+
+[node name="Boost" parent="." instance=ExtResource("pickup")]
+position = Vector2(1000, 150)
+kind = 2
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]

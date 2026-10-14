@@ -1,0 +1,106 @@
+[gd_scene load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scenes/level.gd" id="level"]
+[ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
+[ext_resource type="PackedScene" path="res://scenes/goal.tscn" id="goal"]
+[ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
+[ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
+[ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
+[ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
+
+[node name="Level_03" type="Node2D"]
+script = ExtResource("level")
+
+[node name="Ship" parent="." instance=ExtResource("ship")]
+position = Vector2(0, 0)
+
+[node name="Goal" parent="." instance=ExtResource("goal")]
+position = Vector2(5000, 0)
+
+[node name="Wall1" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall1" index="0"]
+points = PackedVector2Array(-300, -500, 5200, -500, 5200, 500, -300, 500, -300, -500)
+
+[node name="Wall2" parent="." instance=ExtResource("barrier")]
+kind = 1
+
+[node name="Shape" parent="Wall2" index="0"]
+points = PackedVector2Array(3000, -170, 4600, -170)
+
+[node name="Wall3" parent="." instance=ExtResource("barrier")]
+kind = 1
+
+[node name="Shape" parent="Wall3" index="0"]
+points = PackedVector2Array(3400, 500, 3400, 150)
+
+[node name="Wall4" parent="." instance=ExtResource("barrier")]
+kind = 1
+
+[node name="Shape" parent="Wall4" index="0"]
+points = PackedVector2Array(4000, -170, 4000, 200)
+
+[node name="Anchor" parent="." instance=ExtResource("body")]
+position = Vector2(1500, 0)
+
+[node name="Blocker" parent="." instance=ExtResource("body")]
+position = Vector2(3800, -335)
+destructible = true
+health = 100.0
+radius = 100.0
+strength = 600.0
+reach = 300.0
+
+[node name="Rock1" parent="." instance=ExtResource("asteroid")]
+position = Vector2(0, 0)
+orbit_parent = NodePath("../Anchor")
+orbit_radius = 150.0
+orbit_speed = 0.8
+orbit_angle = 0.0
+
+[node name="Rock2" parent="." instance=ExtResource("asteroid")]
+position = Vector2(0, 0)
+orbit_parent = NodePath("../Anchor")
+orbit_radius = 150.0
+orbit_speed = 0.8
+orbit_angle = 3.141592653589793
+
+[node name="Rock3" parent="." instance=ExtResource("asteroid")]
+position = Vector2(0, 0)
+orbit_parent = NodePath("../Anchor")
+orbit_radius = 260.0
+orbit_speed = -0.5
+orbit_angle = 1.5707963267948966
+
+[node name="Rock4" parent="." instance=ExtResource("asteroid")]
+position = Vector2(0, 0)
+orbit_parent = NodePath("../Anchor")
+orbit_radius = 260.0
+orbit_speed = -0.5
+orbit_angle = -1.5707963267948966
+
+[node name="Rock5" parent="." instance=ExtResource("asteroid")]
+position = Vector2(2300, -300)
+linear_velocity = Vector2(0, 15)
+
+[node name="Rock6" parent="." instance=ExtResource("asteroid")]
+position = Vector2(2300, 0)
+linear_velocity = Vector2(0, 15)
+
+[node name="Rock7" parent="." instance=ExtResource("asteroid")]
+position = Vector2(2300, 300)
+linear_velocity = Vector2(0, 15)
+
+[node name="ThrustDown" parent="." instance=ExtResource("pickup")]
+position = Vector2(1500, -420)
+kind = 1
+
+[node name="ThrustUp" parent="." instance=ExtResource("pickup")]
+position = Vector2(3200, 200)
+kind = 0
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]
+[editable path="Wall4"]
