@@ -28,7 +28,7 @@ All numbers are starting values to tune during playtests. They live as named con
 
 - **Controls:** touch and hold anywhere. The ship turns toward the touch point and thrusts while the finger is down. On release it stops thrusting and coasts.
 - **Fuel:** 100 units, burned at 10 units per second of thrust.
-- **Coasting on empty:** a ship with no fuel keeps moving. With 0 fuel, the level is lost once the ship's speed stays below 5 px/s for 2 seconds.
+- **Coasting on empty:** a ship with no fuel keeps moving, but a 5-second countdown starts and shows on screen. When it reaches 0, the level is lost. A boost pauses the countdown.
 - **Restart:** the HUD has a restart button. It covers cases such as a ship stuck orbiting forever.
 - **Health:** 100. At 0 the ship explodes and the level is lost.
 
@@ -143,7 +143,7 @@ Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor f
 
 - Run with `godot --headless -s tests/run_tests.gd`. The runner is plain GDScript that extends `SceneTree` and uses asserts. It needs no plugins and exits with a nonzero status on failure.
 - **Damage:** a head-on hit deals more damage than a graze at the same speed. Color multipliers apply. Deep red, black holes, and stars kill instantly.
-- **Fuel:** thrust burns fuel at the configured rate. An empty ship keeps coasting and loses only after staying below the stillness speed for 2 seconds.
+- **Fuel:** thrust burns fuel at the configured rate. An empty ship keeps coasting and loses 5 seconds after the tank empties; a boost pauses that countdown.
 - **Gravity:** pull follows the inverse-square law and is zero beyond the configured range. Overlapping bodies' pulls add together.
 - **Rails:** an orbiting asteroid next to a black hole stays on its circle for 60 simulated seconds. It switches to full physics when hit.
 - **Shatter:** a planet hit until its health reaches 0 spawns 12–20 asteroids and its pull disappears.

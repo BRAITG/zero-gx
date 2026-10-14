@@ -46,7 +46,7 @@ All values below are tuning defaults. Each is a slider in the tuning panel.
 ### Boost
 
 - Lasts `boost_seconds` (default 1.5 s). It starts the moment the ship touches the pickup and replaces any active effect.
-- The engine fires at full power (`thrust × 1.0`) whether or not the finger is down, and burns no fuel. It works with an empty tank.
+- The engine fires at full power (`thrust × 1.0`) whether or not the finger is down, and burns no fuel. It works with an empty tank, and it pauses the empty-tank countdown while it burns.
 - With the finger down, the ship steers toward the touch point at `boost_turn_rate` (default 3 rad/s). With the finger up, it holds its heading.
 - A smooth random wobble of up to `boost_wobble` (default 1.5 rad/s) is added to the angular velocity during the whole burn.
 

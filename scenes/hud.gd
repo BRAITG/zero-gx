@@ -11,6 +11,7 @@ var _fuel: ProgressBar
 var _health: ProgressBar
 var _effect: Label
 var _speed: Label
+var _countdown: Label
 var _result: PanelContainer
 var _result_label: Label
 
@@ -40,6 +41,14 @@ func _ready() -> void:
 	add_child(_speed)
 	_speed.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 16)
 	_speed.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_countdown = Label.new()
+	_countdown.add_theme_font_size_override("font_size", 44)
+	_countdown.add_theme_color_override("font_color", Color("#ff5a4a"))
+	_countdown.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_countdown.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_countdown)
+	_countdown.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 80)
+	_countdown.grow_horizontal = Control.GROW_DIRECTION_BOTH
 
 	_result = PanelContainer.new()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -63,6 +72,9 @@ func _process(_delta: float) -> void:
 		_effect.text = ship.effect_text()
 		_speed.visible = Tuning.show_overlays
 		_speed.text = "%d px/s" % roundi(ship.linear_velocity.length())  # world frame: relative to the background
+		var left := ship.empty_seconds_left()
+		_countdown.visible = left >= 0.0 and ship.health > 0.0 and not _result.visible
+		_countdown.text = "Out of fuel  %.1f s%s" % [left, "  (boost)" if ship.boosting else ""]
 
 
 func show_result(won: bool) -> void:

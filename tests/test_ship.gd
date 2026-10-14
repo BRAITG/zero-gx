@@ -22,20 +22,33 @@ func test_no_thrust_without_fuel() -> void:
 	check(ship.linear_velocity.length() < 0.01, "moved without fuel: %s" % ship.linear_velocity)
 
 
-func test_coasting_on_empty_is_not_stranded() -> void:
+func test_empty_tank_times_out() -> void:
+	# Moving or not, an empty ship has Ship.EMPTY_TIMEOUT (5 s) left.
 	var ship = spawn(SHIP, Vector2.ZERO, {"fuel": 0.0, "linear_velocity": Vector2(100, 0)})
 	var stranded := counter(ship.stranded)
-	await frames(180)
-	check(stranded.count == 0, "a coasting ship is not stranded")
+	await frames(60)
+	check(absf(ship.empty_seconds_left() - 4.0) < 0.05, "%f s left after 1 s, expected 4" % ship.empty_seconds_left())
+	await frames(230)
+	check(stranded.count == 0, "timed out before 5 s")
+	await frames(20)
+	check(stranded.count == 1, "stranded emitted %d times by 5.2 s, expected 1" % stranded.count)
 
 
-func test_stranded_when_still_on_empty() -> void:
+func test_no_countdown_with_fuel() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO)
+	var stranded := counter(ship.stranded)
+	await frames(400)
+	check(stranded.count == 0 and ship.empty_seconds_left() < 0.0, "countdown ran with fuel in the tank")
+
+
+func test_boost_pauses_empty_countdown() -> void:
 	var ship = spawn(SHIP, Vector2.ZERO, {"fuel": 0.0})
 	var stranded := counter(ship.stranded)
-	await frames(110)
-	check(stranded.count == 0, "stranded too early (before 2 s)")
+	ship.start_boost()  # 1.5 s on which the countdown must not run
+	await frames(380)
+	check(stranded.count == 0, "timed out at 6.3 s despite a 1.5 s boost")
 	await frames(20)
-	check(stranded.count == 1, "stranded emitted %d times by 2.2 s, expected 1" % stranded.count)
+	check(stranded.count == 1, "not stranded by 6.7 s")
 
 
 func test_turns_toward_aim() -> void:

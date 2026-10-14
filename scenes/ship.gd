@@ -8,8 +8,8 @@ signal stranded
 const MAX_FUEL := 100.0
 const FUEL_BURN := 10.0  # per second of thrust
 const MAX_HEALTH := 100.0
-const STRAND_SPEED := 5.0  # px/s
-const STRAND_TIME := 2.0  # s
+## s an empty ship has left to reach the goal; a boost pauses the countdown.
+const EMPTY_TIMEOUT := 5.0
 const LOOKAHEAD := 0.3  # s of velocity the camera leads by
 const LOOKAHEAD_MAX := 250.0  # px
 ## 1/s; eases the lookahead so a bounce's velocity flip doesn't jump the view.
@@ -35,7 +35,7 @@ var power := 1.0
 ## A boost fires the engine at full power, free of fuel, with a wobbling nose.
 var boosting := false
 
-var _still_time := 0.0
+var _empty_time := 0.0
 var _stranded_sent := false
 var _camera: Camera2D
 var _engine: AudioStreamPlayer
@@ -94,15 +94,18 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		fuel = maxf(fuel - FUEL_BURN * step, 0.0)
 	_tick_effect(step)
 	_limit_speed(state)
-	if fuel == 0.0 and state.linear_velocity.length() < STRAND_SPEED:
-		_still_time += step
-		if _still_time >= STRAND_TIME and not _stranded_sent:
+	if fuel == 0.0 and not boosting:
+		_empty_time += step
+		if _empty_time >= EMPTY_TIMEOUT and not _stranded_sent:
 			_stranded_sent = true
 			stranded.emit()
-	else:
-		_still_time = 0.0
 	_take_impacts(state)
 	queue_redraw()
+
+
+## Seconds before an empty ship loses the level; negative while there is fuel.
+func empty_seconds_left() -> float:
+	return -1.0 if fuel > 0.0 else maxf(EMPTY_TIMEOUT - _empty_time, 0.0)
 
 
 func _limit_speed(state: PhysicsDirectBodyState2D) -> void:
