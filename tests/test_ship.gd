@@ -84,3 +84,11 @@ func test_held_finger_keeps_steering_as_the_camera_follows() -> void:
 	await frames(150)
 	check(ship.position.x > 400, "ship should keep flying right, at %s" % ship.position)
 	check(abs(wrapf(ship.rotation, -PI, PI)) < 0.3, "ship turned to %f rad instead of following the held finger" % ship.rotation)
+
+
+func test_engine_waits_until_aligned() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO, {"thrusting": true, "aim_point": Vector2(-1000, 0)})
+	await frames(6)  # a 180° turn at 15 rad/s takes about 13 frames
+	check(ship.fuel == Ship.MAX_FUEL and ship.linear_velocity.length() < 0.01, "engine fired while still turning (fuel %f, v %s)" % [ship.fuel, ship.linear_velocity])
+	await frames(30)
+	check(ship.linear_velocity.x < -50.0 and ship.fuel < Ship.MAX_FUEL, "no thrust after aligning: v %s" % ship.linear_velocity)

@@ -53,6 +53,7 @@ All values below are tuning defaults. Each is a slider in the tuning panel.
 ### Turning
 
 - Outside a boost, the ship turns toward the touch point at up to `turn_rate` (default 15 rad/s), only while the finger is down.
+- Outside a boost, the engine fires (and burns fuel) only once the nose points within `align_degrees` (default 10°) of the touch point. Until then the ship only turns.
 - With the finger up and no boost, the ship holds its heading. The only exception is impact spin.
 
 ### Impact spin
@@ -87,6 +88,7 @@ All values below are tuning defaults. Each is a slider in the tuning panel.
 | `max_speed` (px/s) | 800 | 400–1200 | 50 |
 | `thrust` (px/s²) | 600 | 300–1200 | 50 |
 | `turn_rate` (rad/s) | 15 | 1–20 | 0.5 |
+| `align_degrees` (°) | 10 | 1–90 | 1 |
 | `boost_turn_rate` (rad/s) | 3 | 0.5–10 | 0.5 |
 | `boost_seconds` | 1.5 | 0.5–4 | 0.25 |
 | `boost_wobble` (rad/s) | 1.5 | 0–4 | 0.25 |

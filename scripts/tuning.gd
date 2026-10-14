@@ -8,6 +8,7 @@ const DEFAULTS := {
 	"max_speed": 800.0,  # px/s; thrust power scales it
 	"thrust": 600.0,  # px/s² (force on a mass-1 ship)
 	"turn_rate": 15.0,  # rad/s, finger down
+	"align_degrees": 10.0,  # the engine fires only once the nose is this close to the finger
 	"boost_turn_rate": 3.0,  # rad/s, finger down during a boost
 	"boost_seconds": 1.5,
 	"boost_wobble": 1.5,  # rad/s of random turning during a boost
@@ -29,6 +30,7 @@ const RANGES := {
 	"max_speed": [400.0, 1200.0, 50.0],
 	"thrust": [300.0, 1200.0, 50.0],
 	"turn_rate": [1.0, 20.0, 0.5],
+	"align_degrees": [1.0, 90.0, 1.0],
 	"boost_turn_rate": [0.5, 10.0, 0.5],
 	"boost_seconds": [0.5, 4.0, 0.25],
 	"boost_wobble": [0.0, 4.0, 0.25],
@@ -48,6 +50,7 @@ const RANGES := {
 var max_speed: float
 var thrust: float
 var turn_rate: float
+var align_degrees: float
 var boost_turn_rate: float
 var boost_seconds: float
 var boost_wobble: float

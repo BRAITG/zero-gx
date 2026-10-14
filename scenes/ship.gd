@@ -35,6 +35,9 @@ var health := MAX_HEALTH
 var power := 1.0
 ## A boost fires the engine at full power, free of fuel, with a wobbling nose.
 var boosting := false
+## True while the engine actually fires: a boost, or the finger is down, there is fuel, and the
+## nose points within Tuning.align_degrees of the finger.
+var firing := false
 
 var _empty_time := 0.0
 var _stranded_sent := false
@@ -83,22 +86,25 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	if _touch_screen != null:
 		aim_point = get_canvas_transform().affine_inverse() * (_touch_screen as Vector2)
 	var to_aim := aim_point - state.transform.origin
+	var aligned := true
 	if thrusting and to_aim.length() > 1.0:  # finger up: hold heading and coast
 		var turn := wrapf(to_aim.angle() - state.transform.get_rotation(), -PI, PI)
 		var rate := Tuning.boost_turn_rate if boosting else Tuning.turn_rate
 		state.angular_velocity = clampf(turn / step, -rate, rate)
+		aligned = absf(turn) <= deg_to_rad(Tuning.align_degrees)
 		_spin = 0.0
 	else:
 		state.angular_velocity = _spin  # zero unless a recent hit set the ship spinning
 		_spin *= exp(-step / Tuning.spin_decay)
 	var forward := Vector2.RIGHT.rotated(state.transform.get_rotation())
+	firing = boosting or (thrusting and aligned and fuel > 0.0)
 	if boosting:
 		state.angular_velocity += _wobble()
 		state.apply_central_force(forward * Tuning.thrust)
-	elif thrusting and fuel > 0.0:
+	elif firing:
 		state.apply_central_force(forward * Tuning.thrust * power)
 		fuel = maxf(fuel - FUEL_BURN * step, 0.0)
-	_clock_running = _clock_running or boosting or (thrusting and fuel > 0.0)
+	_clock_running = _clock_running or firing
 	if _clock_running:
 		flight_time += step
 	_tick_effect(step)
@@ -203,7 +209,7 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 func _process(delta: float) -> void:
 	var target := (linear_velocity * LOOKAHEAD).limit_length(LOOKAHEAD_MAX)
 	_camera.offset = _camera.offset.lerp(target, 1.0 - exp(-LOOKAHEAD_SMOOTHING * delta))
-	var burning := not freeze and (boosting or (thrusting and fuel > 0.0))
+	var burning := not freeze and firing
 	if burning != _engine.playing:
 		_engine.playing = burning
 
@@ -237,5 +243,5 @@ func take_damage(amount: float) -> void:
 func _draw() -> void:
 	var nose := Vector2(RADIUS * 1.4, 0)
 	draw_colored_polygon(PackedVector2Array([nose, Vector2(-RADIUS, RADIUS * 0.8), Vector2(-RADIUS * 0.5, 0), Vector2(-RADIUS, -RADIUS * 0.8)]), Color("#e8f1ff"))
-	if boosting or (thrusting and fuel > 0.0):
+	if firing:
 		draw_colored_polygon(PackedVector2Array([Vector2(-RADIUS * 0.6, RADIUS * 0.4), Vector2(-RADIUS * 2.0, 0), Vector2(-RADIUS * 0.6, -RADIUS * 0.4)]), Color("#ff9a3c"))
