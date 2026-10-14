@@ -6,6 +6,11 @@ signal retry_requested
 signal menu_requested
 signal next_requested
 
+const INTRO_FADE := 0.6  # s
+const INTRO_WIDTH := 860.0  # px; the hint wraps inside this
+const LOW_FUEL := 0.2  # fraction of a full tank below which the fuel bar blinks
+const BLINK_HZ := 2.0
+
 var ship: Ship
 var restart_button: Button
 var _fuel: ProgressBar
@@ -18,6 +23,10 @@ var _result_label: Label
 var _detail: Label
 var _next: Button
 var _time: Label
+var _intro: PanelContainer
+var _intro_title: Label
+var _intro_hint: Label
+var _intro_fading := false
 
 
 func _ready() -> void:
@@ -53,6 +62,23 @@ func _ready() -> void:
 	add_child(_countdown)
 	_countdown.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 80)
 	_countdown.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_intro = PanelContainer.new()
+	_intro.mouse_filter = Control.MOUSE_FILTER_IGNORE  # the first touch must reach the ship
+	_intro.hide()
+	var card := VBoxContainer.new()
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_intro.add_child(card)
+	_intro_title = Label.new()
+	_intro_title.add_theme_font_size_override("font_size", 40)
+	_intro_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	card.add_child(_intro_title)
+	_intro_hint = Label.new()
+	_intro_hint.add_theme_font_size_override("font_size", 26)
+	_intro_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_intro_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_intro_hint.custom_minimum_size.x = INTRO_WIDTH
+	card.add_child(_intro_hint)
+	add_child(_intro)
 
 	_result = PanelContainer.new()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
@@ -84,6 +110,9 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if ship:
 		_fuel.value = ship.fuel
+		var low := ship.fuel < LOW_FUEL * Ship.MAX_FUEL
+		var lit := fmod(Time.get_ticks_msec() * 0.001 * BLINK_HZ, 1.0) < 0.5
+		_fuel.modulate.a = 0.25 if low and not lit else 1.0
 		_health.value = ship.health
 		_effect.text = ship.effect_text()
 		_speed.visible = Tuning.show_overlays
@@ -92,6 +121,26 @@ func _process(_delta: float) -> void:
 		_countdown.visible = left >= 0.0 and ship.health > 0.0 and not _result.visible
 		_countdown.text = "Out of fuel  %.1f s%s" % [left, "  (boost)" if ship.boosting else ""]
 		_time.text = "%.1f s" % ship.flight_time
+		if _intro.visible and ship.flight_time > 0.0 and not _intro_fading:
+			_intro_fading = true
+			var fade := create_tween()
+			fade.tween_property(_intro, "modulate:a", 0.0, INTRO_FADE)
+			fade.tween_callback(_intro.hide)
+
+
+func show_intro(title: String, hint: String) -> void:
+	_intro_title.text = title
+	_intro_hint.text = hint
+	_intro_hint.visible = hint != ""
+	_intro.show()
+	_intro.reset_size()
+	_intro.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 110)
+	_intro.grow_horizontal = Control.GROW_DIRECTION_BOTH
+
+
+## The intro card's text while it is shown, for tests.
+func intro_text() -> String:
+	return "%s\n%s" % [_intro_title.text, _intro_hint.text] if _intro.visible else ""
 
 
 ## `result` keys: won → points, fuel_points, hull_points, time_points, new_best, has_next;

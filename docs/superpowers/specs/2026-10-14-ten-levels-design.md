@@ -11,7 +11,8 @@ Replace the five prototype levels with ten new ones that teach the game through 
 ## Rules
 
 - Each level introduces at most one new mechanic. It may reuse any mechanic introduced earlier.
-- The first levels teach by layout alone: the course makes the right action obvious and the wrong one costly. There is no tutorial text.
+- Every level opens with a title card ("Level 2 · Drift") that fades out at the first thrust.
+- Levels 1–5 add a one-line hint to the card, because people do not understand frictionless motion, inertia and gravity without being told. From level 6 on there is no hint: the layout teaches the new mechanic.
 - Asteroids on fixed orbits, destructible planets, and stars are deferred to world 2. The engine keeps them.
 
 ## Curriculum
@@ -19,7 +20,7 @@ Replace the five prototype levels with ten new ones that teach the game through 
 | # | Name | New mechanic | Layout |
 |---|---|---|---|
 | 1 | Launch | Thrust and steering | Wide blue corridor with one gentle bend. Blue walls only bounce. |
-| 2 | Drift | Inertia and fuel | 13,500 px course. Holding thrust all the way runs the tank dry about 2,000 px short of the goal; coasting at speed wins. |
+| 2 | Drift | Inertia and fuel | 13,500 px course, and the ship starts with 20 fuel. Reaching full speed and making the bend takes about 16, so the player must let go and coast. |
 | 3 | Brake | Orange walls | Orange zigzag with three 90° corners. Fast corner hits hurt, so players learn to turn around and brake. |
 | 4 | Pull | Planet gravity | Wide straight with a planet in the lower half. Flying straight drags the ship into it; aiming high wins. |
 | 5 | Swing | Slingshot | L-shaped course with a planet at the corner. Swinging around it turns the ship for free. |

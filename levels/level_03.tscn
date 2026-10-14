@@ -10,6 +10,8 @@
 
 [node name="Level_03_Brake" type="Node2D"]
 script = ExtResource("level")
+title = "Brake"
+hint = "Nothing slows you down. To brake, turn around and thrust the other way. Orange walls hurt."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)

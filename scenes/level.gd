@@ -9,6 +9,9 @@ const MENU := "res://scenes/main.tscn"
 var ship: Ship
 var goal: Goal
 var hud: Hud
+## Shown on the intro card until the first thrust: what this level teaches, in a few words.
+@export var title := ""
+@export var hint := ""
 ## Progress key; defaults to the scene file's stem. Empty (a level built in code) saves nothing.
 var level_id := ""
 var _done := false
@@ -24,6 +27,9 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.ship = ship
 	add_child(hud)
+	if title != "":
+		var number := level_id.get_slice("_", 1).to_int()
+		hud.show_intro("Level %d · %s" % [number, title] if number > 0 else title, hint)
 	hud.retry_requested.connect(func(): get_tree().reload_current_scene())
 	hud.menu_requested.connect(_to_menu)
 	hud.next_requested.connect(func(): get_tree().change_scene_to_file("res://levels/%s.tscn" % Progress.next_level(level_id)))

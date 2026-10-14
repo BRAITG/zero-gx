@@ -10,6 +10,8 @@
 
 [node name="Level_05_Swing" type="Node2D"]
 script = ExtResource("level")
+title = "Swing"
+hint = "Let the planet's pull swing you around the corner."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)

@@ -10,6 +10,7 @@
 
 [node name="Level_10_Burn" type="Node2D"]
 script = ExtResource("level")
+title = "Burn"
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)

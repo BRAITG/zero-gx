@@ -126,3 +126,21 @@ func test_menu_locks_levels() -> void:
 	buttons = level_buttons(main)
 	check(not buttons["Level 02"].disabled, "winning level 1 must open level 2 on the menu")
 	check(buttons["Level 01"].text.contains("1780"), "best points missing: %s" % buttons["Level 01"].text)
+
+
+func test_intro_card_until_first_thrust() -> void:
+	var root := Node2D.new()
+	root.set_script(load("res://scenes/level.gd"))
+	root.title = "Drift"
+	root.hint = "Let go to coast."
+	root.add_child(load(SHIP).instantiate())
+	var goal: Node2D = load(GOAL).instantiate()
+	goal.position = Vector2(5000, 0)
+	root.add_child(goal)
+	world.add_child(root)
+	var lvl := root as Level
+	await frames(30)
+	check(lvl.hud.intro_text().contains("Drift") and lvl.hud.intro_text().contains("Let go to coast."), "intro card: '%s'" % lvl.hud.intro_text())
+	lvl.ship.thrusting = true
+	await frames(90)
+	check(lvl.hud.intro_text() == "", "intro card still shown after the first thrust (clock %f)" % lvl.ship.flight_time)

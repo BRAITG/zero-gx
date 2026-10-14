@@ -28,7 +28,8 @@ const LOUD_IMPACT_DAMAGE := 30.0
 
 var thrusting := false
 var aim_point := Vector2.ZERO
-var fuel := MAX_FUEL
+## Starting fuel; a level can give less than a full tank.
+@export var fuel := MAX_FUEL
 var health := MAX_HEALTH
 ## Thrust multiplier from a thrust pickup; also scales the speed cap. 1.0 without an effect.
 var power := 1.0

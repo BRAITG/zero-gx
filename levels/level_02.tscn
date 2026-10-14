@@ -10,9 +10,12 @@
 
 [node name="Level_02_Drift" type="Node2D"]
 script = ExtResource("level")
+title = "Drift"
+hint = "Space has no friction. Once moving, you keep moving. Let go to coast: this tank is nearly empty."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)
+fuel = 20.0
 
 [node name="Goal" parent="." instance=ExtResource("goal")]
 position = Vector2(13254, -1158)
