@@ -1,9 +1,10 @@
 class_name Hud
 extends CanvasLayer
-## Fuel and health bars, always-visible Restart and Menu buttons, and the end-of-level panel.
+## Fuel and health bars, flight time, Restart/Menu/Tune buttons, and the end-of-level panel.
 
 signal retry_requested
 signal menu_requested
+signal next_requested
 
 var ship: Ship
 var restart_button: Button
@@ -14,6 +15,9 @@ var _speed: Label
 var _countdown: Label
 var _result: PanelContainer
 var _result_label: Label
+var _detail: Label
+var _next: Button
+var _time: Label
 
 
 func _ready() -> void:
@@ -61,8 +65,20 @@ func _ready() -> void:
 	_result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_result_label.add_theme_font_size_override("font_size", 40)
 	column.add_child(_result_label)
+	_detail = Label.new()
+	_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_detail.add_theme_font_size_override("font_size", 24)
+	column.add_child(_detail)
+	_next = _button(column, "Next", next_requested.emit)
 	_button(column, "Retry", retry_requested.emit)
 	_button(column, "Menu", menu_requested.emit)
+	_time = Label.new()
+	_time.add_theme_font_size_override("font_size", 28)
+	_time.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_time)
+	_time.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 16)
+	_time.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_time.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 
 func _process(_delta: float) -> void:
@@ -75,13 +91,26 @@ func _process(_delta: float) -> void:
 		var left := ship.empty_seconds_left()
 		_countdown.visible = left >= 0.0 and ship.health > 0.0 and not _result.visible
 		_countdown.text = "Out of fuel  %.1f s%s" % [left, "  (boost)" if ship.boosting else ""]
+		_time.text = "%.1f s" % ship.flight_time
 
 
-func show_result(won: bool) -> void:
+## `result` keys: won → points, fuel_points, hull_points, time_points, new_best, has_next;
+## lost → cause.
+func show_result(won: bool, result: Dictionary) -> void:
 	_result_label.text = "Course clear" if won else "Lost"
+	if won:
+		_detail.text = "%d points%s\n1000 + fuel %d + hull %d − time %d" % [result.points, "  ·  New best!" if result.new_best else "", result.fuel_points, result.hull_points, result.time_points]
+	else:
+		_detail.text = result.cause
+	_next.visible = won and result.has_next
 	_result.reset_size()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_result.show()
+
+
+## Title and detail of the end panel, for tests.
+func result_text() -> String:
+	return _result_label.text + "\n" + _detail.text
 
 
 func _bar(parent: Control, title: String, color: Color, maximum: float) -> ProgressBar:

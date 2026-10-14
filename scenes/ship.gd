@@ -37,6 +37,11 @@ var boosting := false
 
 var _empty_time := 0.0
 var _stranded_sent := false
+## Seconds since the first thrust or boost; the level's score clock.
+var flight_time := 0.0
+## Why the ship was destroyed, for the loss panel.
+var death_cause := ""
+var _clock_running := false
 var _camera: Camera2D
 var _engine: AudioStreamPlayer
 var _previous_velocity := Vector2.ZERO
@@ -92,6 +97,9 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	elif thrusting and fuel > 0.0:
 		state.apply_central_force(forward * Tuning.thrust * power)
 		fuel = maxf(fuel - FUEL_BURN * step, 0.0)
+	_clock_running = _clock_running or boosting or (thrusting and fuel > 0.0)
+	if _clock_running:
+		flight_time += step
 	_tick_effect(step)
 	_limit_speed(state)
 	if fuel == 0.0 and not boosting:
@@ -175,6 +183,7 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 			collider.release.call_deferred(-velocity_change.project(normal) * mass)
 		var multiplier: float = collider.impact_multiplier() if collider and collider.has_method("impact_multiplier") else 0.0
 		if multiplier == Impact.LETHAL:
+			death_cause = "Lethal surface"
 			take_damage(health)
 			return
 		var speed_change := absf(velocity_change.dot(normal))
@@ -216,6 +225,8 @@ func take_damage(amount: float) -> void:
 		Sfx.play("impact", linear_to_db(clampf(amount / LOUD_IMPACT_DAMAGE, 0.2, 1.0)))
 		return
 	thrusting = false
+	if death_cause == "":
+		death_cause = "Hull destroyed"
 	Sfx.play("explosion")
 	destroyed.emit()
 	set_deferred("freeze", true)
