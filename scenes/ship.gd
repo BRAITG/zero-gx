@@ -35,9 +35,12 @@ var health := MAX_HEALTH
 var power := 1.0
 ## A boost fires the engine at full power, free of fuel, with a wobbling nose.
 var boosting := false
-## True while the engine actually fires: a boost, or the finger is down, there is fuel, and the
-## nose points within Tuning.align_degrees of the finger.
+## True while the engine actually fires: a boost, or the finger is down with fuel left and the
+## nose has pointed within Tuning.align_degrees of the finger at some moment of this press.
 var firing := false
+## Set once the nose first meets the finger during a press; cleared when the finger lifts. A drag
+## keeps the engine on while the nose catches up; only a fresh press waits for alignment.
+var _press_aligned := false
 
 var _empty_time := 0.0
 var _stranded_sent := false
@@ -97,7 +100,8 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		state.angular_velocity = _spin  # zero unless a recent hit set the ship spinning
 		_spin *= exp(-step / Tuning.spin_decay)
 	var forward := Vector2.RIGHT.rotated(state.transform.get_rotation())
-	firing = boosting or (thrusting and aligned and fuel > 0.0)
+	_press_aligned = thrusting and (_press_aligned or aligned)
+	firing = boosting or (thrusting and _press_aligned and fuel > 0.0)
 	if boosting:
 		state.angular_velocity += _wobble()
 		state.apply_central_force(forward * Tuning.thrust)

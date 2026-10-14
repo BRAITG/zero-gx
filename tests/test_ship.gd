@@ -92,3 +92,20 @@ func test_engine_waits_until_aligned() -> void:
 	check(ship.fuel == Ship.MAX_FUEL and ship.linear_velocity.length() < 0.01, "engine fired while still turning (fuel %f, v %s)" % [ship.fuel, ship.linear_velocity])
 	await frames(30)
 	check(ship.linear_velocity.x < -50.0 and ship.fuel < Ship.MAX_FUEL, "no thrust after aligning: v %s" % ship.linear_velocity)
+
+
+func test_engine_stays_on_while_dragging() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO, {"thrusting": true, "aim_point": Vector2(1000, 0)})
+	await frames(10)
+	check(ship.firing, "engine should fire when the press starts aligned")
+	ship.aim_point = Vector2(-1000, 0)  # the finger swings behind the ship without lifting
+	for i in 8:
+		await frames(1)
+		check(ship.firing, "engine cut out on frame %d of a drag (rotation %f)" % [i, ship.rotation])
+	ship.thrusting = false
+	await frames(2)
+	ship.rotation = 0.0
+	ship.angular_velocity = 0.0
+	ship.thrusting = true  # a new press behind the ship must wait for the turn again
+	await frames(2)
+	check(not ship.firing, "a new press must not fire before the nose catches up")
