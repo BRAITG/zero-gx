@@ -11,6 +11,7 @@ const ARRIVE_GAIN := 1.2  # 1/s: desired speed per px left to the waypoint
 const ARRIVE_FLOOR := 80.0  # px/s
 const WAYPOINT_REACH := 110.0  # px
 const DEAD_BAND := 40.0  # px/s of velocity error tolerated before thrusting
+const COAST_REACH := 300.0  # px: a coast waypoint only needs to be passed near
 const FLIGHT_LIMIT := 4800  # frames: 80 s
 
 
@@ -86,25 +87,32 @@ func test_levels_are_winnable() -> void:
 		var outcome := {"won": null}
 		root.finished.connect(func(won: bool): outcome.won = won)
 		var ship := root.ship
+		var route := root.get_node("Route") as Line2D
 		var waypoints: Array[Vector2] = []
-		for point in (root.get_node("Route") as Line2D).points:
-			waypoints.append(root.get_node("Route").position + point)
+		for point in route.points:
+			waypoints.append(route.position + point)
 		waypoints.append(root.goal.position)
+		# Route metadata "coast": waypoints flown to without thrust, as a player rides a slingshot.
+		var coast: PackedInt32Array = route.get_meta("coast", PackedInt32Array())
+		var cruise: float = route.get_meta("cruise", CRUISE)  # px/s; a slingshot wants its own speed
 		var next := 0
 		for frame in FLIGHT_LIMIT:
 			await frames(1)
 			if outcome.won != null:
 				break
 			var at := ship.global_position
-			while next < waypoints.size() - 1 and at.distance_to(waypoints[next]) < WAYPOINT_REACH:
+			while next < waypoints.size() - 1 and at.distance_to(waypoints[next]) < (COAST_REACH if next in coast else WAYPOINT_REACH):
 				next += 1
+			if next in coast:
+				ship.thrusting = false
+				continue
 			var to := waypoints[next] - at
 			# Slow down only as much as the turn at this waypoint needs: none on a straight line.
 			var turn := 0.0
-			if next < waypoints.size() - 1:
+			if next < waypoints.size() - 1 and not (next + 1 in coast):  # arrive at a release point at speed
 				turn = absf(to.angle_to(waypoints[next + 1] - waypoints[next]))
-			var arrive := lerpf(CRUISE, ARRIVE_FLOOR, clampf(turn / (PI / 2.0), 0.0, 1.0))
-			var speed := minf(CRUISE, ARRIVE_GAIN * to.length() + arrive)
+			var arrive := lerpf(cruise, ARRIVE_FLOOR, clampf(turn / (PI / 2.0), 0.0, 1.0))
+			var speed := minf(cruise, ARRIVE_GAIN * to.length() + arrive)
 			var error := to.normalized() * speed - ship.linear_velocity
 			ship.thrusting = error.length() > DEAD_BAND
 			ship.aim_point = at + error.normalized() * 1000.0

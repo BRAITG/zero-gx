@@ -11,6 +11,7 @@
 [node name="Level_06_Edge" type="Node2D"]
 script = ExtResource("level")
 title = "Edge"
+hint = "Red walls destroy your ship on contact. Slow down before the narrows."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)

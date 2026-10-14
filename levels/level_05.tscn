@@ -11,10 +11,11 @@
 [node name="Level_05_Swing" type="Node2D"]
 script = ExtResource("level")
 title = "Swing"
-hint = "Let the planet's pull swing you around the corner."
+hint = "This tank is too small to brake and turn. Let the planet's pull swing you around the corner."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)
+fuel = 14.0
 
 [node name="Goal" parent="." instance=ExtResource("goal")]
 position = Vector2(2450, 2750)
@@ -50,7 +51,9 @@ reach = 800.0
 
 [node name="Route" type="Line2D" parent="."]
 visible = false
-points = PackedVector2Array(1400, -200, 2450, -260, 2720, 0, 2650, 500, 2450, 1500)
+points = PackedVector2Array(700, -200, 1500, -200, 2450, 1000, 2450, 1800)
+metadata/cruise = 300.0
+metadata/coast = PackedInt32Array(2, 3)
 
 [editable path="Wall1"]
 [editable path="Wall2"]
