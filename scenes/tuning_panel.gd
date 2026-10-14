@@ -59,6 +59,20 @@ func _ready() -> void:
 	_overlays.button_pressed = Tuning.show_overlays
 	_overlays.toggled.connect(func(on: bool): Tuning.set_value("show_overlays", on))
 	buttons.add_child(_overlays)
+	var progress_row := HBoxContainer.new()
+	progress_row.add_theme_constant_override("separation", 16)
+	rows.add_child(progress_row)
+	var unlock := CheckButton.new()
+	unlock.text = "Unlock all levels"
+	unlock.add_theme_font_size_override("font_size", 24)
+	unlock.button_pressed = Progress.unlock_all
+	unlock.toggled.connect(func(on: bool): Progress.unlock_all = on)
+	progress_row.add_child(unlock)
+	var confirm := ConfirmationDialog.new()
+	confirm.dialog_text = "Delete all saved best scores?"
+	confirm.confirmed.connect(Progress.reset)
+	add_child(confirm)
+	_button(progress_row, "Reset progress", confirm.popup_centered)
 	for key: String in Tuning.RANGES:
 		var bounds: Array = Tuning.RANGES[key]
 		var row := HBoxContainer.new()

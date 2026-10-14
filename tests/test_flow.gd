@@ -105,3 +105,24 @@ func test_clock_waits_for_first_thrust() -> void:
 	lvl.ship.thrusting = true
 	await frames(60)
 	check(absf(lvl.ship.flight_time - 1.0) < 0.05, "clock %f s after 1 s of thrust" % lvl.ship.flight_time)
+
+
+func level_buttons(main: Control) -> Dictionary:
+	var by_level := {}
+	for button: Button in main.find_children("*", "Button", true, false):
+		if button.text.begins_with("Level"):
+			by_level[button.text.substr(0, 8)] = button
+	return by_level
+
+
+func test_menu_locks_levels() -> void:
+	var main: Control = load("res://scenes/main.tscn").instantiate()
+	world.add_child(main)
+	var buttons := level_buttons(main)
+	check(not buttons["Level 01"].disabled and buttons["Level 02"].disabled, "fresh progress: only level 1 open")
+	check(buttons["Level 02"].text.contains("locked"), "locked level label: %s" % buttons["Level 02"].text)
+	Progress.record_win("level_01", 1780, 30.0)
+	await frames(1)
+	buttons = level_buttons(main)
+	check(not buttons["Level 02"].disabled, "winning level 1 must open level 2 on the menu")
+	check(buttons["Level 01"].text.contains("1780"), "best points missing: %s" % buttons["Level 01"].text)

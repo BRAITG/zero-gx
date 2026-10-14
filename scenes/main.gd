@@ -1,37 +1,52 @@
 extends Control
-## Level list: one button per `res://levels/*.tscn`, sorted by file name.
+## Level list: one button per level in `Progress.levels()`, with its best points, locked until
+## the level before it is finished.
+
+var _levels: VBoxContainer
+var _column: VBoxContainer
 
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	var column := VBoxContainer.new()
-	column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	column.add_theme_constant_override("separation", 12)
-	add_child(column)
+	_column = VBoxContainer.new()
+	_column.add_theme_constant_override("separation", 12)
+	add_child(_column)
 	var title := Label.new()
 	title.text = "ZERO-GX"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 56)
-	column.add_child(title)
-	var files := Array(ResourceLoader.list_directory("res://levels/")).filter(func(f: String): return f.ends_with(".tscn"))
-	files.sort()
-	for file: String in files:
-		var button := Button.new()
-		button.text = file.get_basename().replace("_", " ").capitalize()
-		button.custom_minimum_size = Vector2(320, 64)
-		button.add_theme_font_size_override("font_size", 28)
-		button.pressed.connect(Sfx.play.bind("tap"))
-		button.pressed.connect(func(): get_tree().change_scene_to_file("res://levels/" + file))
-		column.add_child(button)
-	var tune := Button.new()
-	tune.text = "Tune"
-	tune.custom_minimum_size = Vector2(320, 64)
-	tune.add_theme_font_size_override("font_size", 28)
-	tune.pressed.connect(Sfx.play.bind("tap"))
+	_column.add_child(title)
+	_levels = VBoxContainer.new()
+	_levels.add_theme_constant_override("separation", 12)
+	_column.add_child(_levels)
+	var tune := _button("Tune")
 	tune.pressed.connect(func(): TuningPanel.open(self))
-	column.add_child(tune)
-	column.reset_size()
-	column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_column.add_child(tune)
+	Progress.changed.connect(_list_levels)
+	_list_levels()
+
+
+func _list_levels() -> void:
+	for old in _levels.get_children():
+		old.free()  # now, not queued: the new buttons replace them in the same frame
+	for id in Progress.levels():
+		var best := Progress.best_points(id)
+		var state := "locked" if not Progress.is_unlocked(id) else ("—" if best < 0 else str(best))
+		var button := _button("%s · %s" % [id.replace("_", " ").capitalize(), state])
+		button.disabled = not Progress.is_unlocked(id)
+		button.pressed.connect(func(): get_tree().change_scene_to_file("res://levels/%s.tscn" % id))
+		_levels.add_child(button)
+	_column.reset_size()
+	_column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+
+
+func _button(text: String) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.custom_minimum_size = Vector2(360, 56)
+	button.add_theme_font_size_override("font_size", 26)
+	button.pressed.connect(Sfx.play.bind("tap"))
+	return button
 
 
 ## project.godot turns off quit_on_go_back so levels can return here; the menu still quits.
