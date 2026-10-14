@@ -52,7 +52,7 @@ All values below are tuning defaults. Each is a slider in the tuning panel.
 
 ### Turning
 
-- Outside a boost, the ship turns toward the touch point at up to `turn_rate` (default 10 rad/s), only while the finger is down.
+- Outside a boost, the ship turns toward the touch point at up to `turn_rate` (default 15 rad/s), only while the finger is down.
 - With the finger up and no boost, the ship holds its heading. The only exception is impact spin.
 
 ### Impact spin
@@ -64,7 +64,7 @@ All values below are tuning defaults. Each is a slider in the tuning panel.
 
 ### Planet gravity
 
-- A global `planet_gravity` multiplier (default ×1) scales the pull of every `PLANET` preset gravity body. Black holes and stars are unaffected.
+- A global `planet_gravity` multiplier (default ×1) scales the pull of every `PLANET` preset gravity body, and `black_hole_gravity` (default ×1) does the same for black holes. Stars are unaffected.
 - Once the playtest settles on a value, it is baked into the levels and the multiplier stays at ×1.
 
 ## Pickups
@@ -86,7 +86,7 @@ All values below are tuning defaults. Each is a slider in the tuning panel.
 |---|---|---|---|
 | `max_speed` (px/s) | 800 | 400–1200 | 50 |
 | `thrust` (px/s²) | 600 | 300–1200 | 50 |
-| `turn_rate` (rad/s) | 10 | 1–15 | 0.5 |
+| `turn_rate` (rad/s) | 15 | 1–20 | 0.5 |
 | `boost_turn_rate` (rad/s) | 3 | 0.5–10 | 0.5 |
 | `boost_seconds` | 1.5 | 0.5–4 | 0.25 |
 | `boost_wobble` (rad/s) | 1.5 | 0–4 | 0.25 |
@@ -94,6 +94,7 @@ All values below are tuning defaults. Each is a slider in the tuning panel.
 | `power_down` (×) | 0.6 | 0.2–1 | 0.05 |
 | `effect_seconds` | 8 | 2–20 | 1 |
 | `planet_gravity` (×) | 1 | 0.25–4 | 0.25 |
+| `black_hole_gravity` (×) | 1 | 0.25–4 | 0.25 |
 | `spin_per_speed` (rad/s per px/s) | 0.01 | 0–0.03 | 0.0025 |
 | `spin_max` (rad/s) | 4 | 0–8 | 0.5 |
 | `spin_decay` (s) | 0.35 | 0.1–2 | 0.05 |
@@ -127,7 +128,7 @@ Pickups keep at least `radius + 16` px clear of every barrier segment.
 - With the finger up and no boost, a glancing wall hit spins the ship toward its outgoing direction; a head-on hit spins it less than a quarter as much. The spin decays below 0.05 rad/s within 1.5 s.
 - A pickup is collected by a ship and ignored by an asteroid.
 - `Tuning.reset()` restores every default; the test runner resets `Tuning` before each test.
-- `planet_gravity` scales planet pull and leaves stars and black holes unchanged.
+- `planet_gravity` scales planet pull only; `black_hole_gravity` scales black hole pull only.
 - Levels: no pickup lies within `radius + 16` px of a barrier segment.
 
 ### Manual

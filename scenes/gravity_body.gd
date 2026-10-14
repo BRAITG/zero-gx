@@ -10,8 +10,8 @@ enum Preset { PLANET, BLACK_HOLE, STAR }
 
 ## radius, strength (px/s² at the surface), reach, lethal
 const PRESETS := {
-	Preset.PLANET: [64.0, 800.0, 450.0, false],
-	Preset.BLACK_HOLE: [64.0, 4000.0, 800.0, true],
+	Preset.PLANET: [64.0, 3200.0, 450.0, false],
+	Preset.BLACK_HOLE: [64.0, 16000.0, 800.0, true],
 	Preset.STAR: [600.0, 3000.0, 3000.0, true],
 }
 const COLORS := {
@@ -25,7 +25,7 @@ const SHARD_SPEED_MIN := 100.0
 const SHARD_SPEED_MAX := 250.0
 const SHARD_GAP := 4.0  # px between neighbouring shards on the spawn ring
 ## Debug field disc: opacity grows with the square root of the pull, so weak edges stay visible.
-const FIELD_REFERENCE_PULL := 1000.0  # px/s² drawn at full opacity
+const FIELD_REFERENCE_PULL := 4000.0  # px/s² drawn at full opacity
 const FIELD_MAX_ALPHA := 0.35
 const FIELD_BANDS := 32
 
@@ -78,7 +78,10 @@ func _apply_gravity_tuning(field: Area2D) -> void:
 
 
 func _surface_pull() -> float:
-	return strength * (Tuning.planet_gravity if preset == Preset.PLANET else 1.0)
+	match preset:
+		Preset.PLANET: return strength * Tuning.planet_gravity
+		Preset.BLACK_HOLE: return strength * Tuning.black_hole_gravity
+	return strength
 
 
 ## Opacity of the debug field disc at `distance` from the centre; 0 beyond reach.

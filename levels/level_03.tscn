@@ -49,7 +49,7 @@ position = Vector2(3800, -335)
 destructible = true
 health = 100.0
 radius = 100.0
-strength = 600.0
+strength = 2400.0
 reach = 300.0
 
 [node name="Rock1" parent="." instance=ExtResource("asteroid")]

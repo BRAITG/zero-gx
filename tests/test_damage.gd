@@ -74,6 +74,7 @@ func test_black_hole_kills() -> void:
 
 
 func test_planet_surface_damage() -> void:
+	Tuning.set_value("planet_gravity", 400.0 / GravityBody.PRESETS[GravityBody.Preset.PLANET][1])  # crash damage, not gravity: hit at ~500 px/s
 	spawn(GRAVITY_BODY, Vector2(400, 0))
 	var ship = ship_at(Vector2.ZERO, Vector2(500, 0))
 	await frames(90)

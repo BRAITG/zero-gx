@@ -87,3 +87,23 @@ func test_field_opacity_follows_pull() -> void:
 	var before := planet.field_alpha(100)
 	Tuning.set_value("planet_gravity", 2.0)
 	check(planet.field_alpha(100) > before, "the planet gravity slider must show in the field")
+
+
+func test_black_hole_gravity_multiplier() -> void:
+	Tuning.set_value("black_hole_gravity", 2.0)
+	spawn(GRAVITY_BODY, Vector2.ZERO, {"preset": GravityBody.Preset.BLACK_HOLE})
+	spawn(GRAVITY_BODY, Vector2(0, 5000))
+	var near_hole := probe(Vector2(256, 0))
+	var near_planet := probe(Vector2(0, 5000 + 128))
+	await frames(3)
+	var hole: float = GravityBody.PRESETS[GravityBody.Preset.BLACK_HOLE][1]
+	var expected := 2.0 * hole * pow(64.0 / 256.0, 2)
+	check(near(pull(near_hole).length(), expected, 0.02), "black hole pull %f, expected %f" % [pull(near_hole).length(), expected])
+	var planet := PLANET_PULL * pow(64.0 / 128.0, 2)
+	check(near(pull(near_planet).length(), planet, 0.02), "planet pull %f, expected unchanged %f" % [pull(near_planet).length(), planet])
+
+
+func test_black_hole_beats_full_thrust_up_close() -> void:
+	# Nearly impossible to escape: within 4 radii the pull exceeds the strongest thrust.
+	var hole: float = GravityBody.PRESETS[GravityBody.Preset.BLACK_HOLE][1]
+	check(hole * pow(1.0 / 4.0, 2) > Tuning.thrust * Tuning.power_up, "pull at 4 radii %f is below boosted thrust %f" % [hole / 16.0, Tuning.thrust * Tuning.power_up])
