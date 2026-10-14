@@ -39,6 +39,10 @@ func _run() -> void:
 			var test = script.new()
 			test.tree = self
 			root.get_node("Tuning").reset()  # a test that changes a value must not leak it
+			var progress := root.get_node("Progress")
+			progress.path = "user://test_progress.cfg"  # never touch the player's real progress
+			progress.unlock_all = false
+			progress.reset()
 			test.world = Node2D.new()
 			root.add_child(test.world)
 			var state := {"done": false}

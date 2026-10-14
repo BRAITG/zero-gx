@@ -19,6 +19,9 @@ const DEFAULTS := {
 	"spin_per_speed": 0.01,  # rad/s of impact spin per px/s of sliding speed
 	"spin_max": 4.0,  # rad/s
 	"spin_decay": 0.35,  # s, exponential time constant
+	"points_fuel": 15.0,  # points per unit of fuel left at the goal
+	"points_hull": 3.0,  # points per point of hull left
+	"points_per_second": 2.0,  # points lost per second of flight
 	"show_overlays": true,  # gravity field discs and speedometer
 }
 ## [min, max, step] per setting, for the panel's sliders.
@@ -37,6 +40,9 @@ const RANGES := {
 	"spin_per_speed": [0.0, 0.03, 0.0025],
 	"spin_max": [0.0, 8.0, 0.5],
 	"spin_decay": [0.1, 2.0, 0.05],
+	"points_fuel": [0.0, 30.0, 1.0],
+	"points_hull": [0.0, 10.0, 0.5],
+	"points_per_second": [0.0, 30.0, 1.0],
 }
 
 var max_speed: float
@@ -53,6 +59,9 @@ var black_hole_gravity: float
 var spin_per_speed: float
 var spin_max: float
 var spin_decay: float
+var points_fuel: float
+var points_hull: float
+var points_per_second: float
 var show_overlays: bool
 
 

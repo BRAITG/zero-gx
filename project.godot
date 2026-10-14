@@ -11,6 +11,7 @@ config/quit_on_go_back=false
 [autoload]
 
 Tuning="*res://scripts/tuning.gd"
+Progress="*res://scripts/progress.gd"
 Sfx="*res://scripts/sfx.gd"
 
 [display]
