@@ -11,6 +11,7 @@
 [node name="Level_09_Abyss" type="Node2D"]
 script = ExtResource("level")
 title = "Abyss"
+hint = "Black holes pull far harder than planets. Get too close and nothing will get you out."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)

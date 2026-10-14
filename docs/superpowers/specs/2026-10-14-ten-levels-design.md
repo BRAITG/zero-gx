@@ -12,7 +12,7 @@ Replace the five prototype levels with ten new ones that teach the game through 
 
 - Each level introduces at most one new mechanic. It may reuse any mechanic introduced earlier.
 - Every level opens with a title card ("Level 2 · Drift") that fades out at the first thrust.
-- Levels 1–6 add a one-line hint to the card, because people do not understand frictionless motion, inertia, gravity or instantly lethal walls without being told. From level 7 on there is no hint: the layout teaches the new mechanic.
+- Every level adds a one-line hint to the card that names its new mechanic and what it means for the player. Playtesting showed that layout alone does not teach these mechanics.
 - Asteroids on fixed orbits, destructible planets, and stars are deferred to world 2. The engine keeps them.
 
 ## Curriculum

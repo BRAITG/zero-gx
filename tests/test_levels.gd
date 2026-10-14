@@ -41,7 +41,7 @@ func test_levels_are_well_formed() -> void:
 			check(root.is_editable_instance(wall), "%s: %s needs editable children" % [id, wall.name])
 		var route := root.get_node_or_null("Route") as Line2D
 		check(route != null and not route.visible and route.points.size() > 0, "%s: needs a hidden Route Line2D with waypoints" % id)
-		check(root.title != "", "%s: needs a title" % id)
+		check(root.title != "" and root.hint != "", "%s: needs a title and a hint" % id)
 		for pickup: Pickup in of_type(root, Pickup):
 			for wall: Barrier in of_type(root, Barrier):
 				var points: PackedVector2Array = wall.get_node("Shape").points

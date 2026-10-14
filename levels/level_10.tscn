@@ -11,6 +11,7 @@
 [node name="Level_10_Burn" type="Node2D"]
 script = ExtResource("level")
 title = "Burn"
+hint = "The orange pickup fires your engine for free, even on an empty tank, but it barely steers."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)
