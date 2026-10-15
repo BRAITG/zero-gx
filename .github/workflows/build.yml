@@ -173,6 +173,24 @@ jobs:
             curl --fail-with-body -sS -X POST -H @- -H "Content-Type: application/json" \
               --data-binary @"$RUNNER_TEMP/official.json" "$COMMUNITY_API/admin/official"
 
+  graph:
+    # The committed code graph must equal a rebuild with the pinned Graphify build.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      UV_PYTHON: "3.11"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Check that graphify-out/graph.json is fresh
+        run: |
+          sh tools/ensure-graphify.sh
+          PYTHONHASHSEED=0 graphify update .
+          git diff --exit-code --stat -- graphify-out/graph.json ||
+            { echo "::error::graphify-out/graph.json is stale: run 'sh tools/setup-hooks.sh' and commit again, or 'PYTHONHASHSEED=0 graphify update .' and commit the graph."; exit 1; }
+
   server:
     runs-on: ubuntu-24.04
     timeout-minutes: 10

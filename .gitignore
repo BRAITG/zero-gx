@@ -16,5 +16,8 @@ godot/
 /server/.wrangler/
 /server/.dev.vars
 
-# graphify knowledge graph, rebuilt locally by its git hooks
-/graphify-out/
+# Graphify: only the graph is tracked (see tools/setup-hooks.sh); its cache and reports stay local.
+# .gdignore keeps Godot from importing or exporting the graph.
+/graphify-out/*
+!/graphify-out/graph.json
+!/graphify-out/.gdignore

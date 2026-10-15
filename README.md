@@ -101,6 +101,10 @@ The check fails above 1,000 draw calls at rest or with streaks in either directi
 
 `.github/workflows/build.yml` runs the tests, exports the APK and the desktop builds (Windows, macOS, Linux), and uploads them as a workflow artifact on every pull request. On `master`, and on a manual run with `publish` checked, it also publishes a prerelease with all of them. The desktop builds are unsigned. On macOS, open System Settings → Privacy & Security and choose Open Anyway (macOS 15 and later; on older versions, right-click the app and choose Open). On Windows, SmartScreen warns, so choose More info → Run anyway. On Linux, run `chmod +x` on the file first. The debug keystore is the `ANDROID_DEBUG_KEYSTORE_B64` repository secret.
 
+## Code graph
+
+`graphify-out/graph.json` is a [Graphify](https://github.com/Graphify-Labs/graphify) graph of the code, including GDScript and scenes, for coding agents. After cloning, run `sh tools/setup-hooks.sh` once (it needs [uv](https://docs.astral.sh/uv/)): it installs the pinned Graphify build, enables the pre-commit hook that rebuilds and stages the graph with each commit, and registers the merge driver for the graph. CI fails when the committed graph differs from a rebuild. The vendored `addons/` plugin is left out through `.graphifyignore`.
+
 ## Community server
 
 Players share levels and compete on boards through a Cloudflare Worker with a D1 database and R2 storage, under [`server/`](server/). Setup, routes and the operations runbook are in [`server/README.md`](server/README.md). Submitted levels live in a separate public repository, `BRAITG/zero-gx-levels`, created from the template in [`levels-repo/`](levels-repo/). The design is in [`docs/superpowers/specs/2026-10-16-community-design.md`](docs/superpowers/specs/2026-10-16-community-design.md).
