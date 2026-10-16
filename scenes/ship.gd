@@ -92,6 +92,7 @@ var _exhaust: CPUParticles2D
 
 func _ready() -> void:
 	mass = 1.0
+	z_index = 2  # above stars, which draw over walls
 	health = hull
 	can_sleep = false
 	contact_monitor = true

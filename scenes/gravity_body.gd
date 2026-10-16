@@ -42,8 +42,8 @@ var _time := 0.0
 	set(value):
 		preset = value
 		queue_redraw()
-## Negative values mean "use the preset's value".
 static var _unit_disc: ArrayMesh  # see _disc()
+## Negative values mean "use the preset's value".
 @export var radius := -1.0
 @export var strength := -1.0
 @export var reach := -1.0
@@ -57,6 +57,8 @@ func _ready() -> void:
 	if radius < 0: radius = values[0]
 	if strength < 0: strength = values[1]
 	if reach < 0: reach = values[2]
+	if preset == Preset.STAR:
+		z_index = 1  # a star's edge burns over the walls it crosses
 	if Engine.is_editor_hint():
 		return
 	physics_material_override = load("res://physics/frictionless.tres")
