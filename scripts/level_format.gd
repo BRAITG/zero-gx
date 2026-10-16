@@ -24,7 +24,14 @@ const MAX_ROUTE := 64
 const MAX_TITLE := 40
 const MAX_TEXT := 200
 const TANK_RANGE := Vector2(1, 1000)  # fuel and hull, unless unlimited
-const BODY_RANGES := {"radius": Vector2(8, 2000), "strength": Vector2(0, 50000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}
+const BODY_RANGES := {"radius": Vector2(8, 2000), "strength": Vector2(0, 64000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}
+## Per-kind limits so each body keeps its role: a planet never outgrows or out-pulls a star, a
+## black hole always grabs hardest up close. Total pull is the pull at 1000 px.
+const KIND_LIMITS := {
+	"planet": {"radius": Vector2(32, 240), "total_pull": Vector2(0, 100), "reach": Vector2(0, 1500)},
+	"star": {"radius": Vector2(300, 1500), "total_pull": Vector2(150, 6000), "reach": Vector2(0, 6000)},
+	"black_hole": {"radius": Vector2(32, 96), "strength": Vector2(8000, 64000), "reach": Vector2(0, 1500)},
+}
 
 const LEVEL_SCRIPT := preload("res://scenes/level.gd")
 const SHIP := preload("res://scenes/ship.tscn")
@@ -102,10 +109,21 @@ static func validate(data: Dictionary) -> PackedStringArray:
 		if not body is Dictionary or not body.get("kind") in BODY_KINDS:
 			errors.append("body %d: unknown kind" % i)
 			continue
+		var before := errors.size()
 		_point(body.get("position"), "body %d position" % i, errors)
 		for key: String in BODY_RANGES:
 			if body.has(key):
 				_number(body[key], BODY_RANGES[key].x, BODY_RANGES[key].y, "body %d %s" % [i, key], errors)
+		if errors.size() == before:  # only well-formed numbers can be compared to the kind's limits
+			_check_kind_limits(i, body, errors)
+	if errors.is_empty():
+		var strongest_star := 0.0
+		for body in bodies:
+			if body.kind == "star":
+				strongest_star = maxf(strongest_star, body_value(body, "strength"))
+		for i in bodies.size():
+			if bodies[i].kind == "black_hole" and body_value(bodies[i], "strength") <= strongest_star:
+				errors.append("body %d: a black hole must pull harder at its surface than every star" % i)
 	var rocks := _list(data, "asteroids", MAX_ASTEROIDS, errors)
 	for i in rocks.size():
 		var rock: Variant = rocks[i]
@@ -144,6 +162,25 @@ static func validate(data: Dictionary) -> PackedStringArray:
 	if errors.is_empty():
 		_check_start(data, errors)
 	return errors
+
+
+## A body's radius, strength or reach: its own value, or its kind's preset.
+static func body_value(body: Dictionary, key: String) -> float:
+	var preset: Array = GravityBody.PRESETS[BODY_KINDS.find(body.kind)]
+	return body.get(key, preset[["radius", "strength", "reach"].find(key)])
+
+
+## A body's pull at 1000 px: what reaches across a course.
+static func total_pull(body: Dictionary) -> float:
+	return body_value(body, "strength") * pow(body_value(body, "radius") / 1000.0, 2)
+
+
+static func _check_kind_limits(i: int, body: Dictionary, errors: PackedStringArray) -> void:
+	var limits: Dictionary = KIND_LIMITS[body.kind]
+	for key: String in limits:
+		var value := total_pull(body) if key == "total_pull" else body_value(body, key)
+		if value < limits[key].x - 0.001 or value > limits[key].y + 0.001:
+			errors.append("body %d: a %s's %s must be %s to %s" % [i, body.kind.replace("_", " "), key.replace("_", " "), limits[key].x, limits[key].y])
 
 
 ## The scene for `data`: a Level (or `script`, a Level subclass such as a tutorial lesson).
