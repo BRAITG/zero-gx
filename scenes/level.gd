@@ -34,6 +34,7 @@ func _ready() -> void:
 	add_child(Starfield.new())
 	hud = Hud.new()
 	hud.ship = ship
+	hud.menu_text = "Edit" if testing else "Menu"
 	ship.show_velocity = show_velocity or Settings.show_velocity
 	hud.goal = goal
 	add_child(hud)

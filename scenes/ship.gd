@@ -22,7 +22,7 @@ const MIN_IMPACT_SPEED := 20.0  # px/s; below this a contact is resting, not a h
 const TUNNEL_LIMIT := 1200.0
 ## px/s²; above the tuned speed cap the ship slows toward it instead of snapping down.
 const OVERSPEED_DECEL := 400.0
-const ENGINE_VOLUME_DB := -20.0
+const ENGINE_VOLUME_DB := -28.0
 ## Damage at which an impact plays at full volume; lighter hits are quieter.
 const LOUD_IMPACT_DAMAGE := 30.0
 ## Camera shake: trauma 0..1 adds up per hit, the offset grows with its square, and it decays.
@@ -36,7 +36,7 @@ const FLAME_CORE := Color("#fff1b8")
 const HEAT_RANGE := 300.0  # px above a star's surface where its heat starts to scorch the hull
 const HEAT_DAMAGE := 40.0  # hull per second at the surface; it falls with the square of the heat
 const HEAT_RED := Color("#ff3b1f")
-const BURN_VOLUME_DB := -14.0  # the burning roar at full heat
+const BURN_VOLUME_DB := -22.0  # the burning roar at full heat
 const VELOCITY_ARROW_SCALE := 0.25  # px of arrow per px/s
 const VELOCITY_ARROW_MAX := 200.0  # px
 

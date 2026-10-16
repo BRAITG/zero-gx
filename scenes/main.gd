@@ -63,6 +63,24 @@ func _open_settings() -> void:
 	arrow.toggled.connect(func(_on: bool): Sfx.play("tap"))
 	o.body.add_child(arrow)
 	o.paragraph("The arrow points where your ship is going; its length shows how fast. The training stages always show it.", 20, Style.INK_DIM)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	o.body.add_child(row)
+	var label := Label.new()
+	label.add_theme_font_size_override("font_size", 26)
+	label.custom_minimum_size.x = 260
+	row.add_child(label)
+	var slider := HSlider.new()
+	slider.max_value = 1.0
+	slider.step = 0.05
+	slider.value = Settings.volume
+	slider.custom_minimum_size = Vector2(520, 48)
+	row.add_child(slider)
+	var show := func(v: float): label.text = "Sound: %d%%" % roundi(v * 100.0)
+	show.call(slider.value)
+	slider.value_changed.connect(show)
+	slider.value_changed.connect(func(v: float): Settings.volume = v)
+	slider.drag_ended.connect(func(_changed: bool): Sfx.play("tap"))
 
 
 func _list_levels() -> void:

@@ -73,7 +73,7 @@ A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` po
 
 ## Tuning
 
-The values you will most often want to change (speed cap, thrust, turn rates, pickup strength and duration, boost, impact spin, planet and black hole pull, points weights) live in `scripts/tuning.gd`. Change them live on the phone with the **Tune** button in the main menu or the level HUD; the changes last until the app closes. Fixed numbers are named constants:
+The values you will most often want to change (speed cap, thrust, turn rates, pickup strength and duration, boost, impact spin, planet and black hole pull, points weights) live in `scripts/tuning.gd`. Sound volume is in **Settings** (saved with the other settings). Change the tuning values live on the phone with the **Tune** button in the main menu or the level HUD; the changes last until the app closes. Fixed numbers are named constants:
 
 | File | What it tunes |
 |---|---|

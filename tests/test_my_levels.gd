@@ -38,3 +38,13 @@ func test_a_won_test_flight_completes_without_a_score() -> void:
 	await frames(2)
 	check(MyLevels.is_completed(id), "finishing a test flight must complete the level")
 	check(Progress.best_points(id) < 0, "a test flight must not record a best score")
+
+
+func test_test_flight_leaves_through_edit() -> void:
+	var id := MyLevels.new_id()
+	MyLevels.save(id, LevelDoc.new().data)
+	var lvl := Progress.build(id, true)
+	world.add_child(lvl)
+	await frames(1)
+	var labels: Array = lvl.hud.find_children("*", "Button", true, false).map(func(b: Button): return b.text)
+	check("Edit" in labels and not "Menu" in labels, "test flight buttons: %s" % [labels])

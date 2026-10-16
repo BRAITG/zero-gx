@@ -6,8 +6,8 @@ const VOICES := 8
 const SOUNDS := ["zap", "impact", "explosion", "boom", "power_up", "power_down", "boost", "goal", "tap", "tick"]
 const DRONE_RATE := 22050
 const DRONE_SECONDS := 4.0  # every partial and the swell complete whole cycles, so the loop is seamless
-const DRONE_VOLUME_DB := -26.0
-const EFFECTS_DB := -14.0  # the samples peak near full scale; this keeps the one-shots comfortable
+const DRONE_VOLUME_DB := -32.0
+const EFFECTS_DB := -24.0  # the samples peak near full scale; this keeps the one-shots comfortable
 const DRONE_PAD := 64  # frames rendered past the loop end
 const BURN_SECONDS := 2.0
 

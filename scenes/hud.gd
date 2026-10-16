@@ -15,6 +15,8 @@ const METRES_PER_PX := 0.1
 const ARROW_MARGIN := 48.0  # px from the screen edge
 const GOAL_GREEN := Color(0.4, 1.0, 0.6)
 
+## The label of the buttons that leave the level ("Edit" on a test flight).
+var menu_text := "Menu"
 var ship: Ship
 var goal: Node2D
 var restart_button: Button
@@ -77,7 +79,7 @@ func _ready() -> void:
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(spacer)
 	restart_button = _button(top, "Restart", retry_requested.emit)
-	_button(top, "Menu", menu_requested.emit)
+	_button(top, menu_text, menu_requested.emit)
 	_button(top, "Tune", func(): TuningPanel.open(self))
 	_effect = Label.new()
 	_effect.position = Vector2(16, 64)
@@ -177,7 +179,7 @@ func _ready() -> void:
 	column.add_child(_detail)
 	_next = _button(column, "Next", next_requested.emit)
 	_button(column, "Retry", retry_requested.emit)
-	_button(column, "Menu", menu_requested.emit)
+	_button(column, menu_text, menu_requested.emit)
 	_arrow = Control.new()
 	_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_arrow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
