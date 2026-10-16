@@ -18,6 +18,9 @@ const PRESETS := {
 const PLANET_COLORS := [Color("#3f7a52"), Color("#2f6f8f"), Color("#8f6f35"), Color("#7a4466")]
 const STAR_COLOR := Color("#ffcf4a")
 const STAR_CORE := Color("#fff3c4")
+const FLARE_COLORS := [Color("#ff8a2a"), Color("#ffb347")]
+const STAR_FLAMES := 120
+const STAR_PROMINENCES := 7
 const DISK_COLORS := [Color("#ff9a4a"), Color("#c46cff"), Color("#ffd8a8")]
 const SHARDS_MIN := 12
 const SHARDS_MAX := 20
@@ -166,11 +169,24 @@ func _draw_black_hole(r: float) -> void:
 	draw_arc(Vector2.ZERO, r + 3.0, 0.0, TAU, 96, DISK_COLORS[2], 3.0, true)
 
 
-## A hot core inside a slowly pulsing corona.
+## A hot core inside a slowly pulsing corona, with flickering flames and looping prominences.
 func _draw_star(r: float) -> void:
 	var pulse := 0.5 + 0.5 * sin(_time * 1.3)
 	for k in range(8, 0, -1):
 		draw_circle(Vector2.ZERO, r * (1.0 + k * (0.035 + 0.01 * pulse)), Color(STAR_COLOR, 0.05))
+	for layer in 2:  # tongues of fire along the rim: long faint ones under short bright ones
+		var count := STAR_FLAMES + layer * 17
+		for i in count:
+			var at := i * TAU / count + 0.04 * sin(_time * 0.7 + i)
+			var flicker := 0.5 + 0.5 * sin(_time * (2.0 + i % 5 * 0.6) + i * 1.7 + layer)
+			var length := r * (0.035 - layer * 0.015 + (0.04 - layer * 0.015) * flicker)
+			var half := 0.35 * PI / count
+			var color := Color(FLARE_COLORS[layer], 0.35 + 0.35 * layer)
+			draw_colored_polygon(PackedVector2Array([Vector2.from_angle(at - half) * r * 0.99, Vector2.from_angle(at) * (r + length), Vector2.from_angle(at + half) * r * 0.99]), color)
+	for i in STAR_PROMINENCES:  # slow arches of plasma rising off the surface
+		var at := i * TAU / STAR_PROMINENCES + _time * 0.03
+		var rise := 0.5 + 0.5 * sin(_time * 0.9 + i * 2.3)
+		draw_arc(Vector2.from_angle(at) * r, r * (0.05 + 0.06 * rise), at - PI / 2.0, at + PI / 2.0, 24, Color(FLARE_COLORS[0], 0.5 + 0.4 * rise), maxf(r * 0.016, 3.0), true)
 	draw_circle(Vector2.ZERO, r, STAR_COLOR)
 	for k in 5:
 		draw_circle(Vector2.ZERO, r * (0.9 - k * 0.17), STAR_COLOR.lerp(STAR_CORE, (k + 1) / 5.0))

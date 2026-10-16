@@ -5,11 +5,16 @@ extends Level
 ##   await touch_target(direction, done)   a ring the player must touch; holding it thrusts toward it
 ##   await until(done, text)               a caption until `done` is true
 ##   reveal_goal()                         show the goal and hand the controls back
-## Losing the ship mid-lesson puts it back where the current step began.
+## Losing the ship mid-lesson beams it back to where the current step began.
 
 const RING_DISTANCE := 300.0  # px on screen from the ship
 const RING_RADIUS := 56.0
 const SCREEN_MARGIN := 90.0
+const BITS := 48  # pixels the ship breaks into for the rescue
+const BIT_SIZE := 4.0
+const SCATTER := 0.35  # s the pixels burst apart before they travel
+const TRAVEL := 1.2  # s for the pixels to stream back to the start
+const WRECK_SECONDS := 1.0  # the explosion plays this long before a rescue starts
 
 ## How many times the ship has been put back after dying or running dry.
 var retries := 0
@@ -24,6 +29,8 @@ var _ring: _Ring
 var _ring_direction: Variant = null  # Vector2 or Callable -> Vector2
 var _checkpoint := []  # [position, velocity, fuel] at the start of the current step
 var _goal_shown := false
+var _paused_velocity: Variant = null  # Vector2 while the ship waits, frozen, for a touch on the ring
+var _step_waits := false  # the current ring pauses the ship until it is touched
 
 
 ## The lesson's steps. Override in each tutorial.
@@ -69,16 +76,31 @@ func press_ok() -> void:
 	_ok_pressed = true
 
 
-func touch_target(direction: Variant, done: Callable, text := "") -> void:
+## `wait`: the ship holds still until the ring is first touched, so there is time to react.
+func touch_target(direction: Variant, done: Callable, text := "", wait := false) -> void:
 	_mark()
 	held_time = 0.0
 	_ring_direction = direction
 	_ring.show()
+	_step_waits = wait
+	if wait:
+		_hold_still()
 	await until(done, text)
+	_step_waits = false
 	_ring.hide()
 	_ring_direction = null
 	_ring.held = false
 	ship.thrusting = false
+
+
+## Whether the ship is still waiting for the first touch on a `wait` ring.
+func waiting() -> bool:
+	return _paused_velocity != null
+
+
+func _hold_still() -> void:
+	_paused_velocity = ship.linear_velocity
+	ship.freeze = true
 
 
 func until(done: Callable, text := "") -> void:
@@ -139,9 +161,14 @@ func _physics_process(delta: float) -> void:
 	var screen := get_viewport_rect().size
 	var at := get_viewport().canvas_transform * ship.global_position
 	var direction: Vector2 = _ring_direction.call() if _ring_direction is Callable else _ring_direction
-	var centre := (at + direction.normalized() * RING_DISTANCE).clamp(Vector2.ONE * SCREEN_MARGIN, screen - Vector2.ONE * SCREEN_MARGIN)
+	var top := _caption.get_global_rect().end.y + RING_RADIUS if _caption.visible else SCREEN_MARGIN  # never under the caption
+	var centre := (at + direction.normalized() * RING_DISTANCE).clamp(Vector2(SCREEN_MARGIN, top), screen - Vector2.ONE * SCREEN_MARGIN)
 	_ring.position = centre - _ring.size / 2.0
 	ship.thrusting = _ring.held
+	if _ring.held and waiting():  # the first touch lets the ship go on
+		ship.freeze = false
+		ship.linear_velocity = _paused_velocity
+		_paused_velocity = null
 	if _ring.held:
 		held_time += delta
 		ship.aim_point = get_viewport().canvas_transform.affine_inverse() * centre
@@ -156,10 +183,16 @@ func _ship_stranded() -> void:
 
 
 func _retry() -> void:
-	await get_tree().physics_frame  # after the death sequence has hidden and frozen the ship
+	await get_tree().create_timer(WRECK_SECONDS, false, true).timeout
+	await beam_to(_checkpoint[0])
 	ship.respawn(_checkpoint[0], _checkpoint[1], _checkpoint[2])
+	Sfx.play("power_up")
 	held_time = 0.0
 	retries += 1
+	if _step_waits:
+		for i in 2:
+			await get_tree().physics_frame  # the respawn lands on the next physics step
+		_hold_still()
 
 
 func _mark() -> void:
@@ -209,6 +242,30 @@ func _wrapped_label() -> Label:
 	label.custom_minimum_size.x = 700
 	label.add_theme_font_size_override("font_size", 28)
 	return label
+
+
+## A rescue: the ship breaks into pixels that stream to `at` and gather there, ready to rebuild.
+## The ship stays hidden and frozen meanwhile; it rides along with the pixels so the camera follows.
+func beam_to(at: Vector2) -> void:
+	var from := ship.global_position
+	ship.freeze = true
+	ship.hide()
+	Sfx.play("power_down")
+	var tween := create_tween().set_parallel()
+	tween.tween_property(ship, "global_position", at, TRAVEL).set_delay(SCATTER).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	for i in BITS:
+		var bit := ColorRect.new()
+		bit.size = Vector2.ONE * BIT_SIZE
+		bit.color = Ship.HULL if i % 3 else Ship.HULL_EDGE
+		bit.z_index = 20
+		var home := Vector2(randf_range(-1.0, 1.4), randf_range(-0.8, 0.8)).rotated(ship.global_rotation) * Ship.RADIUS  # its spot in the ship
+		bit.position = from + home
+		add_child(bit)
+		var burst := from + home * 2.5 + Vector2.from_angle(randf() * TAU) * randf_range(20.0, 70.0)
+		tween.tween_property(bit, "position", burst, SCATTER).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+		tween.tween_property(bit, "position", at + home, TRAVEL * randf_range(0.7, 1.0)).set_delay(SCATTER + randf() * TRAVEL * 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		tween.tween_callback(bit.queue_free).set_delay(SCATTER + TRAVEL * 1.3)
+	await tween.finished
 
 
 ## The touch target: a pulsing ring that counts a finger held on it.

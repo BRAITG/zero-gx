@@ -4,10 +4,6 @@ extends "res://scenes/tutorial.gd"
 const CLOSE_CALL := 70.0  # px above the surface where the scripted fall stops, short of the touch
 const LATE := 0.05  # s past the tipping point the turned-around ship is: it loses, but slowly
 const AROUND := Vector2(900, -1000)  # a point well above the hole to steer for after the rescue
-const BITS := 48  # pixels the ship breaks into for the rescue
-const BIT_SIZE := 4.0
-const SCATTER := 0.35  # s the pixels burst apart before they travel
-const TRAVEL := 1.2  # s for the pixels to stream back to the start
 
 @onready var _hole: GravityBody = find_children("*", "GravityBody", false, false)[0]
 
@@ -18,17 +14,11 @@ func lesson() -> void:
 	# Pause so the tipping point falls inside the half turn to face away: once turned, it's too late.
 	await until(func() -> bool: return _doomed_after(PI / Tuning.turn_rate - LATE), "Watch the black hole pull you in.")
 	ship.invulnerable = true  # the fall below must end in the rescue, never in a death
-	var velocity := ship.linear_velocity
-	ship.freeze = true
 	var falling := for_seconds(8.0)  # a backstop, should the ship ever hang at the tipping point
-	await touch_target(_away, func() -> bool:
-		if ship.freeze and held_time > 0.0:  # the first touch on the ring resumes the fall
-			ship.freeze = false
-			ship.linear_velocity = velocity
-		return not ship.freeze and (falling.call() or _distance() < _hole.radius + CLOSE_CALL),
-		"Too close! Turn your engine around: tap and hold the ring behind you!")
+	await touch_target(_away, func() -> bool: return not waiting() and (falling.call() or _distance() < _hole.radius + CLOSE_CALL),
+		"Too close! Turn your engine around: tap and hold the ring behind you!", true)
 	await say("Your engine can't win: this close to a black hole, its pull is stronger than any engine, and nothing gets out. Stay well clear of them. Hold on, we'll beam you back.")
-	await _beam_to(start)
+	await beam_to(start)
 	ship.respawn(start, Vector2.ZERO, Ship.MAX_FUEL)
 	Sfx.play("power_up")
 	for i in 2:
@@ -60,28 +50,3 @@ func _distance() -> float:
 
 func _away() -> Vector2:
 	return ship.global_position - _hole.global_position
-
-
-## The rescue: the ship breaks into pixels that stream to `at` and rebuild it there. The ship
-## stays hidden and frozen meanwhile; it rides along with the pixels so the camera follows.
-func _beam_to(at: Vector2) -> void:
-	var from := ship.global_position
-	ship.freeze = true
-	ship.hide()
-	Sfx.play("power_down")
-	var tween := create_tween().set_parallel()
-	tween.tween_property(ship, "global_position", at, TRAVEL).set_delay(SCATTER).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	for i in BITS:
-		var bit := ColorRect.new()
-		bit.size = Vector2.ONE * BIT_SIZE
-		bit.color = Ship.HULL if i % 3 else Ship.HULL_EDGE
-		bit.z_index = 20
-		var home := Vector2(randf_range(-1.0, 1.4), randf_range(-0.8, 0.8)).rotated(ship.global_rotation) * Ship.RADIUS  # its spot in the ship
-		bit.position = from + home
-		add_child(bit)
-		var burst := from + home * 2.5 + Vector2.from_angle(randf() * TAU) * randf_range(20.0, 70.0)
-		tween.tween_property(bit, "position", burst, SCATTER).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
-		tween.tween_property(bit, "position", at + home, TRAVEL * randf_range(0.7, 1.0)).set_delay(SCATTER + randf() * TRAVEL * 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		tween.tween_callback(bit.queue_free).set_delay(SCATTER + TRAVEL * 1.3)
-	await tween.finished
-

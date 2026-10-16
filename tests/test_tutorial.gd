@@ -47,6 +47,10 @@ func test_tutorial_restores_on_death() -> void:
 	lvl.hold_ring(true)
 	await frames(20)
 	lvl.ship.take_damage(Ship.MAX_HEALTH)
+	for i in 300:  # the wreck, then the beam back
+		await frames(1)
+		if lvl.retries > 0:
+			break
 	await frames(3)
 	check(lost.is_empty(), "dying in a tutorial must not end the stage")
 	check(lvl.ship.health == Ship.MAX_HEALTH and lvl.ship.visible, "the ship must come back whole")
@@ -85,3 +89,23 @@ func test_tutorials_complete() -> void:
 		check(lesson_retries == 0, "%s: the guided steps killed the ship %d times" % [id, lesson_retries])
 		check(outcome.won == true, "%s: not finished (%s, at %s, fuel %d, hull %d)" % [id, step, lvl.ship.global_position.round(), lvl.ship.fuel, lvl.ship.health])
 		lvl.free()
+
+
+## A lethal touch kills inside the physics step, where the freeze is deferred: the respawn must
+## still leave the ship free, back at the step's start.
+func test_tutorial_restores_after_lethal_touch() -> void:
+	var lvl = probe()
+	var hole: GravityBody = load("res://scenes/gravity_body.tscn").instantiate()
+	hole.preset = GravityBody.Preset.BLACK_HOLE
+	hole.position = Vector2(400, 0)
+	lvl.add_child(hole)
+	await frames(3)
+	var start: Vector2 = lvl.ship.global_position
+	for i in 400:
+		await frames(1)
+		if lvl.retries > 0:
+			break
+	await frames(10)
+	check(lvl.retries == 1, "the ship must fall in once, not %d times" % lvl.retries)
+	check(not lvl.ship.freeze and lvl.ship.visible, "the respawned ship must fly again")
+	check(lvl.ship.global_position.distance_to(start) < 150.0, "the ship must be back near the step's start, not at %s" % lvl.ship.global_position.round())

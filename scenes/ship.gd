@@ -335,6 +335,7 @@ func respawn(at: Vector2, velocity: Vector2, with_fuel: float) -> void:
 	_trail.clear_points()
 	_respawn = [at, velocity]
 	freeze = false
+	set_deferred("freeze", false)  # a death in the physics step defers its freeze; outlast it
 	show()
 
 
