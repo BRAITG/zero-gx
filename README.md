@@ -14,7 +14,7 @@ Controls: touch and hold anywhere. The ship turns toward your finger and thrusts
 2. Open `project.godot`.
 3. Press F5. The mouse stands in for a finger.
 
-Levels live in `levels/` and are edited in the Godot editor: drag a barrier's `Shape` points to reshape a wall, and drop in `scenes/gravity_body.tscn` or `scenes/asteroid.tscn` instances.
+Levels live in `levels/` as level files (see [Level files](#level-files)). Build your own in the app: **My levels** in the main menu opens the level editor (`scenes/editor.gd`). Pick a tool from the bottom palette (walls, planets, black holes, stars, asteroids, pickups, start and goal); one finger places or drags on a 10 m grid (1 m with **1 m grid** on), two fingers pan and pinch-zoom. **Select** then tap opens a thing's sheet, with sliders kept within its kind's limits; **Settings** sets the title, hint, fuel, hull and velocity arrow. **Test** flies the level: finishing it marks the level completed until its next change. Your levels are saved on the device in `user://levels/` (`scripts/my_levels.gd`); the editor's model with undo is `scripts/level_doc.gd`.
 
 ## Tests
 
@@ -34,7 +34,7 @@ Six guided stages (`tutorials/`, "Training 1–6" in the menu) come before the e
 
 ## Level files
 
-Levels and tutorials are stored as gzip-compressed JSON (`levels/*.json.gz`, `tutorials/*.json.gz`) in the format described in `docs/superpowers/specs/2026-10-16-level-format-design.md`; `scripts/level_format.gd` reads, writes, validates and builds them. Tutorials pair their file with a lesson script (`tutorials/tutorial_N.gd`). Fuel and hull are per-level values and either can be unlimited. Community levels, the in-app editor and the server will all use this format.
+Levels and tutorials are stored as gzip-compressed JSON (`levels/*.json.gz`, `tutorials/*.json.gz`) in the format described in `docs/superpowers/specs/2026-10-16-level-format-design.md`; `scripts/level_format.gd` reads, writes, validates and builds them. Tutorials pair their file with a lesson script (`tutorials/tutorial_N.gd`). Fuel and hull are per-level values and either can be unlimited. The in-app editor saves this format, and community levels and the server will use it too.
 
 ## Scoring and progress
 

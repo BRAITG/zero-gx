@@ -49,6 +49,10 @@ func _run() -> void:
 			var settings := root.get_node("Settings")
 			settings.path = "user://test_settings.cfg"  # never touch the player's real settings
 			settings.show_velocity = false
+			var my_levels = load("res://scripts/my_levels.gd")
+			my_levels.dir = "user://test_levels/"  # never touch the player's own levels
+			for id in my_levels.ids():
+				my_levels.delete(id)
 			test.world = Node2D.new()
 			root.add_child(test.world)
 			var state := {"done": false}

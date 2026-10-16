@@ -36,17 +36,25 @@ func stages() -> PackedStringArray:
 
 
 ## Start stage `id`: build it from its level file. Tutorials add their lesson script.
-func open(id: String) -> void:
-	get_tree().change_scene_to_node(build(id))
+## `testing` is the author's test flight of one of their own levels.
+func open(id: String, testing := false) -> void:
+	get_tree().change_scene_to_node(build(id, testing))
 
 
-## The scene of stage `id`, built from its level file.
-func build(id: String) -> Level:
-	var tutorial := id.begins_with("tutorial_")
-	var dir := TUTORIALS_DIR if tutorial else LEVELS_DIR
-	var script: Script = load(dir + id + ".gd") if tutorial else LevelFormat.LEVEL_SCRIPT
-	var level := LevelFormat.build(LevelFormat.read(dir + id + LevelFormat.EXTENSION), script)
+## The scene of stage `id`, built from its level file: a tutorial, a level, or the player's own.
+func build(id: String, testing := false) -> Level:
+	var data: Dictionary
+	var script: Script = LevelFormat.LEVEL_SCRIPT
+	if id.begins_with(MyLevels.PREFIX):
+		data = MyLevels.load_level(id)
+	elif id.begins_with("tutorial_"):
+		data = LevelFormat.read(TUTORIALS_DIR + id + LevelFormat.EXTENSION)
+		script = load(TUTORIALS_DIR + id + ".gd")
+	else:
+		data = LevelFormat.read(LEVELS_DIR + id + LevelFormat.EXTENSION)
+	var level := LevelFormat.build(data, script)
 	level.level_id = id
+	level.testing = testing
 	return level
 
 
