@@ -23,7 +23,7 @@ Replace the five prototype levels with ten new ones that teach the game through 
 | 2 | Drift | Inertia and fuel | 13,500 px course, and the ship starts with 20 fuel. Reaching full speed and making the bend takes about 16, so the player must let go and coast. |
 | 3 | Brake | Orange walls | Orange zigzag with three 90° corners. Fast corner hits hurt, so players learn to turn around and brake. |
 | 4 | Pull | Planet gravity | Wide straight with a planet in the lower half. Flying straight drags the ship into it; aiming high wins. |
-| 5 | Swing | Slingshot | L-shaped course with a planet at the corner, and the ship starts with 14 fuel. Coasting around the planet from about 300 px/s costs about 5; braking through the corner at that speed costs about 15. |
+| 5 | Swing | Slingshot | L-shaped course with a planet in the inside of the corner (2200, 200), and the ship starts with 14 fuel. Coasting around the planet from about 300 px/s leaves about 3 fuel; braking through the corner runs dry. |
 | 6 | Edge | Red walls | A narrow red S-bend (260 px wide) between two wide blue sections. |
 | 7 | Power | Thrust up and down pickups | Thrust-up on the first straight before an orange climb; thrust-down at the start of the climb. |
 | 8 | Rocks | Drifting asteroids | Wide corridor crossed by 30 drifting asteroids (40–120 px/s, random directions). Flying straight through costs the autopilot about a third of its hull. |
@@ -39,7 +39,7 @@ Replace the five prototype levels with ten new ones that teach the game through 
 
 ## Other changes
 
-- The level menu lays out its buttons in two columns, because ten rows do not fit the 720 px screen.
+- The menu lists the five tutorials ("Training 1–5") before the ten levels, in three columns. See `2026-10-16-tutorials-design.md`.
 - The level-design check that idles each level for 200 s runs only on levels that have both asteroids and gravity bodies.
 
 ## Out of scope

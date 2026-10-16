@@ -28,9 +28,13 @@ The suite runs headless at a fixed 60 FPS. `tests/test_levels.gd` checks the lev
 
 `.github/workflows/build.yml` runs the tests, exports the APK, and uploads it as a workflow artifact on every pull request. On `master`, and on a manual run with `publish` checked, it also publishes a prerelease. The debug keystore is the `ANDROID_DEBUG_KEYSTORE_B64` repository secret.
 
+## Tutorials
+
+Five guided stages (`tutorials/`, "Training 1–5" in the menu) come before the levels and teach one idea each: no friction, walls, fuel, orange walls, gravity. Each is a script of steps built on `scenes/tutorial.gd`. A white arrow from the ship shows its velocity in the tutorials and levels 1–4.
+
 ## Scoring and progress
 
-A won level scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Finishing a level unlocks the next one. Best points are saved in `user://progress.cfg` (`scripts/progress.gd`). The Tune panel can unlock every level for the session and reset saved progress.
+A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Finishing a stage unlocks the next one, tutorials first. Best points are saved in `user://progress.cfg` (`scripts/progress.gd`). The Tune panel can unlock every stage for the session and reset saved progress.
 
 ## Tuning
 

@@ -45,14 +45,14 @@ kind = 0
 points = PackedVector2Array(2000, 3000, 2900, 3000)
 
 [node name="Body1" parent="." instance=ExtResource("body")]
-position = Vector2(2450, 0)
+position = Vector2(2200, 200)
 preset = 0
 reach = 800.0
 
 [node name="Tour" type="Node2D" parent="."]
 
 [node name="Stop1" type="Marker2D" parent="Tour"]
-position = Vector2(2450, 0)
+position = Vector2(2200, 200)
 metadata/text = "Use this planet: fly close past it and its pull swings you around the corner for free."
 
 [node name="Stop2" type="Marker2D" parent="Tour"]
