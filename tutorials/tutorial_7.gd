@@ -5,7 +5,7 @@ extends "res://scenes/tutorial.gd"
 
 
 func lesson() -> void:
-	await say("Below you is a star. It burns anything that touches it, and its pull reaches across the whole course. Your way to the goal runs right over it.")
+	await say("Below you is a star. Fly close and its heat scorches your hull; touch it and you are gone. Its pull reaches across the whole course, and your way to the goal runs right over it.")
 	await until(for_seconds(0.7), "Feel it pull you down.")
 	await touch_target(func() -> Vector2: return ship.global_position - _star.global_position, held(0.8), "Push away from the star: tap and hold the ring.", true)
 	await say("Keep pushing against its pull the whole way across, and the green ring is past the star. Never let it drag you down.")

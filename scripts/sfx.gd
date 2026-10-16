@@ -9,9 +9,12 @@ const DRONE_SECONDS := 4.0  # every partial and the swell complete whole cycles,
 const DRONE_VOLUME_DB := -26.0
 const EFFECTS_DB := -14.0  # the samples peak near full scale; this keeps the one-shots comfortable
 const DRONE_PAD := 64  # frames rendered past the loop end
+const BURN_SECONDS := 2.0
 
 ## Looping engine for the ship's own player.
 var thrust: AudioStream
+## Looping roar of a hull scorched by a star; see _burn_loop().
+var burn: AudioStreamWAV
 var _streams := {}
 var _players: Array[AudioStreamPlayer] = []
 var _next := 0
@@ -23,6 +26,7 @@ func _ready() -> void:
 		_streams[sound] = load("res://assets/sounds/%s.ogg" % sound)
 	thrust = load("res://assets/sounds/engine.ogg").duplicate()
 	thrust.loop = true
+	burn = _burn_loop()
 	for i in VOICES:
 		var player := AudioStreamPlayer.new()
 		add_child(player)
@@ -56,6 +60,32 @@ func _drone() -> AudioStreamWAV:
 		var pad := 0.45 * sin(TAU * 55.0 * t) + 0.35 * sin(TAU * 55.25 * t) + 0.25 * sin(TAU * 82.5 * t) + 0.15 * sin(TAU * 110.0 * t)
 		var swell := 0.7 + 0.3 * sin(TAU * t / DRONE_SECONDS)
 		data.encode_s16(i * 2, int(clampf(pad * swell * 0.6, -1.0, 1.0) * 32767.0))
+	var wav := AudioStreamWAV.new()
+	wav.format = AudioStreamWAV.FORMAT_16_BITS
+	wav.mix_rate = DRONE_RATE
+	wav.data = data
+	wav.loop_mode = AudioStreamWAV.LOOP_FORWARD
+	wav.loop_end = count
+	return wav
+
+
+## Rumbling noise with crackles: low-passed white noise plus random pops that decay fast. Noise
+## has no period, so the loop seam is inaudible.
+func _burn_loop() -> AudioStreamWAV:
+	var count := int(BURN_SECONDS * DRONE_RATE)
+	var data := PackedByteArray()
+	data.resize((count + DRONE_PAD) * 2)  # read past loop_end on wrap, as with the drone
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7  # the same roar every run
+	var rumble := 0.0
+	var crackle := 0.0
+	for i in count + DRONE_PAD:
+		rumble += 0.08 * (rng.randf_range(-1.0, 1.0) - rumble)  # one-pole low-pass
+		if rng.randf() < 0.0015:
+			crackle = rng.randf_range(0.4, 0.9) * (1.0 if rng.randf() < 0.5 else -1.0)
+		crackle *= 0.93
+		var sample := 2.2 * rumble + crackle * rng.randf()
+		data.encode_s16(i * 2, int(clampf(sample, -1.0, 1.0) * 32767.0))
 	var wav := AudioStreamWAV.new()
 	wav.format = AudioStreamWAV.FORMAT_16_BITS
 	wav.mix_rate = DRONE_RATE

@@ -59,6 +59,7 @@ func _ready() -> void:
 	if reach < 0: reach = values[2]
 	if preset == Preset.STAR:
 		z_index = 1  # a star's edge burns over the walls it crosses
+		add_to_group("stars")  # ships near one take heat damage
 	if Engine.is_editor_hint():
 		return
 	physics_material_override = load("res://physics/frictionless.tres")

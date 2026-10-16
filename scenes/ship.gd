@@ -33,6 +33,10 @@ const HULL := Color("#dfe9ff")
 const HULL_EDGE := Color("#7fb4ff")
 const FLAME := Color("#ff8a3c")
 const FLAME_CORE := Color("#fff1b8")
+const HEAT_RANGE := 300.0  # px above a star's surface where its heat starts to scorch the hull
+const HEAT_DAMAGE := 40.0  # hull per second at the surface; it falls with the square of the heat
+const HEAT_RED := Color("#ff3b1f")
+const BURN_VOLUME_DB := -14.0  # the burning roar at full heat
 const VELOCITY_ARROW_SCALE := 0.25  # px of arrow per px/s
 const VELOCITY_ARROW_MAX := 200.0  # px
 
@@ -86,6 +90,10 @@ var _respawn: Variant = null  # [position, velocity] to apply on the next physic
 var _lookahead := Vector2.ZERO
 var _trauma := 0.0
 var _flash := 0.0  # 1 right after a hit, fading to 0
+## 0 out of any star's heat, 1 at a star's surface; see heat().
+var _heat := 0.0
+var _heat_phase := 0.0  # radians of the heat pulse
+var _burn: AudioStreamPlayer
 var _trail: Line2D
 var _exhaust: CPUParticles2D
 
@@ -111,6 +119,9 @@ func _ready() -> void:
 	_engine.stream = Sfx.thrust
 	_engine.volume_db = ENGINE_VOLUME_DB
 	add_child(_engine)
+	_burn = AudioStreamPlayer.new()
+	_burn.stream = Sfx.burn
+	add_child(_burn)
 	_trail = Line2D.new()
 	_trail.top_level = true  # world-space points: the trail stays where the ship has been
 	_trail.width = 4.0
@@ -188,6 +199,7 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 	if _clock_running:
 		flight_time += step
 	_tick_effect(step)
+	_scorch(step)
 	_limit_speed(state)
 	if fuel == 0.0 and not boosting:
 		_empty_time += step
@@ -299,6 +311,12 @@ func _process(delta: float) -> void:
 	_camera.offset = _lookahead + jitter
 	_trauma = maxf(_trauma - SHAKE_DECAY * delta, 0.0)
 	_flash = maxf(_flash - 4.0 * delta, 0.0)
+	_heat_phase += TAU * (1.5 + 6.0 * _heat) * delta  # pulses faster the hotter it gets
+	var scorching := _heat > 0.0 and visible
+	if scorching != _burn.playing:
+		_burn.playing = scorching
+	if scorching:
+		_burn.volume_db = BURN_VOLUME_DB + linear_to_db(_heat)
 	var burning := not freeze and firing
 	if burning != _engine.playing:
 		_engine.playing = burning
@@ -308,7 +326,7 @@ func _process(delta: float) -> void:
 		_trail.add_point(global_position)
 		if _trail.get_point_count() > TRAIL_POINTS:
 			_trail.remove_point(0)
-	if _flash > 0.0 or show_velocity:
+	if _flash > 0.0 or _heat > 0.0 or show_velocity:
 		queue_redraw()
 
 
@@ -386,6 +404,27 @@ func _explode() -> void:
 	get_tree().create_timer(sparks.lifetime + 0.5).timeout.connect(sparks.queue_free)
 
 
+## How hot the nearest star makes the ship: 0 beyond HEAT_RANGE from its surface, 1 touching it.
+func heat() -> float:
+	var hottest := 0.0
+	for star: GravityBody in get_tree().get_nodes_in_group("stars"):
+		var above := global_position.distance_to(star.global_position) - star.radius - RADIUS
+		hottest = maxf(hottest, 1.0 - above / HEAT_RANGE)
+	return clampf(hottest, 0.0, 1.0)
+
+
+## A star's heat wears the hull down, faster the closer the ship flies.
+func _scorch(step: float) -> void:
+	_heat = heat() if health > 0.0 else 0.0
+	if _heat <= 0.0 or invulnerable or hull_unlimited:
+		return
+	health -= HEAT_DAMAGE * _heat * _heat * step
+	if health <= 0.0:
+		health = 0.01  # take_damage ends the ship, with its explosion and signal
+		death_cause = "Burned up"
+		take_damage(1.0, true)
+
+
 ## The velocity arrow's length on screen: proportional to speed, capped.
 func velocity_arrow_length() -> float:
 	return minf(linear_velocity.length() * VELOCITY_ARROW_SCALE, VELOCITY_ARROW_MAX)
@@ -398,8 +437,11 @@ func _draw() -> void:
 		var reach := RADIUS * randf_range(1.7, 2.4)  # flicker
 		draw_colored_polygon(PackedVector2Array([Vector2(-RADIUS * 0.6, RADIUS * 0.45), Vector2(-reach, 0), Vector2(-RADIUS * 0.6, -RADIUS * 0.45)]), FLAME)
 		draw_colored_polygon(PackedVector2Array([Vector2(-RADIUS * 0.6, RADIUS * 0.22), Vector2(-reach * 0.7, 0), Vector2(-RADIUS * 0.6, -RADIUS * 0.22)]), FLAME_CORE)
-	draw_colored_polygon(hull.slice(0, 4), HULL.lerp(Color("#ff5a4a"), _flash))
-	draw_polyline(hull, HULL_EDGE, 2.0, true)
+	var glow := _heat * (0.6 + 0.4 * sin(_heat_phase))  # redder and stronger near a star
+	if glow > 0.0:
+		draw_circle(Vector2.ZERO, RADIUS * (1.4 + 0.8 * glow), Color(HEAT_RED, 0.45 * glow))
+	draw_colored_polygon(hull.slice(0, 4), HULL.lerp(Color("#ff5a4a"), _flash).lerp(HEAT_RED, glow))
+	draw_polyline(hull, HULL_EDGE.lerp(HEAT_RED, glow), 2.0, true)
 	draw_circle(Vector2(RADIUS * 0.35, 0), RADIUS * 0.18, Color("#3aa0ff"))
 	if show_velocity and linear_velocity.length() > 1.0:
 		# World direction: undo the ship's own rotation.
