@@ -1,9 +1,10 @@
 extends Node
-## Saved best results per level, the points formula, and level unlocking.
-## Autoloaded as `Progress`. A level id is its file stem, e.g. "level_01".
+## Saved best results per stage, the points formula, and stage unlocking.
+## Autoloaded as `Progress`. A stage id is its file stem, e.g. "tutorial_1" or "level_01".
 
 signal changed
 
+const TUTORIALS_DIR := "res://tutorials/"
 const LEVELS_DIR := "res://levels/"
 const BASE_POINTS := 1000
 const MIN_POINTS := 100
@@ -24,10 +25,24 @@ func _ready() -> void:
 	load_file()
 
 
-## Sorted ids of every level in res://levels/.
+## Sorted ids of every level in res://levels/ (tutorials not included).
 func levels() -> PackedStringArray:
+	return _stems(LEVELS_DIR)
+
+
+## Every stage in play order: the tutorials, then the levels. Unlocking follows this order.
+func stages() -> PackedStringArray:
+	return _stems(TUTORIALS_DIR) + _stems(LEVELS_DIR)
+
+
+## The scene file of a stage id.
+func path_of(id: String) -> String:
+	return (TUTORIALS_DIR if id.begins_with("tutorial_") else LEVELS_DIR) + id + ".tscn"
+
+
+func _stems(dir: String) -> PackedStringArray:
 	var ids := PackedStringArray()
-	for file in ResourceLoader.list_directory(LEVELS_DIR):
+	for file in ResourceLoader.list_directory(dir):
 		if file.ends_with(".tscn"):
 			ids.append(file.get_basename())
 	ids.sort()
@@ -59,13 +74,14 @@ func record_win(id: String, run_points: int, seconds: float) -> bool:
 
 
 func is_unlocked(id: String) -> bool:
-	var index := levels().find(id)
-	return unlock_all or index <= 0 or best_points(levels()[index - 1]) >= 0
+	var ids := stages()
+	var index := ids.find(id)
+	return unlock_all or index <= 0 or best_points(ids[index - 1]) >= 0
 
 
-## The level after `id`, or "" for the last one.
+## The stage after `id`, or "" for the last one.
 func next_level(id: String) -> String:
-	var ids := levels()
+	var ids := stages()
 	var index := ids.find(id)
 	return ids[index + 1] if index >= 0 and index + 1 < ids.size() else ""
 

@@ -268,7 +268,7 @@ static func edge_point(target: Vector2, screen: Vector2, margin: float) -> Vecto
 
 
 func _draw_arrow() -> void:
-	if not ship or not goal or not visible or _result.visible:
+	if not ship or not goal or not goal.visible or not visible or _result.visible:
 		return
 	var screen := _arrow.get_viewport_rect().size
 	var target := ship.get_viewport().canvas_transform * goal.global_position

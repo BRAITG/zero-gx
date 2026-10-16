@@ -5,13 +5,6 @@ const LEVEL_COUNT := 10
 const SHARD_CLEARANCE := 60.0  # px between a destructible planet and any barrier
 const PICKUP_CLEARANCE := 16.0  # px between a pickup's edge and any barrier
 const IDLE_FRAMES := 12000  # 200 s with no input: longer than a slow first attempt
-## Autopilot: a velocity controller toward the next Route waypoint that slows as it arrives.
-const CRUISE := 450.0  # px/s
-const ARRIVE_GAIN := 1.2  # 1/s: desired speed per px left to the waypoint
-const ARRIVE_FLOOR := 80.0  # px/s
-const WAYPOINT_REACH := 110.0  # px
-const DEAD_BAND := 40.0  # px/s of velocity error tolerated before thrusting
-const COAST_REACH := 300.0  # px: a coast waypoint only needs to be passed near
 const FLIGHT_LIMIT := 4800  # frames: 80 s
 
 
@@ -99,26 +92,12 @@ func test_levels_are_winnable() -> void:
 		# Route metadata "coast": waypoints flown to without thrust, as a player rides a slingshot.
 		var coast: PackedInt32Array = route.get_meta("coast", PackedInt32Array())
 		var cruise: float = route.get_meta("cruise", CRUISE)  # px/s; a slingshot wants its own speed
-		var next := 0
+		var pilot := {"next": 0}
 		for frame in FLIGHT_LIMIT:
 			await frames(1)
 			if outcome.won != null:
 				break
-			var at := ship.global_position
-			while next < waypoints.size() - 1 and at.distance_to(waypoints[next]) < (COAST_REACH if next in coast else WAYPOINT_REACH):
-				next += 1
-			if next in coast:
-				ship.thrusting = false
-				continue
-			var to := waypoints[next] - at
-			# Slow down only as much as the turn at this waypoint needs: none on a straight line.
-			var turn := 0.0
-			if next < waypoints.size() - 1 and not (next + 1 in coast):  # arrive at a release point at speed
-				turn = absf(to.angle_to(waypoints[next + 1] - waypoints[next]))
-			var arrive := lerpf(cruise, ARRIVE_FLOOR, clampf(turn / (PI / 2.0), 0.0, 1.0))
-			var speed := minf(cruise, ARRIVE_GAIN * to.length() + arrive)
-			var error := to.normalized() * speed - ship.linear_velocity
-			ship.thrusting = error.length() > DEAD_BAND
-			ship.aim_point = at + error.normalized() * 1000.0
+			fly(ship, waypoints, pilot, cruise, coast)
+		var next: int = pilot.next
 		check(outcome.won == true, "%s: autopilot %s at %s heading for waypoint %d/%d (hull %d, fuel %d, %s)" % [id, "lost" if outcome.won == false else "timed out", ship.global_position.round(), next, waypoints.size(), ship.health, ship.fuel, ship.death_cause])
 		root.free()

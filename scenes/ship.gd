@@ -73,6 +73,9 @@ var _touch_screen: Variant = null
 var _effect_left := 0.0  # s of power effect or boost remaining
 var _wobble_phase := 0.0
 var _spin := 0.0  # rad/s left from the last glancing hit; decays with Tuning.spin_decay
+## False while a tutorial step owns the controls: touches are ignored.
+var accept_input := true
+var _respawn: Variant = null  # [position, velocity] to apply on the next physics step
 var _lookahead := Vector2.ZERO
 var _trauma := 0.0
 var _flash := 0.0  # 1 right after a hit, fading to 0
@@ -141,6 +144,13 @@ static func _ramp(colors: Array) -> Gradient:
 
 
 func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
+	if _respawn != null:  # teleport inside the physics step, where it is safe
+		state.transform = Transform2D(state.transform.get_rotation(), _respawn[0])
+		state.linear_velocity = _respawn[1]
+		state.angular_velocity = 0.0
+		_previous_velocity = _respawn[1]
+		_respawn = null
+		return
 	var step := state.step
 	if _touch_screen != null:
 		aim_point = get_canvas_transform().affine_inverse() * (_touch_screen as Vector2)
@@ -293,6 +303,8 @@ func _process(delta: float) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not accept_input:
+		return
 	# Touches arrive as emulated left-mouse events; GUI controls consume theirs first.
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		thrusting = event.pressed
@@ -300,6 +312,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		aim_point = get_canvas_transform().affine_inverse() * event.position
 	elif event is InputEventMouseMotion and _touch_screen != null:
 		_touch_screen = event.position
+
+
+## Bring the ship back whole at `at` with `velocity` and `with_fuel` (tutorial retries).
+func respawn(at: Vector2, velocity: Vector2, with_fuel: float) -> void:
+	health = MAX_HEALTH
+	fuel = with_fuel
+	death_cause = ""
+	thrusting = false
+	_stranded_sent = false
+	_empty_time = 0.0
+	_spin = 0.0
+	_trail.clear_points()
+	_respawn = [at, velocity]
+	freeze = false
+	show()
 
 
 func take_damage(amount: float) -> void:

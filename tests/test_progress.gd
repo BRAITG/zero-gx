@@ -25,17 +25,24 @@ func test_corrupt_file_is_no_progress() -> void:
 	file.close()
 	Progress.load_file()
 	check(Progress.best_points("level_01") == -1, "a corrupt file must mean no progress")
-	check(Progress.is_unlocked("level_01") and not Progress.is_unlocked("level_02"), "only level 1 open after a corrupt file")
+	var first := Progress.stages()[0]
+	check(Progress.is_unlocked(first) and not Progress.is_unlocked(Progress.stages()[1]), "only %s open after a corrupt file" % first)
 
 
 func test_unlock_chain() -> void:
-	check(Progress.is_unlocked("level_01"), "level 1 must always be open")
-	check(not Progress.is_unlocked("level_02"), "level 2 open before level 1 was won")
-	Progress.record_win("level_01", 1000, 10.0)
-	check(Progress.is_unlocked("level_02") and not Progress.is_unlocked("level_03"), "winning level 1 must open level 2 only")
+	var stages := Progress.stages()
+	check(stages[0] == "tutorial_1" and stages[5] == "level_01", "tutorials must come first: %s" % stages)
+	check(Progress.is_unlocked("tutorial_1"), "the first tutorial must always be open")
+	check(not Progress.is_unlocked("tutorial_2"), "tutorial 2 open before tutorial 1 was won")
+	Progress.record_win("tutorial_1", 1000, 10.0)
+	check(Progress.is_unlocked("tutorial_2") and not Progress.is_unlocked("tutorial_3"), "winning tutorial 1 must open tutorial 2 only")
+	check(not Progress.is_unlocked("level_01"), "level 1 must wait for the last tutorial")
+	Progress.record_win("tutorial_5", 1000, 10.0)
+	check(Progress.is_unlocked("level_01"), "winning the last tutorial must open level 1")
+	check(Progress.next_level("tutorial_5") == "level_01", "after the last tutorial comes level 1")
 	Progress.unlock_all = true
-	check(Progress.is_unlocked(Progress.levels()[-1]), "unlock all must open the last level")
+	check(Progress.is_unlocked(stages[-1]), "unlock all must open the last stage")
 	Progress.reset()
-	check(Progress.best_points("level_01") == -1, "reset must clear bests")
+	check(Progress.best_points("tutorial_1") == -1, "reset must clear bests")
 	check(Progress.unlock_all, "reset must not touch the session unlock switch")
-	check(Progress.next_level(Progress.levels()[-1]) == "", "the last level has no next level")
+	check(Progress.next_level(stages[-1]) == "", "the last stage has no next stage")

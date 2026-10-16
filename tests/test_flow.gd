@@ -110,8 +110,8 @@ func test_clock_waits_for_first_thrust() -> void:
 func level_buttons(main: Control) -> Dictionary:
 	var by_level := {}
 	for button: Button in main.find_children("*", "Button", true, false):
-		if button.text.begins_with("Level"):
-			by_level[button.text.substr(0, 8)] = button
+		if button.text.begins_with("Level") or button.text.begins_with("Training"):
+			by_level[button.text.get_slice(" · ", 0)] = button
 	return by_level
 
 
@@ -119,13 +119,13 @@ func test_menu_locks_levels() -> void:
 	var main: Control = load("res://scenes/main.tscn").instantiate()
 	world.add_child(main)
 	var buttons := level_buttons(main)
-	check(not buttons["Level 01"].disabled and buttons["Level 02"].disabled, "fresh progress: only level 1 open")
-	check(buttons["Level 02"].text.contains("locked"), "locked level label: %s" % buttons["Level 02"].text)
-	Progress.record_win("level_01", 1780, 30.0)
+	check(not buttons["Training 1"].disabled and buttons["Training 2"].disabled, "fresh progress: only training 1 open")
+	check(buttons["Level 01"].text.contains("locked"), "locked level label: %s" % buttons["Level 01"].text)
+	Progress.record_win("tutorial_1", 1780, 30.0)
 	await frames(1)
 	buttons = level_buttons(main)
-	check(not buttons["Level 02"].disabled, "winning level 1 must open level 2 on the menu")
-	check(buttons["Level 01"].text.contains("1780"), "best points missing: %s" % buttons["Level 01"].text)
+	check(not buttons["Training 2"].disabled, "winning training 1 must open training 2 on the menu")
+	check(buttons["Training 1"].text.contains("1780"), "best points missing: %s" % buttons["Training 1"].text)
 
 
 func test_intro_card_until_first_thrust() -> void:

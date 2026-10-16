@@ -1,0 +1,52 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tutorials/tutorial_3.gd" id="lesson"]
+[ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
+[ext_resource type="PackedScene" path="res://scenes/goal.tscn" id="goal"]
+[ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
+[ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
+
+[node name="Tutorial_3" type="Node2D"]
+script = ExtResource("lesson")
+show_velocity = true
+
+[node name="Ship" parent="." instance=ExtResource("ship")]
+position = Vector2(0, 0)
+fuel = 25.0
+
+[node name="Goal" parent="." instance=ExtResource("goal")]
+position = Vector2(8700, 0)
+
+[node name="Wall1" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall1" index="0"]
+points = PackedVector2Array(-250, 250, -250, -250)
+
+[node name="Wall2" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall2" index="0"]
+points = PackedVector2Array(9000, 250, 9000, -250)
+
+[node name="Wall3" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall3" index="0"]
+points = PackedVector2Array(-250, 250, 9000, 250)
+
+[node name="Wall4" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall4" index="0"]
+points = PackedVector2Array(-250, -250, 9000, -250)
+
+[node name="Route" type="Line2D" parent="."]
+visible = false
+points = PackedVector2Array()
+metadata/cruise = 650
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]
+[editable path="Wall4"]

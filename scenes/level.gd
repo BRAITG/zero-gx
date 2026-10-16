@@ -45,10 +45,20 @@ func _ready() -> void:
 		hud.show_intro("Level %d · %s" % [number, title] if number > 0 else title, hint)
 	hud.retry_requested.connect(func(): get_tree().reload_current_scene())
 	hud.menu_requested.connect(_to_menu)
-	hud.next_requested.connect(func(): get_tree().change_scene_to_file("res://levels/%s.tscn" % Progress.next_level(level_id)))
+	hud.next_requested.connect(func(): get_tree().change_scene_to_file(Progress.path_of(Progress.next_level(level_id))))
 	goal.reached.connect(finish.bind(true))
-	ship.destroyed.connect(finish.bind(false))
-	ship.stranded.connect(func(): ship.death_cause = "Out of fuel"; finish(false))
+	ship.destroyed.connect(_ship_lost)
+	ship.stranded.connect(_ship_stranded)
+
+
+## Losing the ship ends the level; tutorials override these to retry the current step instead.
+func _ship_lost() -> void:
+	finish(false)
+
+
+func _ship_stranded() -> void:
+	ship.death_cause = "Out of fuel"
+	finish(false)
 
 
 func _end_tour() -> void:
