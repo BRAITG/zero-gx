@@ -35,16 +35,26 @@ func stages() -> PackedStringArray:
 	return _stems(TUTORIALS_DIR) + _stems(LEVELS_DIR)
 
 
-## The scene file of a stage id.
-func path_of(id: String) -> String:
-	return (TUTORIALS_DIR if id.begins_with("tutorial_") else LEVELS_DIR) + id + ".tscn"
+## Start stage `id`: build it from its level file. Tutorials add their lesson script.
+func open(id: String) -> void:
+	get_tree().change_scene_to_node(build(id))
+
+
+## The scene of stage `id`, built from its level file.
+func build(id: String) -> Level:
+	var tutorial := id.begins_with("tutorial_")
+	var dir := TUTORIALS_DIR if tutorial else LEVELS_DIR
+	var script: Script = load(dir + id + ".gd") if tutorial else LevelFormat.LEVEL_SCRIPT
+	var level := LevelFormat.build(LevelFormat.read(dir + id + LevelFormat.EXTENSION), script)
+	level.level_id = id
+	return level
 
 
 func _stems(dir: String) -> PackedStringArray:
 	var ids := PackedStringArray()
-	for file in ResourceLoader.list_directory(dir):
-		if file.ends_with(".tscn"):
-			ids.append(file.get_basename())
+	for file in DirAccess.get_files_at(dir):
+		if file.ends_with(LevelFormat.EXTENSION):
+			ids.append(file.trim_suffix(LevelFormat.EXTENSION))
 	ids.sort()
 	return ids
 

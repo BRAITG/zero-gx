@@ -40,6 +40,11 @@ var thrusting := false
 var aim_point := Vector2.ZERO
 ## Starting fuel; a level can give less than a full tank.
 @export var fuel := MAX_FUEL
+## Starting (and maximum) hull for this level.
+@export var hull := MAX_HEALTH
+## A level can make either unlimited: no fuel burn or empty-tank timeout; no damage but lethal.
+@export var fuel_unlimited := false
+@export var hull_unlimited := false
 var health := MAX_HEALTH
 ## Thrust multiplier from a thrust pickup; also scales the speed cap. 1.0 without an effect.
 var power := 1.0
@@ -85,6 +90,7 @@ var _exhaust: CPUParticles2D
 
 func _ready() -> void:
 	mass = 1.0
+	health = hull
 	can_sleep = false
 	contact_monitor = true
 	max_contacts_reported = 8
@@ -173,7 +179,8 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		state.apply_central_force(forward * Tuning.thrust)
 	elif firing:
 		state.apply_central_force(forward * Tuning.thrust * power)
-		fuel = maxf(fuel - FUEL_BURN * step, 0.0)
+		if not fuel_unlimited:
+			fuel = maxf(fuel - FUEL_BURN * step, 0.0)
 	_clock_running = _clock_running or firing
 	if _clock_running:
 		flight_time += step
@@ -262,7 +269,7 @@ func _take_impacts(state: PhysicsDirectBodyState2D) -> void:
 		var multiplier: float = collider.impact_multiplier() if collider and collider.has_method("impact_multiplier") else 0.0
 		if multiplier == Impact.LETHAL:
 			death_cause = "Lethal surface"
-			take_damage(health)
+			take_damage(health, true)
 			return
 		var speed_change := absf(velocity_change.dot(normal))
 		if speed_change >= MIN_IMPACT_SPEED:
@@ -316,7 +323,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 ## Bring the ship back whole at `at` with `velocity` and `with_fuel` (tutorial retries).
 func respawn(at: Vector2, velocity: Vector2, with_fuel: float) -> void:
-	health = MAX_HEALTH
+	health = hull
 	fuel = with_fuel
 	death_cause = ""
 	thrusting = false
@@ -329,10 +336,12 @@ func respawn(at: Vector2, velocity: Vector2, with_fuel: float) -> void:
 	show()
 
 
-func take_damage(amount: float) -> void:
+## `lethal` hits (red walls, black holes, stars) destroy the ship even with an unlimited hull.
+func take_damage(amount: float, lethal := false) -> void:
 	if health <= 0.0:
 		return
-	health = maxf(health - amount, 0.0)
+	if not hull_unlimited or lethal:
+		health = maxf(health - amount, 0.0) if not lethal else 0.0
 	var strength := clampf(amount / LOUD_IMPACT_DAMAGE, 0.2, 1.0)
 	if health > 0.0:
 		_flash = 1.0

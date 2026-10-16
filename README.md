@@ -32,6 +32,10 @@ The suite runs headless at a fixed 60 FPS. `tests/test_levels.gd` checks the lev
 
 Six guided stages (`tutorials/`, "Training 1–6" in the menu) come before the eleven levels and teach one idea each: no friction, walls, fuel, orange and red walls, gravity, black holes and stars. Each is a script of steps built on `scenes/tutorial.gd`. A white arrow from the ship shows its velocity in the tutorials; players can turn it on for levels in **Settings** (`scripts/settings.gd`, saved in `user://settings.cfg`). Distances and speeds are shown in metres: 10 px is 1 m.
 
+## Level files
+
+Levels and tutorials are stored as gzip-compressed JSON (`levels/*.json.gz`, `tutorials/*.json.gz`) in the format described in `docs/superpowers/specs/2026-10-16-level-format-design.md`; `scripts/level_format.gd` reads, writes, validates and builds them. Tutorials pair their file with a lesson script (`tutorials/tutorial_N.gd`). Fuel and hull are per-level values and either can be unlimited. Community levels, the in-app editor and the server will all use this format.
+
 ## Scoring and progress
 
 A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Finishing a stage unlocks the next one, tutorials first. Best points are saved in `user://progress.cfg` (`scripts/progress.gd`). The Tune panel can unlock every stage for the session and reset saved progress.

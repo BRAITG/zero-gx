@@ -52,7 +52,7 @@ func test_finish_is_idempotent() -> void:
 func test_main_lists_levels() -> void:
 	var main: Control = load("res://scenes/main.tscn").instantiate()
 	world.add_child(main)
-	var levels := Array(ResourceLoader.list_directory("res://levels/")).filter(func(f: String): return f.ends_with(".tscn"))
+	var levels := Progress.levels()
 	var buttons := main.find_children("*", "Button", true, false).filter(func(b: Button): return b.text.begins_with("Level"))
 	check(buttons.size() == levels.size(), "%d buttons for %d levels" % [buttons.size(), levels.size()])
 

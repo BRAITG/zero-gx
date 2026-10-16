@@ -40,6 +40,10 @@ func _ready() -> void:
 	_run.call_deferred()
 
 
+func _show_intro() -> void:
+	pass
+
+
 func _run() -> void:
 	await lesson()
 	if not _goal_shown:

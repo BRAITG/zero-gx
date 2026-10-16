@@ -1,7 +1,7 @@
 extends "res://scenes/tutorial.gd"
 ## Training 6: black holes and stars. Lethal to touch, and they pull far harder than planets.
 
-@onready var _hole: Node2D = $BlackHole
+@onready var _hole: Node2D = find_children("*", "GravityBody", false, false).filter(func(b: GravityBody) -> bool: return b.preset == GravityBody.Preset.BLACK_HOLE)[0]
 
 
 func lesson() -> void:

@@ -58,7 +58,7 @@ func test_tutorials_complete() -> void:
 	for id in Progress.stages():
 		if not id.begins_with("tutorial_"):
 			continue
-		var lvl = load(Progress.path_of(id)).instantiate()
+		var lvl = Progress.build(id)
 		world.add_child(lvl)
 		var outcome := {"won": null}
 		lvl.finished.connect(func(won: bool): outcome.won = won)

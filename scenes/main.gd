@@ -64,7 +64,7 @@ func _list_levels() -> void:
 		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
 		var button := _button("%s · %s" % [label, state])
 		button.disabled = not Progress.is_unlocked(id)
-		button.pressed.connect(func(): get_tree().change_scene_to_file(Progress.path_of(id)))
+		button.pressed.connect(func(): Progress.open(id))
 		_levels.add_child(button)
 	_column.reset_size()
 	_column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)

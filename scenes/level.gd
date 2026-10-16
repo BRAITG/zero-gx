@@ -40,12 +40,11 @@ func _ready() -> void:
 		tour = Tour.new(self)
 		tour.finished.connect(_end_tour)
 		add_child(tour)
-	elif title != "":
-		var number := level_id.get_slice("_", 1).to_int()
-		hud.show_intro("Level %d · %s" % [number, title] if number > 0 else title, hint)
-	hud.retry_requested.connect(func(): get_tree().reload_current_scene())
+	else:
+		_show_intro()
+	hud.retry_requested.connect(func(): Progress.open(level_id))
 	hud.menu_requested.connect(_to_menu)
-	hud.next_requested.connect(func(): get_tree().change_scene_to_file(Progress.path_of(Progress.next_level(level_id))))
+	hud.next_requested.connect(func(): Progress.open(Progress.next_level(level_id)))
 	goal.reached.connect(finish.bind(true))
 	ship.destroyed.connect(_ship_lost)
 	ship.stranded.connect(_ship_stranded)
@@ -59,6 +58,13 @@ func _ship_lost() -> void:
 func _ship_stranded() -> void:
 	ship.death_cause = "Out of fuel"
 	finish(false)
+
+
+## The title card; tutorials skip it, as their lesson is the introduction.
+func _show_intro() -> void:
+	if title != "":
+		var number := level_id.get_slice("_", 1).to_int()
+		hud.show_intro("Level %d · %s" % [number, title] if number > 0 else title, hint)
 
 
 func _end_tour() -> void:
@@ -91,11 +97,14 @@ func finish(won: bool) -> void:
 
 func _score() -> Dictionary:
 	var seconds := ship.flight_time
-	var points := Progress.points(ship.fuel, ship.health, seconds)
+	# An unlimited resource cannot be saved, so it scores nothing.
+	var fuel := 0.0 if ship.fuel_unlimited else ship.fuel
+	var hull := 0.0 if ship.hull_unlimited else ship.health
+	var points := Progress.points(fuel, hull, seconds)
 	return {
 		"points": points,
-		"fuel_points": roundi(ship.fuel * Tuning.points_fuel),
-		"hull_points": roundi(ship.health * Tuning.points_hull),
+		"fuel_points": roundi(fuel * Tuning.points_fuel),
+		"hull_points": roundi(hull * Tuning.points_hull),
 		"time_points": roundi(seconds * Tuning.points_per_second),
 		"new_best": level_id != "" and Progress.record_win(level_id, points, seconds),
 		"has_next": level_id != "" and Progress.next_level(level_id) != "",

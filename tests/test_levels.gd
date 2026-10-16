@@ -8,8 +8,8 @@ const IDLE_FRAMES := 12000  # 200 s with no input: longer than a slow first atte
 const FLIGHT_LIMIT := 4800  # frames: 80 s
 
 
-func load_level(id: String) -> Node:
-	return load("res://levels/%s.tscn" % id).instantiate()
+func load_level(id: String) -> Level:
+	return Progress.build(id)
 
 
 func of_type(root: Node, type: Variant) -> Array:
@@ -29,9 +29,10 @@ func test_levels_are_well_formed() -> void:
 		for rock: Asteroid in of_type(root, Asteroid):
 			if not rock.orbit_parent.is_empty():
 				check(rock.get_node_or_null(rock.orbit_parent) is GravityBody, "%s: %s orbits a non-planet" % [id, rock.name])
-		for wall: Barrier in of_type(root, Barrier):
-			# Without [editable path=...], export's binary scene conversion drops the Shape points override.
-			check(root.is_editable_instance(wall), "%s: %s needs editable children" % [id, wall.name])
+		var file := LevelFormat.read("res://levels/%s%s" % [id, LevelFormat.EXTENSION])
+		check(LevelFormat.validate(file).is_empty(), "%s: invalid level file: %s" % [id, LevelFormat.validate(file)])
+		var saved: Variant = JSON.parse_string(JSON.stringify(LevelFormat.serialize(root)))  # numbers as JSON reads them
+		check(JSON.stringify(saved) == JSON.stringify(file), "%s: building and saving the level changes it" % id)
 		var route := root.get_node_or_null("Route") as Line2D
 		check(route != null and not route.visible and route.points.size() > 0, "%s: needs a hidden Route Line2D with waypoints" % id)
 		check(root.title != "" and root.hint != "", "%s: needs a title and a hint" % id)

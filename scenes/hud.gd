@@ -69,8 +69,8 @@ func _ready() -> void:
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE, Control.PRESET_MODE_MINSIZE, 16)
 	top.add_theme_constant_override("separation", 16)
 	add_child(top)
-	_fuel = _bar(top, ScoreIcon.Kind.FUEL, Ship.MAX_FUEL)
-	_health = _bar(top, ScoreIcon.Kind.HULL, Ship.MAX_HEALTH)
+	_fuel = _bar(top, ScoreIcon.Kind.FUEL, maxf(Ship.MAX_FUEL, ship.fuel), ship.fuel_unlimited)
+	_health = _bar(top, ScoreIcon.Kind.HULL, ship.hull, ship.hull_unlimited)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -189,7 +189,7 @@ func _ready() -> void:
 func _process(_delta: float) -> void:
 	if ship:
 		_fuel.value = ship.fuel
-		var low := ship.fuel < LOW_FUEL * Ship.MAX_FUEL
+		var low := not ship.fuel_unlimited and ship.fuel < LOW_FUEL * Ship.MAX_FUEL
 		var lit := fmod(Time.get_ticks_msec() * 0.001 * BLINK_HZ, 1.0) < 0.5
 		_fuel.modulate.a = 0.25 if low and not lit else 1.0
 		_health.value = ship.health
@@ -295,8 +295,9 @@ static func speed_text(px_per_second: float) -> String:
 	return "%d m/s" % roundi(px_per_second * METRES_PER_PX)
 
 
-## A gauge: the ship-part icon (as on the score panel) and a rounded, bordered bar.
-func _bar(parent: Control, icon: ScoreIcon.Kind, maximum: float) -> ProgressBar:
+## A gauge: the ship-part icon (as on the score panel) and a rounded, bordered bar; "∞" after it
+## when the level makes that resource unlimited.
+func _bar(parent: Control, icon: ScoreIcon.Kind, maximum: float, unlimited := false) -> ProgressBar:
 	var color: Color = ScoreIcon.COLORS[icon]
 	var symbol := ScoreIcon.new(icon)
 	symbol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -320,6 +321,12 @@ func _bar(parent: Control, icon: ScoreIcon.Kind, maximum: float) -> ProgressBar:
 	fill.set_expand_margin_all(-3)  # inset, so the border frames the fill
 	bar.add_theme_stylebox_override("fill", fill)
 	parent.add_child(bar)
+	if unlimited:
+		var infinite := Label.new()
+		infinite.text = "∞"
+		infinite.add_theme_font_size_override("font_size", 30)
+		infinite.add_theme_color_override("font_color", color)
+		parent.add_child(infinite)
 	return bar
 
 
