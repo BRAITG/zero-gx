@@ -2,6 +2,8 @@ extends "res://scenes/tutorial.gd"
 ## Training 6: black holes. Lethal to touch, and close in, no engine can pull away.
 
 const CLOSE_CALL := 70.0  # px above the surface where the scripted fall stops, short of the touch
+const LATE := 0.05  # s past the tipping point the turned-around ship is: it loses, but slowly
+const AROUND := Vector2(900, -1000)  # a point well above the hole to steer for after the rescue
 const BITS := 48  # pixels the ship breaks into for the rescue
 const BIT_SIZE := 4.0
 const SCATTER := 0.35  # s the pixels burst apart before they travel
@@ -11,20 +13,45 @@ const TRAVEL := 1.2  # s for the pixels to stream back to the start
 
 
 func lesson() -> void:
-	var start := [ship.global_position, ship.linear_velocity, ship.fuel]
+	var start: Vector2 = ship.global_position  # outside the hole's reach: safe to rest at
 	await say("Black holes pull far harder than planets, and anything that touches one is gone. Don't touch anything: watch your arrow.")
-	await until(func() -> bool: return _distance() < 260.0, "Watch the black hole pull you in.")
-	ship.invulnerable = true  # the fall below is scripted: it must stop short, whatever the frame rate
-	await touch_target(_away, func() -> bool: return _distance() < _hole.radius + CLOSE_CALL, "Too close! Fire away from it: hold the ring!")
-	await say("You were about to fall in. This close to a black hole, its pull is stronger than any engine: nothing gets out. Stay well clear of them. We'll pull you back to the start.")
-	await _beam_to(start[0])
-	ship.respawn(start[0], start[1], start[2])
+	# Pause so the tipping point falls inside the half turn to face away: once turned, it's too late.
+	await until(func() -> bool: return _doomed_after(PI / Tuning.turn_rate - LATE), "Watch the black hole pull you in.")
+	ship.invulnerable = true  # the fall below must end in the rescue, never in a death
+	var velocity := ship.linear_velocity
+	ship.freeze = true
+	var falling := for_seconds(8.0)  # a backstop, should the ship ever hang at the tipping point
+	await touch_target(_away, func() -> bool:
+		if ship.freeze and held_time > 0.0:  # the first touch on the ring resumes the fall
+			ship.freeze = false
+			ship.linear_velocity = velocity
+		return not ship.freeze and (falling.call() or _distance() < _hole.radius + CLOSE_CALL),
+		"Too close! Turn your engine around: tap and hold the ring behind you!")
+	await say("Your engine can't win: this close to a black hole, its pull is stronger than any engine, and nothing gets out. Stay well clear of them. Hold on, we'll beam you back.")
+	await _beam_to(start)
+	ship.respawn(start, Vector2.ZERO, Ship.MAX_FUEL)
 	Sfx.play("power_up")
 	for i in 2:
 		await get_tree().physics_frame  # the respawn lands on the next physics step
 	ship.invulnerable = false
-	await touch_target(_away, func() -> bool: return _distance() > 900.0, "Push away from it now, while you still can. Hold the ring.")
-	await say("Out of its grip. Now go around it, wide of its pull, to the green ring.")
+	await touch_target(func() -> Vector2: return AROUND - ship.global_position, held(1.0), "Now fly up and around it, wide of its pull. Hold the ring.")
+	await say("Keep wide of the black hole and fly on to the green ring.")
+
+
+## Whether the ship, coasting `seconds` more and then thrusting straight away from the hole at
+## full power, would still fall in. A radial fall: the thrust works like a potential -a·r on top
+## of gravity's -mu/r, so the ship escapes only while its energy stays below the peak of
+## -mu/r - a·r, which sits where gravity equals thrust.
+func _doomed_after(seconds: float) -> bool:
+	var mu: float = _hole._surface_pull() * _hole.radius * _hole.radius
+	var a := Tuning.thrust
+	var r := _distance()
+	var v_in := -ship.linear_velocity.dot(_away().normalized())
+	var g := mu / (r * r)
+	r -= v_in * seconds + 0.5 * g * seconds * seconds
+	v_in += g * seconds
+	var balance := sqrt(mu / a)  # where gravity equals thrust
+	return r <= balance or 0.5 * v_in * v_in - mu / r - a * r >= -2.0 * sqrt(mu * a)
 
 
 func _distance() -> float:
@@ -57,3 +84,4 @@ func _beam_to(at: Vector2) -> void:
 		tween.tween_property(bit, "position", at + home, TRAVEL * randf_range(0.7, 1.0)).set_delay(SCATTER + randf() * TRAVEL * 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 		tween.tween_callback(bit.queue_free).set_delay(SCATTER + TRAVEL * 1.3)
 	await tween.finished
+
