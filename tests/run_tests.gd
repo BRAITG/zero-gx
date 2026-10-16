@@ -46,6 +46,9 @@ func _run() -> void:
 			progress.unlock_all = false
 			progress.toured.clear()
 			progress.reset()
+			var settings := root.get_node("Settings")
+			settings.path = "user://test_settings.cfg"  # never touch the player's real settings
+			settings.show_velocity = false
 			test.world = Node2D.new()
 			root.add_child(test.world)
 			var state := {"done": false}

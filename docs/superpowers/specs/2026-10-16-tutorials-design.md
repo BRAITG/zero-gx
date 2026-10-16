@@ -22,7 +22,7 @@ She also skips text. The developer agreed that a real tutorial is needed, and as
 
 | Topic | Decision |
 |---|---|
-| Structure | Six guided **tutorial stages** before the levels. Levels 1–4 stay as harder, unguided versions of the same mechanics and keep the velocity arrow. |
+| Structure | Six guided **tutorial stages** before the levels. Levels 1–4 stay as harder, unguided versions of the same mechanics. |
 | Tutorials | T1 no friction, T2 walls, T3 fuel, T4 orange and red walls with fuel, T5 gravity, T6 black holes and stars |
 | Step system | Each tutorial is a script of awaited steps (message, touch the target, wait for a condition) running on a normal, unpaused level. |
 | Camera | Unchanged: the level tour and the goal arrow are enough. |
@@ -53,7 +53,7 @@ She also skips text. The developer agreed that a real tutorial is needed, and as
 ## Velocity vector
 
 - Drawn from the ship's centre along its velocity: 1 px per 4 px/s, up to 200 px. Translucent white, with an arrowhead.
-- On when the level's `show_velocity` export is true: all tutorials and levels 1–4.
+- Always on in tutorials (their `show_velocity` export). In levels it is off unless the player turns it on in Settings.
 
 ## Progression and menu
 

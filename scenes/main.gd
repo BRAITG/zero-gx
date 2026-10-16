@@ -31,11 +31,28 @@ func _ready() -> void:
 	_levels.add_theme_constant_override("h_separation", 12)
 	_levels.add_theme_constant_override("v_separation", 12)
 	_column.add_child(_levels)
-	var tune := _button("Tune")
-	tune.pressed.connect(func(): TuningPanel.open(self))
-	_column.add_child(tune)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 12)
+	_column.add_child(row)
+	for entry in [["Settings", _open_settings], ["Credits", func(): Credits.open(self)], ["Tune", func(): TuningPanel.open(self)]]:
+		var button := _button(entry[0])
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(entry[1])
+		row.add_child(button)
 	Progress.changed.connect(_list_levels)
 	_list_levels()
+
+
+func _open_settings() -> void:
+	var o := Overlay.open(self, "Settings")
+	var arrow := CheckButton.new()
+	arrow.text = "Show the velocity arrow in levels"
+	arrow.add_theme_font_size_override("font_size", 26)
+	arrow.button_pressed = Settings.show_velocity
+	arrow.toggled.connect(func(on: bool): Settings.show_velocity = on)
+	arrow.toggled.connect(func(_on: bool): Sfx.play("tap"))
+	o.body.add_child(arrow)
+	o.paragraph("The arrow points where your ship is going; its length shows how fast. The training stages always show it.", 20, Style.INK_DIM)
 
 
 func _list_levels() -> void:

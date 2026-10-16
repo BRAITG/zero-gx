@@ -11,6 +11,7 @@ const INTRO_WIDTH := 860.0  # px; the hint wraps inside this
 const LOW_FUEL := 0.2  # fraction of a full tank below which the fuel bar blinks
 const BLINK_HZ := 2.0
 const WARNING := Color("#ff5a4a")
+const METRES_PER_PX := 0.1
 const ARROW_MARGIN := 48.0  # px from the screen edge
 const GOAL_GREEN := Color(0.4, 1.0, 0.6)
 
@@ -68,8 +69,8 @@ func _ready() -> void:
 	top.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE, Control.PRESET_MODE_MINSIZE, 16)
 	top.add_theme_constant_override("separation", 16)
 	add_child(top)
-	_fuel = _bar(top, "Fuel", Color("#ffcf4a"), Ship.MAX_FUEL)
-	_health = _bar(top, "Hull", Color("#5be37d"), Ship.MAX_HEALTH)
+	_fuel = _bar(top, ScoreIcon.Kind.FUEL, Ship.MAX_FUEL)
+	_health = _bar(top, ScoreIcon.Kind.HULL, Ship.MAX_HEALTH)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -194,7 +195,7 @@ func _process(_delta: float) -> void:
 		_health.value = ship.health
 		_effect.text = ship.effect_text()
 		_speed.visible = Tuning.show_overlays
-		_speed.text = "%d px/s" % roundi(ship.linear_velocity.length())  # world frame: relative to the background
+		_speed.text = speed_text(ship.linear_velocity.length())  # world frame: relative to the background
 		var left := ship.empty_seconds_left()
 		_show_countdown(left)
 		_arrow.queue_redraw()
@@ -280,23 +281,43 @@ func _draw_arrow() -> void:
 	_arrow.draw_set_transform(at, angle)
 	_arrow.draw_colored_polygon(tip, GOAL_GREEN)
 	_arrow.draw_set_transform(Vector2.ZERO)
-	var metres := ship.global_position.distance_to(goal.global_position)
-	var text := "%.1fk" % (metres / 1000.0) if metres >= 1000.0 else str(roundi(metres))
-	_arrow.draw_string(_arrow.get_theme_default_font(), at - Vector2.from_angle(angle) * 46.0 - Vector2(30, -9), text, HORIZONTAL_ALIGNMENT_CENTER, 60, 24, GOAL_GREEN)
+	var text := distance_text(ship.global_position.distance_to(goal.global_position))
+	_arrow.draw_string(_arrow.get_theme_default_font(), at - Vector2.from_angle(angle) * 56.0 - Vector2(50, -9), text, HORIZONTAL_ALIGNMENT_CENTER, 100, 24, GOAL_GREEN)
 
 
-func _bar(parent: Control, title: String, color: Color, maximum: float) -> ProgressBar:
-	var label := Label.new()
-	label.text = title
-	parent.add_child(label)
+## The game's distance unit: 10 px per metre, so the 32 px ship is about 3 m long.
+static func distance_text(px: float) -> String:
+	var metres := px * METRES_PER_PX
+	return "%.1f km" % (metres / 1000.0) if metres >= 1000.0 else "%d m" % roundi(metres)
+
+
+static func speed_text(px_per_second: float) -> String:
+	return "%d m/s" % roundi(px_per_second * METRES_PER_PX)
+
+
+## A gauge: the ship-part icon (as on the score panel) and a rounded, bordered bar.
+func _bar(parent: Control, icon: ScoreIcon.Kind, maximum: float) -> ProgressBar:
+	var color: Color = ScoreIcon.COLORS[icon]
+	var symbol := ScoreIcon.new(icon)
+	symbol.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	parent.add_child(symbol)
 	var bar := ProgressBar.new()
 	bar.max_value = maximum
 	bar.value = maximum
 	bar.show_percentage = false
-	bar.custom_minimum_size = Vector2(220, 24)
+	bar.custom_minimum_size = Vector2(220, 22)
+	bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var back := StyleBoxFlat.new()
+	back.bg_color = Color(0.04, 0.06, 0.12, 0.85)
+	back.border_color = Color(color, 0.7)
+	back.set_border_width_all(2)
+	back.set_corner_radius_all(11)
+	bar.add_theme_stylebox_override("background", back)
 	var fill := StyleBoxFlat.new()
 	fill.bg_color = color
+	fill.set_corner_radius_all(11)
+	fill.set_expand_margin_all(-3)  # inset, so the border frames the fill
 	bar.add_theme_stylebox_override("fill", fill)
 	parent.add_child(bar)
 	return bar

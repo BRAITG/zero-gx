@@ -12,7 +12,7 @@ var hud: Hud
 ## Shown on the intro card until the first thrust: what this level teaches, in a few words.
 @export var title := ""
 @export var hint := ""
-## Draw the ship's velocity arrow (the first levels, while it is still new).
+## Always draw the ship's velocity arrow (tutorials). Levels follow the player's setting.
 @export var show_velocity := false
 ## Progress key; defaults to the scene file's stem. Empty (a level built in code) saves nothing.
 var level_id := ""
@@ -31,7 +31,7 @@ func _ready() -> void:
 	add_child(Starfield.new())
 	hud = Hud.new()
 	hud.ship = ship
-	ship.show_velocity = show_velocity
+	ship.show_velocity = show_velocity or Settings.show_velocity
 	hud.goal = goal
 	add_child(hud)
 	if Tuning.tours and has_node("Tour") and Progress.best_points(level_id) < 0 and not Progress.toured.has(level_id):

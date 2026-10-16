@@ -196,3 +196,30 @@ func test_goal_arrow_edge_point() -> void:
 	check(p.is_equal_approx(Vector2(1240, 360)), "goal far right: %s" % p)
 	p = Hud.edge_point(Vector2(640, -9000), size, 40.0)
 	check(p.is_equal_approx(Vector2(640, 40)), "goal far up: %s" % p)
+
+
+func test_distance_and_speed_units() -> void:
+	check(Hud.distance_text(4000) == "400 m", "4000 px: %s" % Hud.distance_text(4000))
+	check(Hud.distance_text(12000) == "1.2 km", "12000 px: %s" % Hud.distance_text(12000))
+	check(Hud.speed_text(800) == "80 m/s", "800 px/s: %s" % Hud.speed_text(800))
+
+
+func test_credits_carry_the_licenses() -> void:
+	var holder := Node.new()
+	world.add_child(holder)
+	var o := Credits.open(holder)
+	var text := ""
+	for label: Label in o.body.get_children():
+		text += label.text + "\n"
+	check(text.contains("GNU AFFERO GENERAL PUBLIC LICENSE"), "credits must carry the AGPL text")
+	check(text.contains("SIL OPEN FONT LICENSE"), "credits must carry the font license text")
+	check(text.contains(Engine.get_license_text().substr(0, 40)), "credits must carry Godot's license")
+
+
+func test_velocity_arrow_setting() -> void:
+	var lvl := level(Vector2(3000, 0))
+	check(not lvl.ship.show_velocity, "levels hide the velocity arrow by default")
+	lvl.free()
+	Settings.show_velocity = true
+	lvl = level(Vector2(3000, 0))
+	check(lvl.ship.show_velocity, "the setting must turn the arrow on in levels")
