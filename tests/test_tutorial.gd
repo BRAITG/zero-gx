@@ -68,7 +68,8 @@ func test_tutorials_complete() -> void:
 			waypoints.append(route.position + point)
 		waypoints.append(lvl.goal.position)
 		var pilot := {"next": 0}
-		var step := "start"
+		var step := "lesson"
+		var lesson_retries := -1
 		for frame in 4800:
 			await frames(1)
 			if outcome.won != null:
@@ -77,7 +78,10 @@ func test_tutorials_complete() -> void:
 				lvl.press_ok()
 			lvl.hold_ring(lvl.ring_active())
 			if lvl.goal_revealed():
+				if lesson_retries < 0:
+					lesson_retries = lvl.retries
 				step = "flight"
 				fly(lvl.ship, waypoints, pilot, route.get_meta("cruise", CRUISE))
+		check(lesson_retries == 0, "%s: the guided steps killed the ship %d times" % [id, lesson_retries])
 		check(outcome.won == true, "%s: not finished (%s, at %s, fuel %d, hull %d)" % [id, step, lvl.ship.global_position.round(), lvl.ship.fuel, lvl.ship.health])
 		lvl.free()

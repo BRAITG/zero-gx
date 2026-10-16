@@ -11,6 +11,8 @@ const RING_DISTANCE := 300.0  # px on screen from the ship
 const RING_RADIUS := 56.0
 const SCREEN_MARGIN := 90.0
 
+## How many times the ship has been put back after dying or running dry.
+var retries := 0
 ## Seconds the current ring has been held; see `held()`.
 var held_time := 0.0
 var _caption: PanelContainer
@@ -153,6 +155,7 @@ func _retry() -> void:
 	await get_tree().physics_frame  # after the death sequence has hidden and frozen the ship
 	ship.respawn(_checkpoint[0], _checkpoint[1], _checkpoint[2])
 	held_time = 0.0
+	retries += 1
 
 
 func _mark() -> void:

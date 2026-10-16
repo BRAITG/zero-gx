@@ -41,6 +41,18 @@ kind = 1
 [node name="Shape" parent="Wall4" index="0"]
 points = PackedVector2Array(-250, -225, 1075, -225, 1075, -1525, 2600, -1525)
 
+[node name="Wall5" parent="." instance=ExtResource("barrier")]
+kind = 2
+
+[node name="Shape" parent="Wall5" index="0"]
+points = PackedVector2Array(1075, -650, 1175, -650)
+
+[node name="Wall6" parent="." instance=ExtResource("barrier")]
+kind = 2
+
+[node name="Shape" parent="Wall6" index="0"]
+points = PackedVector2Array(1425, -650, 1525, -650)
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(1300, 0, 1300, -1300)
@@ -50,3 +62,5 @@ metadata/cruise = 300
 [editable path="Wall2"]
 [editable path="Wall3"]
 [editable path="Wall4"]
+[editable path="Wall5"]
+[editable path="Wall6"]

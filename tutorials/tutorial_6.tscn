@@ -1,0 +1,39 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://tutorials/tutorial_6.gd" id="lesson"]
+[ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
+[ext_resource type="PackedScene" path="res://scenes/goal.tscn" id="goal"]
+[ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
+[ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
+
+[node name="Tutorial_6" type="Node2D"]
+script = ExtResource("lesson")
+show_velocity = true
+
+[node name="Ship" parent="." instance=ExtResource("ship")]
+position = Vector2(300, 0)
+linear_velocity = Vector2(250, 0)
+
+[node name="Goal" parent="." instance=ExtResource("goal")]
+position = Vector2(2800, -1400)
+
+[node name="Wall1" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall1" index="0"]
+points = PackedVector2Array(-600, -2200, 3200, -2200, 3200, 1500, -600, 1500, -600, -2200)
+
+[node name="BlackHole" parent="." instance=ExtResource("body")]
+position = Vector2(900, 600)
+preset = 1
+
+[node name="Star" parent="." instance=ExtResource("body")]
+position = Vector2(5000, -1400)
+preset = 2
+
+[node name="Route" type="Line2D" parent="."]
+visible = false
+points = PackedVector2Array()
+metadata/cruise = 350.0
+
+[editable path="Wall1"]
