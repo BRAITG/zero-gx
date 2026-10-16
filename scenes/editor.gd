@@ -6,6 +6,7 @@ extends Node2D
 const PREVIEW := preload("res://scenes/level_preview.gd")
 const TOOLS := ["select", "wall", "planet", "black_hole", "star", "asteroid", "pickup", "start", "goal", "erase"]
 const TOOL_LABELS := {"select": "Select", "wall": "Wall", "planet": "Planet", "black_hole": "Black hole", "star": "Star", "asteroid": "Asteroid", "pickup": "Pickup", "start": "Start", "goal": "Goal", "erase": "Erase"}
+const PLACING := ["planet", "black_hole", "star", "asteroid", "pickup"]  # tools that add a thing
 const ZOOM_RANGE := Vector2(0.1, 1.5)
 const DRIFT_PER_PX := 1.0  # px/s of asteroid drift per px dragged
 const MAX_DRIFT := 400.0  # px/s
@@ -30,6 +31,7 @@ var _pinch_start := {}
 var _pressed_at := Vector2.ZERO  # screen
 var _dragging := false
 var _held: Dictionary = {}  # the ref a select drag is moving, or the asteroid being aimed
+var _moving := false  # a placing tool pressed on an existing thing, which it now drags
 
 
 ## The editor for the player's level `id` (a new blank level if there is none yet).
@@ -76,6 +78,14 @@ func select_tool(name: String) -> void:
 func press(world: Vector2) -> void:
 	var at := LevelDoc.snap(world, fine_snap)
 	_held = {}
+	_moving = false
+	if tool in PLACING and not doc.hit(world).is_empty():
+		# Something is already here: grab it instead of stacking another on top.
+		_held = doc.hit(world)
+		_moving = true
+		doc.begin_move()
+		_refresh()
+		return
 	match tool:
 		"select":
 			_held = doc.hit(world)
@@ -96,7 +106,7 @@ func press(world: Vector2) -> void:
 func drag(world: Vector2) -> void:
 	if _held.is_empty():
 		return
-	if tool == "select":
+	if tool == "select" or _moving:
 		doc.move(_held, LevelDoc.snap(world, fine_snap))
 	elif tool == "asteroid" and not doc.data.asteroids[_held.index].has("orbit"):
 		var rock: Dictionary = doc.data.asteroids[_held.index]
