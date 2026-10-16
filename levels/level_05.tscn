@@ -49,6 +49,16 @@ position = Vector2(2450, 0)
 preset = 0
 reach = 800.0
 
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(2450, 0)
+metadata/text = "Use this planet: fly close past it and its pull swings you around the corner for free."
+
+[node name="Stop2" type="Marker2D" parent="Tour"]
+position = Vector2(0, 0)
+metadata/text = "Your tank is too small to brake and turn on your own."
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(700, -200, 1500, -200, 2450, 1000, 2450, 1800)

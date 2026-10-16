@@ -11,8 +11,11 @@ const INTRO_WIDTH := 860.0  # px; the hint wraps inside this
 const LOW_FUEL := 0.2  # fraction of a full tank below which the fuel bar blinks
 const BLINK_HZ := 2.0
 const WARNING := Color("#ff5a4a")
+const ARROW_MARGIN := 48.0  # px from the screen edge
+const GOAL_GREEN := Color(0.4, 1.0, 0.6)
 
 var ship: Ship
+var goal: Node2D
 var restart_button: Button
 var _fuel: ProgressBar
 var _health: ProgressBar
@@ -31,6 +34,7 @@ var _best: Label
 var _parts := {}  # ScoreIcon.Kind -> value Label
 var _next: Button
 var _time: Label
+var _arrow: Control
 var _intro: PanelContainer
 var _intro_title: Label
 var _intro_hint: Label
@@ -167,6 +171,11 @@ func _ready() -> void:
 	_next = _button(column, "Next", next_requested.emit)
 	_button(column, "Retry", retry_requested.emit)
 	_button(column, "Menu", menu_requested.emit)
+	_arrow = Control.new()
+	_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_arrow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_arrow.draw.connect(_draw_arrow)
+	add_child(_arrow)
 	_time = Label.new()
 	_time.add_theme_font_size_override("font_size", 28)
 	_time.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -188,6 +197,7 @@ func _process(_delta: float) -> void:
 		_speed.text = "%d px/s" % roundi(ship.linear_velocity.length())  # world frame: relative to the background
 		var left := ship.empty_seconds_left()
 		_show_countdown(left)
+		_arrow.queue_redraw()
 		_time.text = "%.1f s" % ship.flight_time
 		if _intro.visible and ship.flight_time > 0.0 and not _intro_fading:
 			_intro_fading = true
@@ -245,6 +255,34 @@ func result_text() -> String:
 	else:
 		lines.append(_detail.text)
 	return "\n".join(lines)
+
+
+## Where the off-screen goal arrow sits: `target` (screen px) pulled in to the screen edge,
+## `margin` px inside it, along the line from the screen centre.
+static func edge_point(target: Vector2, screen: Vector2, margin: float) -> Vector2:
+	var centre := screen / 2.0
+	var direction := target - centre
+	var half := centre - Vector2(margin, margin)
+	var scale := minf(half.x / maxf(absf(direction.x), 0.001), half.y / maxf(absf(direction.y), 0.001))
+	return centre + direction * minf(scale, 1.0)
+
+
+func _draw_arrow() -> void:
+	if not ship or not goal or not visible or _result.visible:
+		return
+	var screen := _arrow.get_viewport_rect().size
+	var target := ship.get_viewport().canvas_transform * goal.global_position
+	if Rect2(Vector2.ZERO, screen).grow(-ARROW_MARGIN).has_point(target):
+		return  # the goal is on screen
+	var at := edge_point(target, screen, ARROW_MARGIN)
+	var angle := (target - screen / 2.0).angle()
+	var tip := PackedVector2Array([Vector2(22, 0), Vector2(-12, 14), Vector2(-6, 0), Vector2(-12, -14)])
+	_arrow.draw_set_transform(at, angle)
+	_arrow.draw_colored_polygon(tip, GOAL_GREEN)
+	_arrow.draw_set_transform(Vector2.ZERO)
+	var metres := ship.global_position.distance_to(goal.global_position)
+	var text := "%.1fk" % (metres / 1000.0) if metres >= 1000.0 else str(roundi(metres))
+	_arrow.draw_string(_arrow.get_theme_default_font(), at - Vector2.from_angle(angle) * 46.0 - Vector2(30, -9), text, HORIZONTAL_ALIGNMENT_CENTER, 60, 24, GOAL_GREEN)
 
 
 func _bar(parent: Control, title: String, color: Color, maximum: float) -> ProgressBar:

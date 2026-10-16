@@ -55,6 +55,12 @@ kind = 0
 [node name="Shape" parent="Wall6" index="0"]
 points = PackedVector2Array(3146, -122, 3100, -300, 4700, -300, 4700, 300, 3100, 300, 3054, 122)
 
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(2300, -300)
+metadata/text = "Red walls destroy your ship on contact. Slow down before the narrows."
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(1300, 0, 1500, 0, 2300, -300, 3100, 0, 3300, 0)

@@ -115,6 +115,16 @@ linear_velocity = Vector2(25, 44)
 position = Vector2(1148, -702)
 linear_velocity = Vector2(-3, 80)
 
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(2500, -650)
+metadata/text = "A black hole: it pulls far harder than a planet. Get too close and nothing gets you out."
+
+[node name="Stop2" type="Marker2D" parent="Tour"]
+position = Vector2(2500, 150)
+metadata/text = "The orange spike forces you to pass it. Keep your distance and keep moving."
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(1800, 100, 2500, -170, 3200, 100)

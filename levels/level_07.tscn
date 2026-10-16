@@ -75,6 +75,16 @@ kind = 0
 position = Vector2(3400, -300)
 kind = 1
 
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(700, 0)
+metadata/text = "Green pickups make your engine stronger for a while."
+
+[node name="Stop2" type="Marker2D" parent="Tour"]
+position = Vector2(3400, -300)
+metadata/text = "Violet pickups make it weaker. Mind your speed going into the climb."
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(3400, 0, 3400, -2400)

@@ -14,6 +14,8 @@ var unlock_all := false:
 	set(value):
 		unlock_all = value
 		changed.emit()
+## Levels whose tour was shown this session, so a restart after a crash does not repeat it.
+var toured := {}
 
 var _file := ConfigFile.new()
 

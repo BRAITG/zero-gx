@@ -144,3 +144,53 @@ func test_intro_card_until_first_thrust() -> void:
 	lvl.ship.thrusting = true
 	await frames(90)
 	check(lvl.hud.intro_text() == "", "intro card still shown after the first thrust (clock %f)" % lvl.ship.flight_time)
+
+
+## A level with a goal and one tour stop, tours switched on.
+func toured_level() -> Level:
+	Tuning.set_value("tours", true)
+	var root := Node2D.new()
+	root.set_script(load("res://scenes/level.gd"))
+	root.level_id = "level_01"
+	root.add_child(load(SHIP).instantiate())
+	var goal: Node2D = load(GOAL).instantiate()
+	goal.position = Vector2(3000, 0)
+	root.add_child(goal)
+	var tour := Node2D.new()
+	tour.name = "Tour"
+	var stop := Marker2D.new()
+	stop.position = Vector2(1500, 0)
+	stop.set_meta("text", "A wall.")
+	tour.add_child(stop)
+	root.add_child(tour)
+	world.add_child(root)
+	return root
+
+
+func test_tour_walks_stops_then_plays() -> void:
+	var lvl := toured_level()
+	await frames(2)
+	check(lvl.tour != null and tree.paused, "an unwon level must start with a paused tour")
+	check(lvl.tour.caption().contains("green ring"), "first stop is the goal: '%s'" % lvl.tour.caption())
+	lvl.tour.next()
+	check(lvl.tour.caption() == "A wall.", "second stop: '%s'" % lvl.tour.caption())
+	lvl.tour.next()  # back at the ship: Go!
+	lvl.tour.next()
+	await frames(2)
+	check(not tree.paused and lvl.tour == null, "Go! must end the tour and unpause")
+	check(Progress.toured.has("level_01"), "tour must be remembered for the session")
+
+
+func test_no_tour_once_won() -> void:
+	Progress.record_win("level_01", 1000, 10.0)
+	var lvl := toured_level()
+	await frames(2)
+	check(lvl.tour == null and not tree.paused, "a won level must not tour")
+
+
+func test_goal_arrow_edge_point() -> void:
+	var size := Vector2(1280, 720)
+	var p := Hud.edge_point(Vector2(5000, 360), size, 40.0)
+	check(p.is_equal_approx(Vector2(1240, 360)), "goal far right: %s" % p)
+	p = Hud.edge_point(Vector2(640, -9000), size, 40.0)
+	check(p.is_equal_approx(Vector2(640, 40)), "goal far up: %s" % p)

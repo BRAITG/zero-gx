@@ -164,6 +164,16 @@ kind = 2
 position = Vector2(3800, -3000)
 kind = 2
 
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(500, 0)
+metadata/text = "Orange pickups fire your engine at full power for a moment, free, even on an empty tank. It barely steers."
+
+[node name="Stop2" type="Marker2D" parent="Tour"]
+position = Vector2(3800, -3000)
+metadata/text = "Grab a boost when your tank runs low. Aim before you touch it."
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(1600, -200, 3000, 0, 3000, -1400, 3000, -1600, 3000, -3000, 4300, -2850, 5000, -2800, 5700, -2850)

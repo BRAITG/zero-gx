@@ -59,6 +59,12 @@ func _ready() -> void:
 	_overlays.button_pressed = Tuning.show_overlays
 	_overlays.toggled.connect(func(on: bool): Tuning.set_value("show_overlays", on))
 	buttons.add_child(_overlays)
+	var tours := CheckButton.new()
+	tours.text = "Level tours"
+	tours.add_theme_font_size_override("font_size", 24)
+	tours.button_pressed = Tuning.tours
+	tours.toggled.connect(func(on: bool): Tuning.set_value("tours", on))
+	buttons.add_child(tours)
 	var progress_row := HBoxContainer.new()
 	progress_row.add_theme_constant_override("separation", 16)
 	rows.add_child(progress_row)

@@ -48,6 +48,16 @@ position = Vector2(2000, 150)
 preset = 0
 reach = 900.0
 
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(2000, 150)
+metadata/text = "Planets pull you in, harder the closer you get. Crashing into one hurts."
+
+[node name="Stop2" type="Marker2D" parent="Tour"]
+position = Vector2(0, 0)
+metadata/text = "Aim wide of the planet: its pull will bend your path toward it."
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(1200, -250, 2000, -250, 2800, -150)

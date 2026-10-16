@@ -43,6 +43,16 @@ kind = 1
 [node name="Shape" parent="Wall4" index="0"]
 points = PackedVector2Array(-250, -225, 1175, -225, 1175, -1625, 3025, -1625, 3025, -225, 4200, -225)
 
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(1400, 0)
+metadata/text = "Orange walls hurt. The faster you hit one, the more damage you take."
+
+[node name="Stop2" type="Marker2D" parent="Tour"]
+position = Vector2(0, 0)
+metadata/text = "Nothing slows you down for you. To brake, turn around and thrust the other way."
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(1400, 0, 1400, -1400, 2800, -1400, 2800, 0)

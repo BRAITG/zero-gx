@@ -163,6 +163,12 @@ linear_velocity = Vector2(18, 117)
 position = Vector2(1442, 166)
 linear_velocity = Vector2(-15, -51)
 
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(1600, 0)
+metadata/text = "Asteroids drift and bounce off the walls. Hitting one hurts, so pick your gap."
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(4950, 0)

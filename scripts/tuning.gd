@@ -24,6 +24,7 @@ const DEFAULTS := {
 	"points_hull": 3.0,  # points per point of hull left
 	"points_per_second": 2.0,  # points lost per second of flight
 	"show_overlays": true,  # gravity field discs and speedometer
+	"tours": true,  # walk through each new level's elements before the first flight
 }
 ## [min, max, step] per setting, for the panel's sliders.
 const RANGES := {
@@ -66,6 +67,7 @@ var points_fuel: float
 var points_hull: float
 var points_per_second: float
 var show_overlays: bool
+var tours: bool
 
 
 func _init() -> void:

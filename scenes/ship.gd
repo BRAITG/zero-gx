@@ -119,6 +119,11 @@ func _ready() -> void:
 	add_child(_exhaust)
 
 
+## Make the ship's follow camera the active one again (after a level tour).
+func use_camera() -> void:
+	_camera.make_current()
+
+
 ## Camera shake, 0..1; hits add up.
 func shake(amount: float) -> void:
 	_trauma = minf(_trauma + amount, 1.0)

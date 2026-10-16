@@ -14,6 +14,8 @@ var hud: Hud
 @export var hint := ""
 ## Progress key; defaults to the scene file's stem. Empty (a level built in code) saves nothing.
 var level_id := ""
+## The running first-flight tour, or null.
+var tour: Tour
 var _done := false
 
 
@@ -27,8 +29,15 @@ func _ready() -> void:
 	add_child(Starfield.new())
 	hud = Hud.new()
 	hud.ship = ship
+	hud.goal = goal
 	add_child(hud)
-	if title != "":
+	if Tuning.tours and has_node("Tour") and Progress.best_points(level_id) < 0 and not Progress.toured.has(level_id):
+		Progress.toured[level_id] = true
+		hud.visible = false
+		tour = Tour.new(self)
+		tour.finished.connect(_end_tour)
+		add_child(tour)
+	elif title != "":
 		var number := level_id.get_slice("_", 1).to_int()
 		hud.show_intro("Level %d · %s" % [number, title] if number > 0 else title, hint)
 	hud.retry_requested.connect(func(): get_tree().reload_current_scene())
@@ -37,6 +46,12 @@ func _ready() -> void:
 	goal.reached.connect(finish.bind(true))
 	ship.destroyed.connect(finish.bind(false))
 	ship.stranded.connect(func(): ship.death_cause = "Out of fuel"; finish(false))
+
+
+func _end_tour() -> void:
+	tour = null
+	hud.visible = true
+	ship.use_camera()
 
 
 func _notification(what: int) -> void:

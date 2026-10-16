@@ -43,6 +43,16 @@ kind = 0
 [node name="Shape" parent="Wall4" index="0"]
 points = PackedVector2Array(-250, -250, 1527, -250, 2566, -911)
 
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(800, -250)
+metadata/text = "Blue walls are safe. You just bounce off them."
+
+[node name="Stop2" type="Marker2D" parent="Tour"]
+position = Vector2(0, 0)
+metadata/text = "Touch and hold anywhere: the ship turns toward your finger and fires its engine. Let go to coast."
+
 [node name="Route" type="Line2D" parent="."]
 visible = false
 points = PackedVector2Array(1550, 0)

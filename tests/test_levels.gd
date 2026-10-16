@@ -42,6 +42,10 @@ func test_levels_are_well_formed() -> void:
 		var route := root.get_node_or_null("Route") as Line2D
 		check(route != null and not route.visible and route.points.size() > 0, "%s: needs a hidden Route Line2D with waypoints" % id)
 		check(root.title != "" and root.hint != "", "%s: needs a title and a hint" % id)
+		var tour := root.get_node_or_null("Tour")
+		check(tour != null and tour.get_child_count() > 0, "%s: needs a Tour with at least one stop" % id)
+		for stop in tour.get_children() if tour else []:
+			check(stop is Marker2D and stop.get_meta("text", "") != "", "%s: tour stop %s needs a Marker2D with text" % [id, stop.name])
 		for pickup: Pickup in of_type(root, Pickup):
 			for wall: Barrier in of_type(root, Barrier):
 				var points: PackedVector2Array = wall.get_node("Shape").points
