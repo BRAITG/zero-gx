@@ -6,7 +6,8 @@ const VOICES := 8
 const SOUNDS := ["zap", "impact", "explosion", "boom", "power_up", "power_down", "boost", "goal", "tap", "tick"]
 const DRONE_RATE := 22050
 const DRONE_SECONDS := 4.0  # every partial and the swell complete whole cycles, so the loop is seamless
-const DRONE_VOLUME_DB := -20.0
+const DRONE_VOLUME_DB := -26.0
+const EFFECTS_DB := -14.0  # the samples peak near full scale; this keeps the one-shots comfortable
 const DRONE_PAD := 64  # frames rendered past the loop end
 
 ## Looping engine for the ship's own player.
@@ -38,7 +39,7 @@ func play(sound: String, volume_db := 0.0, pitch := 1.0) -> void:
 	var player := _players[_next]
 	_next = (_next + 1) % VOICES
 	player.stream = _streams[sound]
-	player.volume_db = volume_db
+	player.volume_db = EFFECTS_DB + volume_db
 	player.pitch_scale = pitch
 	player.play()
 

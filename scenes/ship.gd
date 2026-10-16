@@ -22,7 +22,7 @@ const MIN_IMPACT_SPEED := 20.0  # px/s; below this a contact is resting, not a h
 const TUNNEL_LIMIT := 1200.0
 ## px/s²; above the tuned speed cap the ship slows toward it instead of snapping down.
 const OVERSPEED_DECEL := 400.0
-const ENGINE_VOLUME_DB := -10.0
+const ENGINE_VOLUME_DB := -20.0
 ## Damage at which an impact plays at full volume; lighter hits are quieter.
 const LOUD_IMPACT_DAMAGE := 30.0
 ## Camera shake: trauma 0..1 adds up per hit, the offset grows with its square, and it decays.
