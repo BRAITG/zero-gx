@@ -40,6 +40,8 @@ var thrusting := false
 var aim_point := Vector2.ZERO
 ## Starting fuel; a level can give less than a full tank.
 @export var fuel := MAX_FUEL
+## Nothing hurts the ship, lethal surfaces included (a tutorial's scripted close call).
+var invulnerable := false
 ## Starting (and maximum) hull for this level.
 @export var hull := MAX_HEALTH
 ## A level can make either unlimited: no fuel burn or empty-tank timeout; no damage but lethal.
@@ -338,7 +340,7 @@ func respawn(at: Vector2, velocity: Vector2, with_fuel: float) -> void:
 
 ## `lethal` hits (red walls, black holes, stars) destroy the ship even with an unlimited hull.
 func take_damage(amount: float, lethal := false) -> void:
-	if health <= 0.0:
+	if health <= 0.0 or invulnerable:
 		return
 	if not hull_unlimited or lethal:
 		health = maxf(health - amount, 0.0) if not lethal else 0.0
