@@ -11,6 +11,7 @@
 [node name="Level_04_Pull" type="Node2D"]
 script = ExtResource("level")
 title = "Pull"
+show_velocity = true
 hint = "Planets pull you in, harder the closer you get. Aim wide of them."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]

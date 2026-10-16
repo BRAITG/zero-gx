@@ -123,3 +123,12 @@ func test_shake_kicks_then_settles() -> void:
 	check(widest > 4.0, "shake moved the camera only %f px" % widest)
 	await frames(60)
 	check(camera.offset.length() < 0.5, "camera still shaking after 1 s: %s" % camera.offset)
+
+
+func test_velocity_arrow_length() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO, {"linear_velocity": Vector2(400, 0)})
+	await frames(1)
+	check(is_equal_approx(ship.velocity_arrow_length(), 100.0), "400 px/s should draw 100 px, got %f" % ship.velocity_arrow_length())
+	ship.linear_velocity = Vector2(0, 1200)
+	await frames(1)
+	check(is_equal_approx(ship.velocity_arrow_length(), Ship.VELOCITY_ARROW_MAX), "arrow must cap at %f, got %f" % [Ship.VELOCITY_ARROW_MAX, ship.velocity_arrow_length()])

@@ -11,6 +11,7 @@
 [node name="Level_02_Drift" type="Node2D"]
 script = ExtResource("level")
 title = "Drift"
+show_velocity = true
 hint = "Space has no friction. Once moving, you keep moving. Let go to coast: this tank is nearly empty."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]

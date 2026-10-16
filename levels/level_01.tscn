@@ -11,6 +11,7 @@
 [node name="Level_01_Launch" type="Node2D"]
 script = ExtResource("level")
 title = "Launch"
+show_velocity = true
 hint = "Touch and hold: the ship turns toward your finger and fires its engine. Reach the green ring."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]

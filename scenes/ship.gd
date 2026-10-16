@@ -33,6 +33,8 @@ const HULL := Color("#dfe9ff")
 const HULL_EDGE := Color("#7fb4ff")
 const FLAME := Color("#ff8a3c")
 const FLAME_CORE := Color("#fff1b8")
+const VELOCITY_ARROW_SCALE := 0.25  # px of arrow per px/s
+const VELOCITY_ARROW_MAX := 200.0  # px
 
 var thrusting := false
 var aim_point := Vector2.ZERO
@@ -46,6 +48,8 @@ var boosting := false
 ## True while the engine actually fires: a boost, or the finger is down with fuel left and the
 ## nose has pointed within Tuning.align_degrees of the finger at some moment of this press.
 var firing := false
+## Draw the velocity vector from the ship (tutorials and the first levels).
+var show_velocity := false
 ## Set once the nose first meets the finger during a press; cleared when the finger lifts. A drag
 ## keeps the engine on while the nose catches up; only a fresh press waits for alignment.
 var _press_aligned := false
@@ -284,7 +288,7 @@ func _process(delta: float) -> void:
 		_trail.add_point(global_position)
 		if _trail.get_point_count() > TRAIL_POINTS:
 			_trail.remove_point(0)
-	if _flash > 0.0:
+	if _flash > 0.0 or show_velocity:
 		queue_redraw()
 
 
@@ -342,6 +346,11 @@ func _explode() -> void:
 	get_tree().create_timer(sparks.lifetime + 0.5).timeout.connect(sparks.queue_free)
 
 
+## The velocity arrow's length on screen: proportional to speed, capped.
+func velocity_arrow_length() -> float:
+	return minf(linear_velocity.length() * VELOCITY_ARROW_SCALE, VELOCITY_ARROW_MAX)
+
+
 func _draw() -> void:
 	var nose := Vector2(RADIUS * 1.4, 0)
 	var hull := PackedVector2Array([nose, Vector2(-RADIUS, RADIUS * 0.8), Vector2(-RADIUS * 0.5, 0), Vector2(-RADIUS, -RADIUS * 0.8), nose])
@@ -352,3 +361,10 @@ func _draw() -> void:
 	draw_colored_polygon(hull.slice(0, 4), HULL.lerp(Color("#ff5a4a"), _flash))
 	draw_polyline(hull, HULL_EDGE, 2.0, true)
 	draw_circle(Vector2(RADIUS * 0.35, 0), RADIUS * 0.18, Color("#3aa0ff"))
+	if show_velocity and linear_velocity.length() > 1.0:
+		# World direction: undo the ship's own rotation.
+		var tip := linear_velocity.normalized().rotated(-rotation) * velocity_arrow_length()
+		var arrow := Color(1, 1, 1, 0.45)
+		draw_line(Vector2.ZERO, tip, arrow, 3.0, true)
+		var back := -tip.normalized() * 14.0
+		draw_colored_polygon(PackedVector2Array([tip, tip + back.rotated(0.45), tip + back.rotated(-0.45)]), arrow)
