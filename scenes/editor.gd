@@ -13,6 +13,9 @@ const MAX_DRIFT := 400.0  # px/s
 const DRAG_START := 12.0  # screen px a finger must move before a press becomes a drag
 const GRID_COLOR := Color(1, 1, 1, 0.06)
 
+## The editor left for a test flight: {id, doc, view}. Only one test flight runs at a time.
+static var _kept := {}
+
 var level_id := ""
 var doc: LevelDoc
 var tool := "select"
@@ -31,15 +34,19 @@ var _pinch_start := {}
 var _pressed_at := Vector2.ZERO  # screen
 var _dragging := false
 var _held: Dictionary = {}  # the ref a select drag is moving, or the asteroid being aimed
+var _view := []  # [camera position, zoom] to restore, or empty for the start
 var _moving := false  # a placing tool pressed on an existing thing, which it now drags
 
 
 ## The editor for the player's level `id` (a new blank level if there is none yet).
+## After a test flight, the editor comes back with the same undo history and view.
 static func create(id: String) -> LevelEditor:
 	var editor := LevelEditor.new()
 	editor.level_id = id
-	var data := MyLevels.load_level(id)
-	editor.doc = LevelDoc.new(data)
+	var kept: Dictionary = _kept if _kept.get("id") == id else {}
+	_kept = {}
+	editor.doc = kept.get("doc", LevelDoc.new(MyLevels.load_level(id)))
+	editor._view = kept.get("view", [])
 	return editor
 
 
@@ -52,8 +59,8 @@ func _ready() -> void:
 	_marks.draw.connect(_draw_marks)
 	add_child(_marks)
 	_camera = Camera2D.new()
-	_camera.zoom = Vector2.ONE * 0.5
-	_camera.position = LevelDoc._v(doc.data.ship.position)
+	_camera.zoom = Vector2.ONE * 0.5 if _view.is_empty() else _view[1]
+	_camera.position = LevelDoc._v(doc.data.ship.position) if _view.is_empty() else _view[0]
 	add_child(_camera)
 	_build_ui()
 	_refresh()
@@ -76,12 +83,14 @@ func select_tool(name: String) -> void:
 
 ## One-finger actions in world coordinates: what a press, a drag and a release do with the tool.
 func press(world: Vector2) -> void:
-	var at := LevelDoc.snap(world, fine_snap)
+	var at := _place_at(world, tool)
 	_held = {}
 	_moving = false
-	if tool in PLACING and not doc.hit(world).is_empty():
-		# Something is already here: grab it instead of stacking another on top.
-		_held = doc.hit(world)
+	var under := doc.hit(world)
+	if tool in PLACING and not under.is_empty() and not under.type in ["wall", "wall_point"]:
+		# Something is already here: grab it instead of stacking another on top. Walls are long
+		# and thin, so things may still be placed right beside them.
+		_held = under
 		_moving = true
 		doc.begin_move()
 		_refresh()
@@ -107,7 +116,7 @@ func drag(world: Vector2) -> void:
 	if _held.is_empty():
 		return
 	if tool == "select" or _moving:
-		doc.move(_held, LevelDoc.snap(world, fine_snap))
+		doc.move(_held, _place_at(world, _held.type))
 	elif tool == "asteroid" and not doc.data.asteroids[_held.index].has("orbit"):
 		var rock: Dictionary = doc.data.asteroids[_held.index]
 		var velocity := ((world - LevelDoc._v(rock.position)) * DRIFT_PER_PX).limit_length(MAX_DRIFT)
@@ -178,6 +187,11 @@ func _one_finger(down: bool, screen: Vector2) -> void:
 		press(_to_world(screen))
 	elif _pinch_start.is_empty():
 		release(_to_world(screen), _dragging)
+
+
+## Walls, the start and the goal snap to the grid; everything else goes exactly where it is put.
+func _place_at(world: Vector2, kind: String) -> Vector2:
+	return LevelDoc.snap(world, fine_snap) if kind in ["wall", "wall_point", "start", "goal", "ship"] else world.round()
 
 
 func _to_world(screen: Vector2) -> Vector2:
@@ -300,6 +314,7 @@ func _test() -> void:
 		create_tween().tween_property(_error_label, "modulate", Color.WHITE, 0.5)
 		return
 	save()
+	_kept = {"id": level_id, "doc": doc, "view": [_camera.position, _camera.zoom]}
 	Progress.open(level_id, true)
 
 
