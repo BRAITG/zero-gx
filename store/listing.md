@@ -12,7 +12,7 @@ Space has no friction. Once you are moving, you keep moving, and the only way to
 Zero-GX is a physics puzzle-racer about flying a small spaceship from start to goal through courses full of planets, black holes, stars and asteroids. Every planet pulls you in. Slingshot around them to turn for free, or burn precious fuel fighting their pull.
 
 - Touch and hold to steer and fire your engine; let go to coast.
-- Six guided training stages teach frictionless flight, walls, fuel, gravity, black holes and stars.
+- Seven guided training stages teach frictionless flight, walls, fuel, gravity, black holes and stars.
 - Eleven levels: bounce off blue walls, avoid orange and lethal red ones, dodge drifting asteroids, and slip past black holes.
 - Pickups boost or cripple your engine, and a free-burning boost can save an empty tank.
 - Every finish is scored on fuel left, hull left and time.
