@@ -24,7 +24,7 @@ kind = 0
 points = PackedVector2Array(-700, -900, 3600, -900, 3600, 1800, -700, 1800, -700, -900)
 
 [node name="Planet" parent="." instance=ExtResource("body")]
-position = Vector2(1200, 400)
+position = Vector2(1200, 300)
 
 [node name="Route" type="Line2D" parent="."]
 visible = false
