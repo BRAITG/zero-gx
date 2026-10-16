@@ -1,6 +1,37 @@
-# Zero-GX
+<p align="center">
+  <img src="store/icon-512.png" alt="Zero-GX icon" width="160">
+</p>
 
-A 2D zero-gravity physics game for Android, built with Godot 4.7. Fly a ship from point A to point B through courses built from energy barriers, using planets, black holes and stars as gravity wells, with limited fuel and hull. This is a prototype for judging whether the mechanics are fun. The design is in [`docs/superpowers/specs/2026-10-12-zero-gx-prototype-design.md`](docs/superpowers/specs/2026-10-12-zero-gx-prototype-design.md).
+<h1 align="center">Zero-GX</h1>
+
+<p align="center">
+  <strong>No friction. No brakes. Just you, your fuel, and gravity.</strong>
+</p>
+
+<p align="center">
+  <a href="https://github.com/BRAITG/zero-gx/releases"><img alt="Latest build" src="https://img.shields.io/github/v/release/BRAITG/zero-gx?include_prereleases&label=latest%20build"></a>
+  <a href="https://github.com/BRAITG/zero-gx/actions/workflows/build.yml"><img alt="Build" src="https://github.com/BRAITG/zero-gx/actions/workflows/build.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: AGPL-3.0-or-later" src="https://img.shields.io/badge/license-AGPL--3.0--or--later-blue"></a>
+  <img alt="Godot 4.7" src="https://img.shields.io/badge/Godot-4.7-478cbf?logo=godotengine&logoColor=white">
+  <img alt="Android" src="https://img.shields.io/badge/platform-Android-3ddc84?logo=android&logoColor=white">
+</p>
+
+Zero-GX is a 2D physics game for Android, built with Godot. Fly a ship from start to goal through courses of energy barriers, using planets, black holes and stars as gravity wells, with limited fuel and hull. Nothing slows you down: every push you make, you have to undo. The original design is in [`docs/superpowers/specs/2026-10-12-zero-gx-prototype-design.md`](docs/superpowers/specs/2026-10-12-zero-gx-prototype-design.md).
+
+<p align="center">
+  <img src="store/screenshots/1-level_05.png" alt="Slingshot around a planet" width="49%">
+  <img src="store/screenshots/2-level_09.png" alt="Skirting a black hole" width="49%">
+  <img src="store/screenshots/3-level_10.png" alt="Fighting a star's pull" width="49%">
+  <img src="store/screenshots/4-level_08.png" alt="An asteroid field" width="49%">
+</p>
+
+## Features
+
+- **Real momentum.** One finger turns and thrusts; let go and you coast forever.
+- **Gravity as a tool.** Swing around planets, keep clear of black holes, cross the pull of stars.
+- **Seven training stages and eleven levels**, scored on fuel left, hull left and time.
+- **A level editor in the app.** Build, test and replay your own courses.
+- **Free software.** AGPL-3.0-or-later, with only free assets.
 
 ## Play on Android
 
