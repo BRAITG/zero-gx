@@ -1,8 +1,13 @@
 extends Control
-## Level list: one button per level in `Progress.levels()`, with its best points, locked until
-## the level before it is finished.
+## The main menu: a Training button, then one button per level in `Progress.levels()` with its
+## best points, locked until the level before it is finished. With `training` set it lists the
+## training stages the same way instead, under a Back button.
 
+const SCENE := "res://scenes/main.tscn"
 const MENU_DRIFT := Vector2(-40, -12)  # px/s
+
+## Show the training stages instead of the levels.
+var training := false
 
 var _levels: GridContainer
 var _column: VBoxContainer
@@ -19,13 +24,16 @@ func _ready() -> void:
 	_column.add_theme_constant_override("separation", 12)
 	ui.add_child(_column)
 	var title := Label.new()
-	title.text = "ZERO-GX"
+	title.text = "TRAINING" if training else "ZERO-GX"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_override("font", Style.display_font)
 	title.add_theme_font_size_override("font_size", 64)
 	title.add_theme_color_override("font_outline_color", Color(Style.ACCENT, 0.35))
 	title.add_theme_constant_override("outline_size", 14)
 	_column.add_child(title)
+	var top := _button("Back" if training else "Training")
+	top.pressed.connect(func(): get_tree().change_scene_to_node(menu(not training)))
+	_column.add_child(top)
 	_levels = GridContainer.new()
 	_levels.columns = 3  # tutorials, then levels: six rows fit the 720 px screen
 	_levels.add_theme_constant_override("h_separation", 12)
@@ -34,6 +42,7 @@ func _ready() -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 12)
 	_column.add_child(row)
+	row.visible = not training
 	for entry in [["My levels", func(): get_tree().change_scene_to_node(MyLevelsScreen.new())], ["Settings", _open_settings], ["Credits", func(): Credits.open(self)], ["Tune", func(): TuningPanel.open(self)]]:
 		var button := _button(entry[0])
 		button.custom_minimum_size.x = 0  # four share the grid's width
@@ -59,7 +68,7 @@ func _open_settings() -> void:
 func _list_levels() -> void:
 	for old in _levels.get_children():
 		old.free()  # now, not queued: the new buttons replace them in the same frame
-	for id in Progress.stages():
+	for id in Progress.trainings() if training else Progress.levels():
 		var best := Progress.best_points(id)
 		var state := "locked" if not Progress.is_unlocked(id) else ("—" if best < 0 else str(best))
 		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
@@ -80,7 +89,18 @@ func _button(text: String) -> Button:
 	return button
 
 
-## project.godot turns off quit_on_go_back so levels can return here; the menu still quits.
+## The main menu, or the training list.
+static func menu(show_training: bool) -> Control:
+	var main: Control = load(SCENE).instantiate()
+	main.training = show_training
+	return main
+
+
+## project.godot turns off quit_on_go_back so levels can return here; the training list goes
+## back to the menu, and the menu quits.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		get_tree().quit()
+		if training:
+			get_tree().change_scene_to_node(menu(false))
+		else:
+			get_tree().quit()

@@ -59,9 +59,7 @@ func test_tutorial_restores_on_death() -> void:
 
 ## Every tutorial can be finished: answer each step as a player would, then fly the route.
 func test_tutorials_complete() -> void:
-	for id in Progress.stages():
-		if not id.begins_with("tutorial_"):
-			continue
+	for id in Progress.trainings():
 		var lvl = Progress.build(id)
 		world.add_child(lvl)
 		var outcome := {"won": null}

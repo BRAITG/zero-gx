@@ -25,26 +25,23 @@ func test_corrupt_file_is_no_progress() -> void:
 	file.close()
 	Progress.load_file()
 	check(Progress.best_points("level_01") == -1, "a corrupt file must mean no progress")
-	var first := Progress.stages()[0]
-	check(Progress.is_unlocked(first) and not Progress.is_unlocked(Progress.stages()[1]), "only %s open after a corrupt file" % first)
+	check(Progress.is_unlocked("level_01") and not Progress.is_unlocked("level_02"), "only level 1 open after a corrupt file")
 
 
-func test_unlock_chain() -> void:
-	var stages := Progress.stages()
-	var first_level := stages.find("level_01")
-	check(stages[0] == "tutorial_1" and first_level > 0 and stages[first_level - 1].begins_with("tutorial_"), "tutorials must come first: %s" % stages)
-	var last_tutorial := stages[first_level - 1]
-	check(Progress.is_unlocked("tutorial_1"), "the first tutorial must always be open")
-	check(not Progress.is_unlocked("tutorial_2"), "tutorial 2 open before tutorial 1 was won")
+func test_training_and_levels_unlock_separately() -> void:
+	var trainings := Progress.trainings()
+	var levels := Progress.levels()
+	check(Progress.is_unlocked("tutorial_1") and Progress.is_unlocked("level_01"), "each track's first stage must always be open")
+	check(not Progress.is_unlocked("tutorial_2") and not Progress.is_unlocked("level_02"), "second stages open before any win")
 	Progress.record_win("tutorial_1", 1000, 10.0)
-	check(Progress.is_unlocked("tutorial_2") and not Progress.is_unlocked("tutorial_3"), "winning tutorial 1 must open tutorial 2 only")
-	check(not Progress.is_unlocked("level_01"), "level 1 must wait for the last tutorial")
-	Progress.record_win(last_tutorial, 1000, 10.0)
-	check(Progress.is_unlocked("level_01"), "winning the last tutorial must open level 1")
-	check(Progress.next_level(last_tutorial) == "level_01", "after the last tutorial comes level 1")
+	check(Progress.is_unlocked("tutorial_2") and not Progress.is_unlocked("tutorial_3"), "winning training 1 must open training 2 only")
+	check(not Progress.is_unlocked("level_02"), "training wins must not open levels")
+	Progress.record_win("level_01", 1000, 10.0)
+	check(Progress.is_unlocked("level_02") and not Progress.is_unlocked("tutorial_3"), "level wins open levels only")
+	check(Progress.next_level(trainings[-1]) == "", "the last training has no next stage")
+	check(Progress.next_level("level_01") == "level_02" and Progress.next_level(levels[-1]) == "", "levels follow each other, then end")
 	Progress.unlock_all = true
-	check(Progress.is_unlocked(stages[-1]), "unlock all must open the last stage")
+	check(Progress.is_unlocked(levels[-1]) and Progress.is_unlocked(trainings[-1]), "unlock all must open every stage")
 	Progress.reset()
 	check(Progress.best_points("tutorial_1") == -1, "reset must clear bests")
 	check(Progress.unlock_all, "reset must not touch the session unlock switch")
-	check(Progress.next_level(stages[-1]) == "", "the last stage has no next stage")

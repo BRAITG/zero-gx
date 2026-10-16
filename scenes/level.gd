@@ -93,6 +93,8 @@ func _to_menu() -> void:
 		get_tree().change_scene_to_node(LevelEditor.create(level_id))
 	elif level_id.begins_with(MyLevels.PREFIX):
 		get_tree().change_scene_to_node(MyLevelsScreen.new())
+	elif level_id.begins_with("tutorial_"):
+		get_tree().change_scene_to_node(load("res://scenes/main.gd").menu(true))
 	else:
 		get_tree().change_scene_to_file(MENU)
 

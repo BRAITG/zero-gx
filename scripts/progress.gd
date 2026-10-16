@@ -30,9 +30,9 @@ func levels() -> PackedStringArray:
 	return _stems(LEVELS_DIR)
 
 
-## Every stage in play order: the tutorials, then the levels. Unlocking follows this order.
-func stages() -> PackedStringArray:
-	return _stems(TUTORIALS_DIR) + _stems(LEVELS_DIR)
+## Sorted ids of every training stage in res://tutorials/.
+func trainings() -> PackedStringArray:
+	return _stems(TUTORIALS_DIR)
 
 
 ## Start stage `id`: build it from its level file. Tutorials add their lesson script.
@@ -56,6 +56,10 @@ func build(id: String, testing := false) -> Level:
 	level.level_id = id
 	level.testing = testing
 	return level
+
+
+func _track(id: String) -> PackedStringArray:
+	return trainings() if id.begins_with("tutorial_") else levels()
 
 
 func _stems(dir: String) -> PackedStringArray:
@@ -91,15 +95,16 @@ func record_win(id: String, run_points: int, seconds: float) -> bool:
 	return true
 
 
+## Training and levels are separate tracks: each opens in its own order, from its first stage.
 func is_unlocked(id: String) -> bool:
-	var ids := stages()
+	var ids := _track(id)
 	var index := ids.find(id)
 	return unlock_all or index <= 0 or best_points(ids[index - 1]) >= 0
 
 
-## The stage after `id`, or "" for the last one.
+## The stage after `id` on its own track, or "" for the last one.
 func next_level(id: String) -> String:
-	var ids := stages()
+	var ids := _track(id)
 	var index := ids.find(id)
 	return ids[index + 1] if index >= 0 and index + 1 < ids.size() else ""
 
