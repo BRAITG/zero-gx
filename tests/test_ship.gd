@@ -44,11 +44,12 @@ func test_no_countdown_with_fuel() -> void:
 func test_boost_pauses_empty_countdown() -> void:
 	var ship = spawn(SHIP, Vector2.ZERO, {"fuel": 0.0})
 	var stranded := counter(ship.stranded)
-	ship.start_boost()  # 1.5 s on which the countdown must not run
-	await frames(380)
-	check(stranded.count == 0, "timed out at 6.3 s despite a 1.5 s boost")
-	await frames(20)
-	check(stranded.count == 1, "not stranded by 6.7 s")
+	ship.start_boost()  # the countdown must not run while it lasts
+	var ends := Tuning.boost_seconds + Ship.EMPTY_TIMEOUT
+	await frames(roundi((ends - 0.2) * 60.0))
+	check(stranded.count == 0, "timed out before %.1f s despite the boost" % ends)
+	await frames(24)
+	check(stranded.count == 1, "not stranded by %.1f s" % (ends + 0.2))
 
 
 func test_turns_toward_aim() -> void:

@@ -155,6 +155,7 @@ func toured_level() -> Level:
 	var root := Node2D.new()
 	root.set_script(load("res://scenes/level.gd"))
 	root.level_id = "level_01"
+	root.title = "Launch"
 	root.add_child(load(SHIP).instantiate())
 	var goal: Node2D = load(GOAL).instantiate()
 	goal.position = Vector2(3000, 0)
@@ -174,11 +175,9 @@ func test_tour_walks_stops_then_plays() -> void:
 	var lvl := toured_level()
 	await frames(2)
 	check(lvl.tour != null and tree.paused, "an unwon level must start with a paused tour")
-	check(lvl.tour.caption().contains("whole course"), "first stop is the overview: '%s'" % lvl.tour.caption())
+	check(lvl.tour.caption() == "Level 1 · Launch", "first stop is the overview, named: '%s'" % lvl.tour.caption())
 	lvl.tour.next()
-	check(lvl.tour.caption().contains("green ring"), "second stop is the goal: '%s'" % lvl.tour.caption())
-	lvl.tour.next()
-	check(lvl.tour.caption() == "A wall.", "third stop: '%s'" % lvl.tour.caption())
+	check(lvl.tour.caption() == "A wall.", "second stop: '%s'" % lvl.tour.caption())
 	lvl.tour.next()  # back at the ship: Go!
 	lvl.tour.next()
 	await frames(2)

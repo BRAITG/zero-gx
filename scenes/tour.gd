@@ -1,13 +1,11 @@
 class_name Tour
 extends Node
-## A guided flyover before a level's first flight: a zoomed-out view of the whole course, the
-## goal, each stop under the level's `Tour` node (Marker2D children with a "text" metadata),
-## then the ship. The game is paused; the player reads each caption and taps Next.
+## A guided flyover before a level's first flight: a zoomed-out view of the whole course under
+## the level's name, each stop under the level's `Tour` node (Marker2D children with a "text"
+## metadata), then the ship. The game is paused; the player reads each caption and taps Next.
 
 signal finished
 
-const OVERVIEW_TEXT := "This is the whole course. Find your ship and the green ring."
-const GOAL_TEXT := "Reach the green ring to finish the course."
 const SHIP_TEXT := "This is your ship. Ready?"
 const FLY_SECONDS := 0.9
 const SAME_PLACE := 50.0  # px
@@ -29,8 +27,7 @@ func _init(level: Level) -> void:
 	var bounds := _course_bounds(level)
 	var fit := _fit(bounds)
 	# Centre the course in the space above the caption card.
-	_stops.append([bounds.get_center() + Vector2(0, CARD_SPACE / 2.0 / fit.y), OVERVIEW_TEXT, fit])
-	_stops.append([level.goal.global_position, GOAL_TEXT, ZOOM])
+	_stops.append([bounds.get_center() + Vector2(0, CARD_SPACE / 2.0 / fit.y), level.display_name(), fit])
 	for stop: Node2D in level.get_node("Tour").get_children():
 		_stops.append([stop.global_position, stop.get_meta("text", ""), ZOOM])
 	# A level stop already at the ship (its controls advice) is the last word; no generic one.

@@ -49,7 +49,7 @@ func test_boost_on_empty_tank() -> void:
 	await frames(60)
 	check(ship.linear_velocity.length() > 300.0, "speed %f after 1 s of boost" % ship.linear_velocity.length())
 	check(ship.fuel == 0.0, "boost burned fuel")
-	await frames(36)
+	await frames(ceili((Tuning.boost_seconds - 1.0) * 60.0) + 6)
 	check(not ship.boosting, "still boosting after %f s" % Tuning.boost_seconds)
 	var speed := ship.linear_velocity.length()
 	await frames(30)
