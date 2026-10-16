@@ -30,7 +30,7 @@ The suite runs headless at a fixed 60 FPS. `tests/test_levels.gd` checks the lev
 
 ## Tutorials
 
-Six guided stages (`tutorials/`, "Training 1–6" in the menu) come before the nine levels and teach one idea each: no friction, walls, fuel, orange and red walls, gravity, black holes and stars. Each is a script of steps built on `scenes/tutorial.gd`. A white arrow from the ship shows its velocity in the tutorials and levels 1–2.
+Six guided stages (`tutorials/`, "Training 1–6" in the menu) come before the eleven levels and teach one idea each: no friction, walls, fuel, orange and red walls, gravity, black holes and stars. Each is a script of steps built on `scenes/tutorial.gd`. A white arrow from the ship shows its velocity in the tutorials and levels 1–4.
 
 ## Scoring and progress
 
@@ -54,4 +54,4 @@ The values you will most often want to change (speed cap, thrust, turn rates, pi
 
 ## Assets
 
-Fonts (Orbitron, Exo 2; SIL Open Font License) and sound effects (Kenney, CC0) live in `assets/`. Sources and licenses: `assets/LICENSES.md`. Everything else is drawn in code.
+Fonts (Orbitron, Exo 2; SIL Open Font License) and sound effects (Kenney, CC0) live in `assets/`. Sources and licenses: `assets/LICENSES.md`. The app icon (`assets/icon*.svg`, with Android adaptive foreground and background layers) is original. Everything else is drawn in code.

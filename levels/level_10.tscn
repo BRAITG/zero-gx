@@ -1,0 +1,97 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://scenes/level.gd" id="level"]
+[ext_resource type="PackedScene" path="res://scenes/ship.tscn" id="ship"]
+[ext_resource type="PackedScene" path="res://scenes/goal.tscn" id="goal"]
+[ext_resource type="PackedScene" path="res://scenes/barrier.tscn" id="barrier"]
+[ext_resource type="PackedScene" path="res://scenes/gravity_body.tscn" id="body"]
+
+[node name="Level_Sun" type="Node2D"]
+script = ExtResource("level")
+title = "Sun"
+hint = "A star pulls you toward the red walls the whole way up. Keep correcting against it."
+
+[node name="Ship" parent="." instance=ExtResource("ship")]
+position = Vector2(0, 0)
+rotation = -1.5707963267948966
+
+[node name="Goal" parent="." instance=ExtResource("goal")]
+position = Vector2(-950, -3200)
+
+[node name="Wall1" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall1" index="0"]
+points = PackedVector2Array(250, 300, -250, 300)
+
+[node name="Wall2" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall2" index="0"]
+points = PackedVector2Array(-1200, -3450, -1200, -2950)
+
+[node name="Wall3" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall3" index="0"]
+points = PackedVector2Array(250, 300, 250, -800)
+
+[node name="Wall4" parent="." instance=ExtResource("barrier")]
+kind = 2
+
+[node name="Shape" parent="Wall4" index="0"]
+points = PackedVector2Array(250, -800, 250, -2200)
+
+[node name="Wall5" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall5" index="0"]
+points = PackedVector2Array(250, -2200, 250, -3450, -1200, -3450)
+
+[node name="Wall6" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall6" index="0"]
+points = PackedVector2Array(-250, 300, -250, -800)
+
+[node name="Wall7" parent="." instance=ExtResource("barrier")]
+kind = 2
+
+[node name="Shape" parent="Wall7" index="0"]
+points = PackedVector2Array(-250, -800, -250, -2200)
+
+[node name="Wall8" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall8" index="0"]
+points = PackedVector2Array(-250, -2200, -250, -2950, -1200, -2950)
+
+[node name="Star" parent="." instance=ExtResource("body")]
+position = Vector2(1600, -1500)
+preset = 2
+radius = 900.0
+strength = 533.0
+
+[node name="Tour" type="Node2D" parent="."]
+
+[node name="Stop1" type="Marker2D" parent="Tour"]
+position = Vector2(1600, -1500)
+metadata/text = "A star. It burns on touch, and its pull reaches across the whole section."
+
+[node name="Stop2" type="Marker2D" parent="Tour"]
+position = Vector2(0, -1500)
+metadata/text = "The narrows are red. The star will drag you right the whole way: keep pushing left and stay in the middle."
+
+[node name="Route" type="Line2D" parent="."]
+visible = false
+points = PackedVector2Array(-60, -800, -60, -2200, 0, -3000)
+metadata/cruise = 350.0
+
+[editable path="Wall1"]
+[editable path="Wall2"]
+[editable path="Wall3"]
+[editable path="Wall4"]
+[editable path="Wall5"]
+[editable path="Wall6"]
+[editable path="Wall7"]
+[editable path="Wall8"]

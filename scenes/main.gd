@@ -27,7 +27,7 @@ func _ready() -> void:
 	title.add_theme_constant_override("outline_size", 14)
 	_column.add_child(title)
 	_levels = GridContainer.new()
-	_levels.columns = 3  # fifteen stages: tutorials, then levels
+	_levels.columns = 3  # tutorials, then levels: six rows fit the 720 px screen
 	_levels.add_theme_constant_override("h_separation", 12)
 	_levels.add_theme_constant_override("v_separation", 12)
 	_column.add_child(_levels)

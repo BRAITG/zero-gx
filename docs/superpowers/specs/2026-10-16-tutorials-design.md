@@ -22,7 +22,7 @@ She also skips text. The developer agreed that a real tutorial is needed, and as
 
 | Topic | Decision |
 |---|---|
-| Structure | Six guided **tutorial stages** before the levels. The original levels 1 and 2 were removed as redundant; the old levels 3 and 4 (now 1 and 2) keep the velocity arrow. |
+| Structure | Six guided **tutorial stages** before the levels. Levels 1–4 stay as harder, unguided versions of the same mechanics and keep the velocity arrow. |
 | Tutorials | T1 no friction, T2 walls, T3 fuel, T4 orange and red walls with fuel, T5 gravity, T6 black holes and stars |
 | Step system | Each tutorial is a script of awaited steps (message, touch the target, wait for a condition) running on a normal, unpaused level. |
 | Camera | Unchanged: the level tour and the goal arrow are enough. |
@@ -53,12 +53,12 @@ She also skips text. The developer agreed that a real tutorial is needed, and as
 ## Velocity vector
 
 - Drawn from the ship's centre along its velocity: 1 px per 4 px/s, up to 200 px. Translucent white, with an arrowhead.
-- On when the level's `show_velocity` export is true: all tutorials and levels 1–2.
+- On when the level's `show_velocity` export is true: all tutorials and levels 1–4.
 
 ## Progression and menu
 
 - Tutorials live in `res://tutorials/` as `tutorial_1.tscn` … `tutorial_6.tscn`. `Progress.levels()` lists tutorials first, then levels. Unlocking runs along that whole list.
-- The menu labels them "Training 1–6" and lays out all fifteen buttons in three columns.
+- The menu labels them "Training 1–6" and lays out all seventeen buttons in three columns.
 
 ## Swing level
 

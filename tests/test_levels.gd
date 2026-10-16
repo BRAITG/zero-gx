@@ -1,7 +1,7 @@
 extends "res://tests/test_case.gd"
 ## Level-design checks. A failure here is a level to fix, not an engine bug.
 
-const LEVEL_COUNT := 9
+const LEVEL_COUNT := 11
 const SHARD_CLEARANCE := 60.0  # px between a destructible planet and any barrier
 const PICKUP_CLEARANCE := 16.0  # px between a pickup's edge and any barrier
 const IDLE_FRAMES := 12000  # 200 s with no input: longer than a slow first attempt
