@@ -8,55 +8,62 @@
 [ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
 [ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
 
-[node name="Level_03_Brake" type="Node2D"]
+[node name="Level_05_Swing" type="Node2D"]
 script = ExtResource("level")
-title = "Brake"
-show_velocity = true
-hint = "Nothing slows you down. To brake, turn around and thrust the other way. Orange walls hurt."
+title = "Swing"
+hint = "This tank is too small to brake and turn. Let the planet's pull swing you around the corner."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)
+fuel = 14.0
 
 [node name="Goal" parent="." instance=ExtResource("goal")]
-position = Vector2(3950, 0)
+position = Vector2(2450, 2750)
 
 [node name="Wall1" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall1" index="0"]
-points = PackedVector2Array(-250, 225, -250, -225)
+points = PackedVector2Array(-400, -400, 2900, -400, 2900, 3000)
 
 [node name="Wall2" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall2" index="0"]
-points = PackedVector2Array(4200, 225, 4200, -225)
+points = PackedVector2Array(-400, 400, 2000, 400, 2000, 3000)
 
 [node name="Wall3" parent="." instance=ExtResource("barrier")]
-kind = 1
+kind = 0
 
 [node name="Shape" parent="Wall3" index="0"]
-points = PackedVector2Array(-250, 225, 1625, 225, 1625, -1175, 2575, -1175, 2575, 225, 4200, 225)
+points = PackedVector2Array(-400, -400, -400, 400)
 
 [node name="Wall4" parent="." instance=ExtResource("barrier")]
-kind = 1
+kind = 0
 
 [node name="Shape" parent="Wall4" index="0"]
-points = PackedVector2Array(-250, -225, 1175, -225, 1175, -1625, 3025, -1625, 3025, -225, 4200, -225)
+points = PackedVector2Array(2000, 3000, 2900, 3000)
+
+[node name="Body1" parent="." instance=ExtResource("body")]
+position = Vector2(2200, 200)
+preset = 0
+reach = 800.0
 
 [node name="Tour" type="Node2D" parent="."]
 
 [node name="Stop1" type="Marker2D" parent="Tour"]
-position = Vector2(1400, 0)
-metadata/text = "Orange walls hurt. The faster you hit one, the more damage you take."
+position = Vector2(2200, 200)
+metadata/text = "Use this planet: fly close past it and its pull swings you around the corner for free."
 
 [node name="Stop2" type="Marker2D" parent="Tour"]
 position = Vector2(0, 0)
-metadata/text = "Nothing slows you down for you. To brake, turn around and thrust the other way."
+metadata/text = "Your tank is too small to brake and turn on your own."
 
 [node name="Route" type="Line2D" parent="."]
 visible = false
-points = PackedVector2Array(1400, 0, 1400, -1400, 2800, -1400, 2800, 0)
+points = PackedVector2Array(700, -200, 1500, -200, 2450, 1000, 2450, 1800)
+metadata/cruise = 300.0
+metadata/coast = PackedInt32Array(2, 3)
 
 [editable path="Wall1"]
 [editable path="Wall2"]

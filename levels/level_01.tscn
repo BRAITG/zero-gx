@@ -8,55 +8,55 @@
 [ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
 [ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
 
-[node name="Level_01_Launch" type="Node2D"]
+[node name="Level_03_Brake" type="Node2D"]
 script = ExtResource("level")
-title = "Launch"
+title = "Brake"
 show_velocity = true
-hint = "Touch and hold: the ship turns toward your finger and fires its engine. Reach the green ring."
+hint = "Nothing slows you down. To brake, turn around and thrust the other way. Orange walls hurt."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)
 
 [node name="Goal" parent="." instance=ExtResource("goal")]
-position = Vector2(2489, -566)
+position = Vector2(3950, 0)
 
 [node name="Wall1" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall1" index="0"]
-points = PackedVector2Array(-250, 250, -250, -250)
+points = PackedVector2Array(-250, 225, -250, -225)
 
 [node name="Wall2" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall2" index="0"]
-points = PackedVector2Array(2834, -489, 2566, -911)
+points = PackedVector2Array(4200, 225, 4200, -225)
 
 [node name="Wall3" parent="." instance=ExtResource("barrier")]
-kind = 0
+kind = 1
 
 [node name="Shape" parent="Wall3" index="0"]
-points = PackedVector2Array(-250, 250, 1673, 250, 2834, -489)
+points = PackedVector2Array(-250, 225, 1625, 225, 1625, -1175, 2575, -1175, 2575, 225, 4200, 225)
 
 [node name="Wall4" parent="." instance=ExtResource("barrier")]
-kind = 0
+kind = 1
 
 [node name="Shape" parent="Wall4" index="0"]
-points = PackedVector2Array(-250, -250, 1527, -250, 2566, -911)
+points = PackedVector2Array(-250, -225, 1175, -225, 1175, -1625, 3025, -1625, 3025, -225, 4200, -225)
 
 [node name="Tour" type="Node2D" parent="."]
 
 [node name="Stop1" type="Marker2D" parent="Tour"]
-position = Vector2(800, -250)
-metadata/text = "Blue walls are safe. You just bounce off them."
+position = Vector2(1400, 0)
+metadata/text = "Orange walls hurt. The faster you hit one, the more damage you take."
 
 [node name="Stop2" type="Marker2D" parent="Tour"]
 position = Vector2(0, 0)
-metadata/text = "Touch and hold anywhere: the ship turns toward your finger and fires its engine. Let go to coast."
+metadata/text = "Nothing slows you down for you. To brake, turn around and thrust the other way."
 
 [node name="Route" type="Line2D" parent="."]
 visible = false
-points = PackedVector2Array(1550, 0)
+points = PackedVector2Array(1400, 0, 1400, -1400, 2800, -1400, 2800, 0)
 
 [editable path="Wall1"]
 [editable path="Wall2"]

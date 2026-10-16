@@ -30,7 +30,7 @@ The suite runs headless at a fixed 60 FPS. `tests/test_levels.gd` checks the lev
 
 ## Tutorials
 
-Five guided stages (`tutorials/`, "Training 1–5" in the menu) come before the levels and teach one idea each: no friction, walls, fuel, orange walls, gravity. Each is a script of steps built on `scenes/tutorial.gd`. A white arrow from the ship shows its velocity in the tutorials and levels 1–4.
+Six guided stages (`tutorials/`, "Training 1–6" in the menu) come before the nine levels and teach one idea each: no friction, walls, fuel, orange and red walls, gravity, black holes and stars. Each is a script of steps built on `scenes/tutorial.gd`. A white arrow from the ship shows its velocity in the tutorials and levels 1–2.
 
 ## Scoring and progress
 

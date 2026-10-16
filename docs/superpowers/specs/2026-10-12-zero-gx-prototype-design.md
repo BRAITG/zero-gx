@@ -131,7 +131,7 @@ Levels are stored at `levels/level_NN.tscn`. Each is built in the Godot editor f
 
 ## Test levels
 
-The five prototype levels were replaced by ten teaching levels. See `2026-10-14-ten-levels-design.md`.
+The five prototype levels were replaced by ten teaching levels. See `2026-10-14-levels-design.md`.
 
 ## Verification
 

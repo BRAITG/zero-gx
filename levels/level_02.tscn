@@ -8,56 +8,60 @@
 [ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
 [ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
 
-[node name="Level_02_Drift" type="Node2D"]
+[node name="Level_04_Pull" type="Node2D"]
 script = ExtResource("level")
-title = "Drift"
+title = "Pull"
 show_velocity = true
-hint = "Space has no friction. Once moving, you keep moving. Let go to coast: this tank is nearly empty."
+hint = "Planets pull you in, harder the closer you get. Aim wide of them."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)
-fuel = 20.0
 
 [node name="Goal" parent="." instance=ExtResource("goal")]
-position = Vector2(13254, -1158)
+position = Vector2(3950, 0)
 
 [node name="Wall1" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall1" index="0"]
-points = PackedVector2Array(-250, 250, -250, -250)
+points = PackedVector2Array(-250, 500, -250, -500)
 
 [node name="Wall2" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall2" index="0"]
-points = PackedVector2Array(13542, -954, 13458, -1446)
+points = PackedVector2Array(4200, 500, 4200, -500)
 
 [node name="Wall3" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall3" index="0"]
-points = PackedVector2Array(-250, 250, 6521, 250, 13542, -954)
+points = PackedVector2Array(-250, 500, 4200, 500)
 
 [node name="Wall4" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall4" index="0"]
-points = PackedVector2Array(-250, -250, 6479, -250, 13458, -1446)
+points = PackedVector2Array(-250, -500, 4200, -500)
+
+[node name="Body1" parent="." instance=ExtResource("body")]
+position = Vector2(2000, 150)
+preset = 0
+reach = 900.0
 
 [node name="Tour" type="Node2D" parent="."]
 
 [node name="Stop1" type="Marker2D" parent="Tour"]
-position = Vector2(6500, 0)
-metadata/text = "Space has no friction. Once you are moving, you keep moving without using fuel."
+position = Vector2(2000, 150)
+metadata/text = "Planets pull you in, harder the closer you get. Crashing into one hurts."
 
 [node name="Stop2" type="Marker2D" parent="Tour"]
 position = Vector2(0, 0)
-metadata/text = "Your tank is nearly empty. Thrust briefly, then let go and coast all the way."
+metadata/text = "Aim wide of the planet: its pull will bend your path toward it."
 
 [node name="Route" type="Line2D" parent="."]
 visible = false
-points = PackedVector2Array(6400, 0)
+points = PackedVector2Array(1200, -250, 2000, -250, 2800, -150)
 
 [editable path="Wall1"]
 [editable path="Wall2"]

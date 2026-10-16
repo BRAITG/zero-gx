@@ -6,7 +6,7 @@
 
 **Architecture:** Levels are `.tscn` files generated once by a throwaway script from corridor centrelines, then committed. They stay editable in Godot. Each level carries a hidden `Route` `Line2D`. `tests/test_levels.gd` flies it.
 
-**Spec:** `docs/superpowers/specs/2026-10-14-ten-levels-design.md`
+**Spec:** `docs/superpowers/specs/2026-10-14-levels-design.md`
 
 ## Global Constraints
 

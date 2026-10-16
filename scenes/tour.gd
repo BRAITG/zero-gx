@@ -14,6 +14,7 @@ const SAME_PLACE := 50.0  # px
 const ZOOM := Vector2(0.8, 0.8)  # a little wider than play, to show each element in context
 const OVERVIEW_PADDING := 300.0  # px of space around the course in the overview
 const OVERVIEW_MIN_ZOOM := 0.08
+const CARD_SPACE := 260.0  # screen px at the bottom taken by the caption card
 
 var _stops: Array = []  # [world position, caption, zoom]
 var _index := -1
@@ -26,7 +27,9 @@ var _next: Button
 func _init(level: Level) -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	var bounds := _course_bounds(level)
-	_stops.append([bounds.get_center(), OVERVIEW_TEXT, _fit(bounds)])
+	var fit := _fit(bounds)
+	# Centre the course in the space above the caption card.
+	_stops.append([bounds.get_center() + Vector2(0, CARD_SPACE / 2.0 / fit.y), OVERVIEW_TEXT, fit])
 	_stops.append([level.goal.global_position, GOAL_TEXT, ZOOM])
 	for stop: Node2D in level.get_node("Tour").get_children():
 		_stops.append([stop.global_position, stop.get_meta("text", ""), ZOOM])
@@ -46,10 +49,10 @@ static func _course_bounds(level: Level) -> Rect2:
 	return bounds.grow(OVERVIEW_PADDING)
 
 
-## The camera zoom that fits `bounds` on screen.
+## The camera zoom that fits `bounds` on screen above the caption card.
 static func _fit(bounds: Rect2) -> Vector2:
 	var screen := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
-	var zoom := minf(screen.x / bounds.size.x, screen.y / bounds.size.y)
+	var zoom := minf(screen.x / bounds.size.x, (screen.y - CARD_SPACE) / bounds.size.y)
 	return Vector2.ONE * clampf(zoom, OVERVIEW_MIN_ZOOM, ZOOM.x)
 
 

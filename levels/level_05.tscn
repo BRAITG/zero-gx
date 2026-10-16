@@ -8,64 +8,92 @@
 [ext_resource type="PackedScene" path="res://scenes/asteroid.tscn" id="asteroid"]
 [ext_resource type="PackedScene" path="res://scenes/pickup.tscn" id="pickup"]
 
-[node name="Level_05_Swing" type="Node2D"]
+[node name="Level_07_Power" type="Node2D"]
 script = ExtResource("level")
-title = "Swing"
-hint = "This tank is too small to brake and turn. Let the planet's pull swing you around the corner."
+title = "Power"
+hint = "Green pickups make your engine stronger for a while; violet ones make it weaker. Mind your speed going into the climb."
 
 [node name="Ship" parent="." instance=ExtResource("ship")]
 position = Vector2(0, 0)
-fuel = 14.0
 
 [node name="Goal" parent="." instance=ExtResource("goal")]
-position = Vector2(2450, 2750)
+position = Vector2(4950, -2400)
 
 [node name="Wall1" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall1" index="0"]
-points = PackedVector2Array(-400, -400, 2900, -400, 2900, 3000)
+points = PackedVector2Array(-250, 275, -250, -275)
 
 [node name="Wall2" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall2" index="0"]
-points = PackedVector2Array(-400, 400, 2000, 400, 2000, 3000)
+points = PackedVector2Array(5200, -2125, 5200, -2675)
 
 [node name="Wall3" parent="." instance=ExtResource("barrier")]
 kind = 0
 
 [node name="Shape" parent="Wall3" index="0"]
-points = PackedVector2Array(-400, -400, -400, 400)
+points = PackedVector2Array(-250, 275, 3675, 275)
 
 [node name="Wall4" parent="." instance=ExtResource("barrier")]
-kind = 0
+kind = 1
 
 [node name="Shape" parent="Wall4" index="0"]
-points = PackedVector2Array(2000, 3000, 2900, 3000)
+points = PackedVector2Array(3675, 275, 3675, -2125)
 
-[node name="Body1" parent="." instance=ExtResource("body")]
-position = Vector2(2200, 200)
-preset = 0
-reach = 800.0
+[node name="Wall5" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall5" index="0"]
+points = PackedVector2Array(3675, -2125, 5200, -2125)
+
+[node name="Wall6" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall6" index="0"]
+points = PackedVector2Array(-250, -275, 3125, -275)
+
+[node name="Wall7" parent="." instance=ExtResource("barrier")]
+kind = 1
+
+[node name="Shape" parent="Wall7" index="0"]
+points = PackedVector2Array(3125, -275, 3125, -2675)
+
+[node name="Wall8" parent="." instance=ExtResource("barrier")]
+kind = 0
+
+[node name="Shape" parent="Wall8" index="0"]
+points = PackedVector2Array(3125, -2675, 5200, -2675)
+
+[node name="Pickup1" parent="." instance=ExtResource("pickup")]
+position = Vector2(700, 0)
+kind = 0
+
+[node name="Pickup2" parent="." instance=ExtResource("pickup")]
+position = Vector2(3400, -300)
+kind = 1
 
 [node name="Tour" type="Node2D" parent="."]
 
 [node name="Stop1" type="Marker2D" parent="Tour"]
-position = Vector2(2200, 200)
-metadata/text = "Use this planet: fly close past it and its pull swings you around the corner for free."
+position = Vector2(700, 0)
+metadata/text = "Green pickups make your engine stronger for a while."
 
 [node name="Stop2" type="Marker2D" parent="Tour"]
-position = Vector2(0, 0)
-metadata/text = "Your tank is too small to brake and turn on your own."
+position = Vector2(3400, -300)
+metadata/text = "Violet pickups make it weaker. Mind your speed going into the climb."
 
 [node name="Route" type="Line2D" parent="."]
 visible = false
-points = PackedVector2Array(700, -200, 1500, -200, 2450, 1000, 2450, 1800)
-metadata/cruise = 300.0
-metadata/coast = PackedInt32Array(2, 3)
+points = PackedVector2Array(3400, 0, 3400, -2400)
 
 [editable path="Wall1"]
 [editable path="Wall2"]
 [editable path="Wall3"]
 [editable path="Wall4"]
+[editable path="Wall5"]
+[editable path="Wall6"]
+[editable path="Wall7"]
+[editable path="Wall8"]

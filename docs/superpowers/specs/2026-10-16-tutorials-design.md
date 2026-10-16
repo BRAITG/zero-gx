@@ -22,8 +22,8 @@ She also skips text. The developer agreed that a real tutorial is needed, and as
 
 | Topic | Decision |
 |---|---|
-| Structure | Five new guided **tutorial stages** before the ten levels. Levels 1–4 stay as the unguided versions of the same mechanics. |
-| Tutorials | T1 no friction, T2 walls, T3 fuel, T4 orange walls with fuel, T5 gravity |
+| Structure | Six guided **tutorial stages** before the levels. The original levels 1 and 2 were removed as redundant; the old levels 3 and 4 (now 1 and 2) keep the velocity arrow. |
+| Tutorials | T1 no friction, T2 walls, T3 fuel, T4 orange and red walls with fuel, T5 gravity, T6 black holes and stars |
 | Step system | Each tutorial is a script of awaited steps (message, touch the target, wait for a condition) running on a normal, unpaused level. |
 | Camera | Unchanged: the level tour and the goal arrow are enough. |
 | Velocity vector | A translucent arrow from the ship, its length proportional to speed. Shown in tutorials and levels 1–4. |
@@ -46,26 +46,27 @@ She also skips text. The developer agreed that a real tutorial is needed, and as
 | T1 Coast | Open space bounded by distant blue walls; a full tank | Say "your ship has one engine". Touch a ring to the right (1.5 s). Say "that arrow is your velocity". Release and coast 2 s: no friction, no fuel used. Touch a ring straight down (1.5 s). Say "you did not turn down: the engine adds to your velocity". Touch the ring opposite your motion until speed < 40. Say "braking means accelerating the other way". Reveal the goal. |
 | T2 Bounce | A blue corridor with one corner; a full tank | Say "blue walls are safe". Touch a ring toward the wall until the ship hits it. Say "you bounce and keep your speed". Reveal the goal around the corner. |
 | T3 Fuel | A long straight; the tank holds 25 | Say "thrust burns fuel; when it runs out you have 5 s". Touch a ring ahead until fuel ≤ 15. Say "let go and coast the rest". Reveal the goal at the far end. |
-| T4 Damage | An orange zigzag; the tank holds 40 | Say "orange walls hurt, more the faster you hit". Touch a ring ahead (1 s), then wait until speed < 150 with "brake before the corner". Reveal the goal. |
-| T5 Gravity | A planet; the ship starts drifting past it | Say "planets pull you; watch your arrow bend". Wait until the ship has passed the planet, without touching. Say "fly close past the planet to swing around it". Reveal the goal behind the planet. |
+| T4 Damage | An orange zigzag with a red gate above the corner; the tank holds 40 | Say "orange walls hurt, more the faster you hit". Touch a ring ahead (0.8 s), then brake on a ring opposite the motion until speed < 150. Say "slow down before corners", then "red walls destroy your ship on contact: fly through the middle of the gate". Reveal the goal. |
+| T5 Gravity | A planet 300 px from the ship's path; the ship starts drifting past it | Say "planets pull you; watch your arrow bend". Wait until the ship has passed the planet, without touching. Say "fly close past the planet to swing around it". Reveal the goal behind the planet. |
+| T6 Danger | A black hole beside the ship's drift and a star off to the right, outside the walls | Say \"black holes pull far harder and destroy anything that touches them\". Watch 2 s (the path bends about 40°). Touch a ring pointing away from the black hole until 950 px clear. Say \"stars burn on touch and their pull reaches across a course\". Reveal the goal, past the star's pull. |
 
 ## Velocity vector
 
 - Drawn from the ship's centre along its velocity: 1 px per 4 px/s, up to 200 px. Translucent white, with an arrowhead.
-- On when the level's `show_velocity` export is true: all tutorials and levels 1–4.
+- On when the level's `show_velocity` export is true: all tutorials and levels 1–2.
 
 ## Progression and menu
 
-- Tutorials live in `res://tutorials/` as `tutorial_1.tscn` … `tutorial_5.tscn`. `Progress.levels()` lists tutorials first, then levels. Unlocking runs along that whole list.
-- The menu labels them "Training 1–5" and lays out all fifteen buttons in three columns.
+- Tutorials live in `res://tutorials/` as `tutorial_1.tscn` … `tutorial_6.tscn`. `Progress.levels()` lists tutorials first, then levels. Unlocking runs along that whole list.
+- The menu labels them "Training 1–6" and lays out all fifteen buttons in three columns.
 
-## Level 5
+## Swing level
 
-- The planet moves into the corner, from the corridor's centre (2450, 0) to (2200, 200), 136 px from each inner wall, so the swing hugs the inside of the turn. The fuel and route are retuned so the stage stays winnable only with the slingshot.
+- The planet sits inside the corner at (2200, 200), 136 px from each inner wall, so the swing hugs the turn. Only the slingshot fits the 14-unit tank.
 
 ## Verification
 
-- A tutorial runner test drives each lesson through its steps with scripted touches and checks that it reaches the goal.
+- A tutorial runner test drives each lesson through its steps with scripted touches and checks that it reaches the goal, and that no guided step kills the ship.
 - `touch_target` ignores touches off the ring.
 - A lethal hit in a tutorial restores the step's start instead of losing.
 - The velocity vector length follows speed and caps at 200 px.
