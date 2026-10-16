@@ -55,3 +55,9 @@ The values you will most often want to change (speed cap, thrust, turn rates, pi
 ## Assets
 
 Fonts (Orbitron, Exo 2; SIL Open Font License) and sound effects (Kenney, CC0) live in `assets/`. Sources and licenses: `assets/LICENSES.md`. The app icon (`assets/icon*.svg`, with Android adaptive foreground and background layers) is original. Everything else is drawn in code.
+
+## License
+
+Zero-GX is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See `LICENSE`.
+
+The bundled fonts and sound effects keep their own licenses (SIL Open Font License 1.1 and CC0 1.0); see `assets/LICENSES.md`. Godot Engine is MIT-licensed.
