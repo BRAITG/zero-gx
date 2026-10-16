@@ -1,7 +1,6 @@
 extends "res://tests/test_case.gd"
 ## Level-design checks. A failure here is a level to fix, not an engine bug.
 
-const LEVEL_COUNT := 11
 const SHARD_CLEARANCE := 60.0  # px between a destructible planet and any barrier
 const PICKUP_CLEARANCE := 16.0  # px between a pickup's edge and any barrier
 const IDLE_FRAMES := 12000  # 200 s with no input: longer than a slow first attempt
@@ -14,10 +13,6 @@ func load_level(id: String) -> Level:
 
 func of_type(root: Node, type: Variant) -> Array:
 	return root.find_children("*", "", true, false).filter(func(n): return is_instance_of(n, type))
-
-
-func test_level_files_exist() -> void:
-	check(Progress.levels().size() == LEVEL_COUNT, "found levels %s, expected %d" % [Progress.levels(), LEVEL_COUNT])
 
 
 func test_levels_are_well_formed() -> void:

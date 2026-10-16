@@ -13,7 +13,7 @@ Zero-GX is a physics puzzle-racer about flying a small spaceship from start to g
 
 - Touch and hold to steer and fire your engine; let go to coast.
 - Seven guided training stages teach frictionless flight, walls, fuel, gravity, black holes and stars.
-- Eleven levels: bounce off blue walls, avoid orange and lethal red ones, dodge drifting asteroids, and slip past black holes.
+- Twelve levels: bounce off blue walls, avoid orange and lethal red ones, dodge drifting asteroids, slip past black holes, and thread past stars.
 - Pickups boost or cripple your engine, and a free-burning boost can save an empty tank.
 - Every finish is scored on fuel left, hull left and time.
 
