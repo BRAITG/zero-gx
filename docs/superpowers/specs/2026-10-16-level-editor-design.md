@@ -24,7 +24,7 @@ The format gains per-kind limits, enforced by `LevelFormat.validate` (and later 
 | Kind | Radius | Total pull | Surface pull | Reach |
 |---|---|---|---|---|
 | Planet | 32–240 px | up to 100 px/s² | — | up to 1,500 px |
-| Star | 300–1,500 px | 150–6,000 px/s² | — | up to 6,000 px |
+| Star | 300–3,000 px | 150–6,000 px/s² | — | up to 8,000 px |
 | Black hole | 32–96 px | — | 8,000–64,000 px/s², and above every star's surface pull in the same level | up to 1,500 px |
 
 With these limits a planet can never be bigger than a star or out-pull it from afar, and a black hole always grabs harder up close than any star in its level. Today's presets and levels satisfy them.

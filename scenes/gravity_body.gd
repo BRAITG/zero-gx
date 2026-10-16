@@ -19,7 +19,10 @@ const PLANET_COLORS := [Color("#3f7a52"), Color("#2f6f8f"), Color("#8f6f35"), Co
 const STAR_COLOR := Color("#ffcf4a")
 const STAR_CORE := Color("#fff3c4")
 const FLARE_COLORS := [Color("#ff8a2a"), Color("#ffb347")]
-const STAR_FLAMES := 120
+const DISC_EDGES := 1024
+const FLAME_SPACING := 36.0  # px of rim per flame
+const FLAME_LENGTH := Vector2(25, 70)  # px, flickering between
+const PROMINENCE_SIZE := Vector2(50, 130)  # px radius, rising and falling
 const STAR_PROMINENCES := 7
 const DISK_COLORS := [Color("#ff9a4a"), Color("#c46cff"), Color("#ffd8a8")]
 const SHARDS_MIN := 12
@@ -40,6 +43,7 @@ var _time := 0.0
 		preset = value
 		queue_redraw()
 ## Negative values mean "use the preset's value".
+static var _unit_disc: ArrayMesh  # see _disc()
 @export var radius := -1.0
 @export var strength := -1.0
 @export var reach := -1.0
@@ -173,20 +177,61 @@ func _draw_black_hole(r: float) -> void:
 func _draw_star(r: float) -> void:
 	var pulse := 0.5 + 0.5 * sin(_time * 1.3)
 	for k in range(8, 0, -1):
-		draw_circle(Vector2.ZERO, r * (1.0 + k * (0.035 + 0.01 * pulse)), Color(STAR_COLOR, 0.05))
+		_disc(r * (1.0 + k * (0.035 + 0.01 * pulse)), Color(STAR_COLOR, 0.05))
+	var rim := TAU * r
+	var arc := _view_arc(r + FLAME_LENGTH.y)  # flames are many: draw only those that can show
 	for layer in 2:  # tongues of fire along the rim: long faint ones under short bright ones
-		var count := STAR_FLAMES + layer * 17
-		for i in count:
-			var at := i * TAU / count + 0.04 * sin(_time * 0.7 + i)
+		var count := int(rim / (FLAME_SPACING - layer * 6.0))
+		var half := 0.35 * TAU / count
+		var color := Color(FLARE_COLORS[layer], 0.35 + 0.35 * layer)
+		for n in range(floori(arc.x / TAU * count), ceili(arc.y / TAU * count) + 1):
+			var i := posmod(n, count)
+			var at := i * TAU / count + 0.3 * half * sin(_time * 0.7 + i)
 			var flicker := 0.5 + 0.5 * sin(_time * (2.0 + i % 5 * 0.6) + i * 1.7 + layer)
-			var length := r * (0.035 - layer * 0.015 + (0.04 - layer * 0.015) * flicker)
-			var half := 0.35 * PI / count
-			var color := Color(FLARE_COLORS[layer], 0.35 + 0.35 * layer)
-			draw_colored_polygon(PackedVector2Array([Vector2.from_angle(at - half) * r * 0.99, Vector2.from_angle(at) * (r + length), Vector2.from_angle(at + half) * r * 0.99]), color)
-	for i in STAR_PROMINENCES:  # slow arches of plasma rising off the surface
-		var at := i * TAU / STAR_PROMINENCES + _time * 0.03
+			var length := (FLAME_LENGTH.x + (FLAME_LENGTH.y - FLAME_LENGTH.x) * flicker) * (1.0 - 0.5 * layer)
+			draw_colored_polygon(PackedVector2Array([Vector2.from_angle(at - half) * (r - 2.0), Vector2.from_angle(at) * (r + length), Vector2.from_angle(at + half) * (r - 2.0)]), color)
+	var arches := maxi(STAR_PROMINENCES, int(rim / 1500.0))
+	for i in arches:  # slow arches of plasma rising off the surface
+		var at := i * TAU / arches + _time * 0.03 * 600.0 / r
 		var rise := 0.5 + 0.5 * sin(_time * 0.9 + i * 2.3)
-		draw_arc(Vector2.from_angle(at) * r, r * (0.05 + 0.06 * rise), at - PI / 2.0, at + PI / 2.0, 24, Color(FLARE_COLORS[0], 0.5 + 0.4 * rise), maxf(r * 0.016, 3.0), true)
-	draw_circle(Vector2.ZERO, r, STAR_COLOR)
+		draw_arc(Vector2.from_angle(at) * r, PROMINENCE_SIZE.x + (PROMINENCE_SIZE.y - PROMINENCE_SIZE.x) * rise, at - PI / 2.0, at + PI / 2.0, 24, Color(FLARE_COLORS[0], 0.5 + 0.4 * rise), 8.0, true)
+	_disc(r, STAR_COLOR)
 	for k in 5:
-		draw_circle(Vector2.ZERO, r * (0.9 - k * 0.17), STAR_COLOR.lerp(STAR_CORE, (k + 1) / 5.0))
+		_disc(r * (0.9 - k * 0.17), STAR_COLOR.lerp(STAR_CORE, (k + 1) / 5.0))
+
+
+## A filled circle smooth at any size: one shared fan mesh, scaled (draw_circle shows facets on a
+## star-sized circle, and a big polygon would be triangulated again every frame).
+func _disc(radius: float, color: Color) -> void:
+	if _unit_disc == null:
+		var points := PackedVector2Array([Vector2.ZERO])
+		for k in DISC_EDGES + 1:
+			points.append(Vector2.from_angle(k * TAU / DISC_EDGES))
+		var arrays := []
+		arrays.resize(Mesh.ARRAY_MAX)
+		arrays[Mesh.ARRAY_VERTEX] = points
+		var fan := PackedInt32Array()
+		for k in DISC_EDGES:
+			fan.append_array([0, k + 1, k + 2])
+		arrays[Mesh.ARRAY_INDEX] = fan
+		_unit_disc = ArrayMesh.new()
+		_unit_disc.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	draw_mesh(_unit_disc, null, Transform2D(0.0, Vector2.ONE * radius, 0.0, Vector2.ZERO), color)
+
+
+## The angles (from, to) of the circle of `radius` around this body that the screen can show;
+## the whole circle when the view holds the centre.
+func _view_arc(radius: float) -> Vector2:
+	var to_local := get_global_transform_with_canvas().affine_inverse()
+	var screen := get_viewport_rect()
+	var corners := [to_local * screen.position, to_local * Vector2(screen.end.x, screen.position.y), to_local * screen.end, to_local * Vector2(screen.position.x, screen.end.y)]
+	if Geometry2D.is_point_in_polygon(Vector2.ZERO, PackedVector2Array(corners)):
+		return Vector2(0.0, TAU)
+	var first: float = corners[0].angle()
+	var low := 0.0
+	var high := 0.0
+	for corner: Vector2 in corners:
+		var turn := wrapf(corner.angle() - first, -PI, PI)
+		low = minf(low, turn)
+		high = maxf(high, turn)
+	return Vector2(first + low, first + high)

@@ -28,6 +28,7 @@ var _countdown_caption: Label
 var _countdown_second := -1
 var _result: PanelContainer
 var _result_label: Label
+var _result_name: Label
 var _detail: Label
 var _score: VBoxContainer
 var _total: Label
@@ -136,6 +137,11 @@ func _ready() -> void:
 	_result_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_result_label.add_theme_font_override("font", Style.display_font)
 	_result_label.add_theme_font_size_override("font_size", 36)
+	_result_name = Label.new()  # which stage this was
+	_result_name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_result_name.add_theme_font_size_override("font_size", 22)
+	_result_name.add_theme_color_override("font_color", Style.INK_DIM)
+	column.add_child(_result_name)
 	column.add_child(_result_label)
 	_score = VBoxContainer.new()
 	_score.add_theme_constant_override("separation", 6)
@@ -222,10 +228,12 @@ func intro_text() -> String:
 	return "%s\n%s" % [_intro_title.text, _intro_hint.text] if _intro.visible else ""
 
 
-## `result` keys: won → points, fuel_points, hull_points, time_points, new_best, has_next;
+## `result` keys: name; won → points, fuel_points, hull_points, time_points, new_best, has_next;
 ## lost → cause.
 func show_result(won: bool, result: Dictionary) -> void:
 	_intro.hide()
+	_result_name.text = result.name
+	_result_name.visible = result.name != ""
 	_result_label.text = "Course clear" if won else "Lost"
 	_score.visible = won
 	_detail.visible = not won
@@ -246,7 +254,7 @@ func show_result(won: bool, result: Dictionary) -> void:
 
 ## Everything the end panel shows, for tests.
 func result_text() -> String:
-	var lines := [_result_label.text]
+	var lines := [_result_name.text, _result_label.text]
 	if _score.visible:
 		lines.append(_total.text)
 		if _best.visible:

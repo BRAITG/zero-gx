@@ -62,6 +62,7 @@ func scored_level(goal_at: Vector2, ship_props: Dictionary = {}) -> Level:
 	var root := Node2D.new()
 	root.set_script(load("res://scenes/level.gd"))
 	root.level_id = "level_01"
+	root.title = "Launch"
 	var ship: Node = load(SHIP).instantiate()
 	for key in ship_props:
 		ship.set(key, ship_props[key])
@@ -82,6 +83,7 @@ func test_win_saves_points() -> void:
 	check(best == expected, "saved %d, expected %d" % [best, expected])
 	check(lvl.hud.result_text().contains(str(best)), "panel must show the points: %s" % lvl.hud.result_text())
 	check(lvl.hud.result_text().contains("New best"), "first win must say New best")
+	check(lvl.hud.result_text().contains("Level 1 · Launch"), "the panel must name the level: %s" % lvl.hud.result_text())
 
 
 func test_loss_saves_nothing() -> void:
@@ -90,6 +92,7 @@ func test_loss_saves_nothing() -> void:
 	await frames(2)
 	check(Progress.best_points("level_01") == -1, "a loss saved %d points" % Progress.best_points("level_01"))
 	check(lvl.hud.result_text().contains("Hull destroyed"), "loss cause missing: %s" % lvl.hud.result_text())
+	check(lvl.hud.result_text().contains("Level 1 · Launch"), "the panel must name the level: %s" % lvl.hud.result_text())
 
 
 func test_loss_cause_out_of_fuel() -> void:

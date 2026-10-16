@@ -66,8 +66,15 @@ func _ship_stranded() -> void:
 ## The title card; tutorials skip it, as their lesson is the introduction.
 func _show_intro() -> void:
 	if title != "":
-		var number := level_id.get_slice("_", 1).to_int()
-		hud.show_intro("Level %d · %s" % [number, title] if number > 0 else title, hint)
+		hud.show_intro(display_name(), hint)
+
+
+## How the stage is named to the player: "Level 2 · Drift", "Training 6 · Black holes", or
+## just the title of one of the player's own levels.
+func display_name() -> String:
+	var kind: String = {"level": "Level", "tutorial": "Training"}.get(level_id.get_slice("_", 0), "")
+	var number := level_id.get_slice("_", 1).to_int()
+	return "%s %d · %s" % [kind, number, title] if kind != "" and number > 0 else title
 
 
 func _end_tour() -> void:
@@ -101,7 +108,9 @@ func finish(won: bool) -> void:
 		Sfx.play("goal")
 		if testing:
 			MyLevels.mark_completed(level_id)
-	hud.show_result(won, _score() if won else {"cause": ship.death_cause})
+	var result := _score() if won else {"cause": ship.death_cause}
+	result.name = display_name()
+	hud.show_result(won, result)
 	finished.emit(won)
 
 

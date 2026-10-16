@@ -24,12 +24,12 @@ const MAX_ROUTE := 64
 const MAX_TITLE := 40
 const MAX_TEXT := 200
 const TANK_RANGE := Vector2(1, 1000)  # fuel and hull, unless unlimited
-const BODY_RANGES := {"radius": Vector2(8, 2000), "strength": Vector2(0, 64000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}
+const BODY_RANGES := {"radius": Vector2(8, 3000), "strength": Vector2(0, 64000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}
 ## Per-kind limits so each body keeps its role: a planet never outgrows or out-pulls a star, a
 ## black hole always grabs hardest up close. Total pull is the pull at 1000 px.
 const KIND_LIMITS := {
 	"planet": {"radius": Vector2(32, 240), "total_pull": Vector2(0, 100), "reach": Vector2(0, 1500)},
-	"star": {"radius": Vector2(300, 1500), "total_pull": Vector2(150, 6000), "reach": Vector2(0, 6000)},
+	"star": {"radius": Vector2(300, 3000), "total_pull": Vector2(150, 6000), "reach": Vector2(0, 8000)},
 	"black_hole": {"radius": Vector2(32, 96), "strength": Vector2(8000, 64000), "reach": Vector2(0, 1500)},
 }
 
