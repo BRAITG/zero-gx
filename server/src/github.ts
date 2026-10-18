@@ -3,6 +3,7 @@ import { base64url, fromBase64url } from "./util";
 
 const API = "https://api.github.com";
 const DEFAULT_BRANCH = "main";
+const INDEX_ATTEMPTS = 3;
 
 export class GithubError extends Error {
   constructor(
@@ -120,39 +121,62 @@ export async function openOrUpdatePullRequest(env: GithubEnv, fetchFn: Fetch, su
     await gh("PATCH", `${repo}/pulls/${submission.pullRequest}`, { title: submission.title, body: submission.body });
     return { pullRequest: submission.pullRequest, branch };
   }
-  const pull = await gh<{ number: number }>("POST", `${repo}/pulls`, { title: submission.title, head: branch, base: DEFAULT_BRANCH, body: submission.body });
+  const pull = await gh<{ number: number }>("POST", `${repo}/pulls`, { title: submission.title, head: branch, base: DEFAULT_BRANCH, body: submission.body }).catch(async (error) => {
+    // 422: a pull request for this branch is already open, left by a request that died before recording it.
+    if (!(error instanceof GithubError && error.status === 422)) throw error;
+    const [existing] = await gh<{ number: number }[]>("GET", `${repo}/pulls?head=${env.LEVELS_REPO.split("/")[0]}:${branch}&state=open`);
+    if (!existing) throw error;
+    return existing;
+  });
   return { pullRequest: pull.number, branch };
 }
 
-/** A file's text and blob sha on the default branch; null when it does not exist. */
-export async function getFile(env: GithubEnv, fetchFn: Fetch, path: string): Promise<{ text: string; sha: string } | null> {
+/** A file on the default branch: its bytes, their UTF-8 text and its blob sha; null when it does not exist. */
+export async function getFile(env: GithubEnv, fetchFn: Fetch, path: string): Promise<{ bytes: Uint8Array; text: string; sha: string } | null> {
   const { gh, repo } = await client(env, fetchFn);
   const file = await gh<{ content: string; sha: string } | null>("GET", `${repo}/contents/${path}?ref=${DEFAULT_BRANCH}`).catch((error) => {
     if (error instanceof GithubError && error.status === 404) return null;
     throw error;
   });
+  if (!file) return null;
   // GitHub wraps the base64 content in newlines, which atob ignores.
-  return file && { text: new TextDecoder().decode(Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0))), sha: file.sha };
+  const bytes = Uint8Array.from(atob(file.content), (c) => c.charCodeAt(0));
+  return { bytes, text: new TextDecoder().decode(bytes), sha: file.sha };
 }
 
-/** Writes `index.json` on the default branch unless it already holds `content`; refetches once on a conflicting write. */
-export async function commitIndex(env: GithubEnv, fetchFn: Fetch, content: string): Promise<void> {
+/**
+ * Writes the index built by `build` unless the default branch already holds it. The blob sha is read before the content is built
+ * and sent with the write, so a concurrent index commit makes the write conflict and the next attempt rebuilds from newer data.
+ */
+export async function commitIndex(env: GithubEnv, fetchFn: Fetch, build: () => Promise<string>): Promise<void> {
   const { gh, repo } = await client(env, fetchFn);
-  for (let attempt = 0; ; attempt++) {
+  for (let attempt = 1; ; attempt++) {
     const current = await getFile(env, fetchFn, "index.json");
+    const content = await build();
     if (current?.text === content) return;
     try {
       await gh("PUT", `${repo}/contents/index.json`, { message: "Update index", content: base64(new TextEncoder().encode(content)), sha: current?.sha, branch: DEFAULT_BRANCH });
       return;
     } catch (error) {
-      if (attempt > 0 || !(error instanceof GithubError && error.status === 409)) throw error;
+      // 409: stale sha. 422: the file appeared after we saw it missing.
+      const conflict = error instanceof GithubError && (error.status === 409 || error.status === 422);
+      if (!conflict || attempt === INDEX_ATTEMPTS) throw error;
     }
   }
 }
 
-/** Body of the pull request's most recent comment, or null. Only the first 100 comments are read. */
+/** 'merged' and 'closed' pull requests cannot take new commits. */
+export async function pullRequestState(env: GithubEnv, fetchFn: Fetch, pullRequest: number): Promise<"open" | "closed" | "merged"> {
+  const { gh, repo } = await client(env, fetchFn);
+  const pull = await gh<{ state: string; merged?: boolean }>("GET", `${repo}/pulls/${pullRequest}`);
+  return pull.merged ? "merged" : pull.state === "open" ? "open" : "closed";
+}
+
+const MODERATORS = ["OWNER", "MEMBER", "COLLABORATOR"];
+
+/** Body of the pull request's most recent comment by a repository moderator, or null. Only the first 100 comments are read. */
 export async function lastComment(env: GithubEnv, fetchFn: Fetch, pullRequest: number): Promise<string | null> {
   const { gh, repo } = await client(env, fetchFn);
-  const comments: { body?: string }[] = await gh("GET", `${repo}/issues/${pullRequest}/comments?per_page=100`);
-  return comments.at(-1)?.body ?? null;
+  const comments = await gh<{ body?: string; author_association?: string }[]>("GET", `${repo}/issues/${pullRequest}/comments?per_page=100`);
+  return comments.filter((comment) => MODERATORS.includes(comment.author_association ?? "")).at(-1)?.body ?? null;
 }

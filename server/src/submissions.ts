@@ -2,13 +2,16 @@ import { checkDemo } from "./core/check";
 import { MAX_BYTES, decodeDemo } from "./core/demo";
 import { MAX_LEVEL_BYTES, sha256Hex, validateLevel } from "./core/level";
 import type { Env } from "./env";
-import { commitIndex, getFile, lastComment, openOrUpdatePullRequest } from "./github";
+import { commitIndex, getFile, lastComment, openOrUpdatePullRequest, pullRequestState } from "./github";
 import { HttpError, readBytes } from "./http";
 import { requireIntegrity, requirePlayer } from "./session";
 import { randomId } from "./util";
 
 const MAX_BODY_BYTES = 600_000;
 const MAX_OPEN = 3;
+/** A submission whose pull request is still unrecorded after this long was abandoned by its request. */
+const STALE_SECONDS = 120;
+const RECORD_ATTEMPTS = 3;
 const MAX_PER_DAY = 5;
 const MAX_WEBHOOK_BYTES = 1_000_000;
 const MAX_COMMENT = 500;
@@ -35,6 +38,7 @@ interface SubmissionRow {
   status: "open" | "approved" | "rejected";
   title: string | null;
   sha256: string | null;
+  created: number;
 }
 
 const selectOpen = (env: Env, level: string) => env.DB.prepare("SELECT * FROM submissions WHERE level = ? AND status = 'open'").bind(level).first<SubmissionRow>();
@@ -99,11 +103,12 @@ export async function postSubmission(request: Request, env: Env, _params: Record
     if (row.hidden || row.listed) throw new HttpError(403, "This level is hidden.");
     open = await selectOpen(env, levelId);
   }
+  // Another open submission already carries these exact bytes: only one of them could ever be recorded as a version.
+  const duplicate = await env.DB.prepare("SELECT 1 AS found FROM submissions WHERE sha256 = ? AND status = 'open' AND level != ?").bind(sha256, levelId ?? "").first();
+  if (duplicate) throw new HttpError(409, "Another open submission already carries this exact level.");
   const opening = new HttpError(409, "This level's submission is still being opened; try again in a moment.");
-  if (open && open.pull_request === null) throw opening;
+  if (open && open.pull_request === null && open.created > now() - STALE_SECONDS) throw opening;
 
-  const openCount = await env.DB.prepare("SELECT COUNT(*) AS n FROM submissions WHERE player = ? AND status = 'open' AND level != ?").bind(player.id, levelId ?? "").first<{ n: number }>();
-  if (openCount!.n >= MAX_OPEN) throw new HttpError(429, `At most ${MAX_OPEN} submissions can be open at once.`);
   const today = await env.DB.prepare(
     `INSERT INTO rate (player, action, "window", count) VALUES (?, 'submit', ?, 1)
      ON CONFLICT (player, action, "window") DO UPDATE SET count = count + 1 RETURNING count`,
@@ -115,25 +120,48 @@ export async function postSubmission(request: Request, env: Env, _params: Record
   const isNewLevel = row === null;
   const level_id = row?.id ?? randomId("lvl_", 10);
   const version = open?.version ?? (row?.latest ?? 0) + 1;
-  if (!open) {
-    const insert = env.DB.prepare("INSERT INTO submissions (level, version, player, status, created) VALUES (?, ?, ?, 'open', ?)").bind(level_id, version, player.id, now());
+  const unavailable = () => new HttpError(502, "GitHub did not accept the submission; try again later.");
+  let reserved = false;
+  if (open && open.pull_request === null) {
+    // The request that created this row died before recording its pull request. Claiming it by its timestamp lets only one request take it over.
+    const claimed = await env.DB.prepare("UPDATE submissions SET created = ? WHERE id = ? AND pull_request IS NULL AND created = ?").bind(now(), open.id, open.created).run();
+    if (claimed.meta.changes === 0) throw opening;
+  } else if (open) {
+    const state = await pullRequestState(env, fetchFn, open.pull_request!).catch((error) => {
+      console.error(error);
+      throw unavailable();
+    });
+    if (state !== "open") throw new HttpError(409, `Pull request #${open.pull_request} is already ${state}; the review outcome has not reached the server yet.`);
+  } else {
+    // The limit is part of the insert, so concurrent requests cannot both take the last slot. Submissions
+    // whose pull request was never recorded and that are past STALE_SECONDS can be taken over, so they do not count.
+    const room = `(SELECT COUNT(*) FROM submissions WHERE player = ? AND status = 'open' AND (pull_request IS NOT NULL OR created >= ?)) < ${MAX_OPEN}`;
+    const roomBinds = [player.id, now() - STALE_SECONDS];
+    const insert = env.DB.prepare(`INSERT INTO submissions (level, version, player, status, created, sha256, title) SELECT ?, ?, ?, 'open', ?, ?, ? WHERE ${room}`).bind(
+      level_id, version, player.id, now(), sha256, checked.title, ...roomBinds,
+    );
+    let changes: number;
     try {
-      await (isNewLevel
-        ? env.DB.batch([env.DB.prepare("INSERT INTO levels (id, owner, based_on, created) VALUES (?, ?, ?, ?)").bind(level_id, player.id, basedOn, now()), insert])
-        : insert.run());
+      const results = isNewLevel
+        ? await env.DB.batch([env.DB.prepare(`INSERT INTO levels (id, owner, based_on, created) SELECT ?, ?, ?, ? WHERE ${room}`).bind(level_id, player.id, basedOn, now(), ...roomBinds), insert])
+        : [await insert.run()];
+      changes = results.at(-1)!.meta.changes;
     } catch (error) {
       // one_open_per_level: a concurrent request opened this level first.
       if (isNewLevel || !(await selectOpen(env, level_id))) throw error;
       throw opening;
     }
+    if (changes === 0) throw new HttpError(429, `At most ${MAX_OPEN} submissions can be open at once.`);
+    reserved = true;
     open = await selectOpen(env, level_id);
   }
 
   const author = row?.owner ?? player.id;
   const parent = row ? row.based_on : basedOn;
   const published = (row?.latest ?? 0) > 0;
+  let result: { pullRequest: number; branch: string };
   try {
-    const { pullRequest, branch } = await openOrUpdatePullRequest(env, fetchFn, {
+    result = await openOrUpdatePullRequest(env, fetchFn, {
       id: level_id,
       version,
       level: levelText,
@@ -144,19 +172,29 @@ export async function postSubmission(request: Request, env: Env, _params: Record
       body: `Version ${version} of ${level_id}\nAuthor: ${author}${parent ? `\nBased on: ${parent}` : ""}`,
       pullRequest: open!.pull_request,
     });
-    await env.DB.prepare("UPDATE submissions SET pull_request = ?, branch = ?, sha256 = ?, title = ? WHERE id = ?").bind(pullRequest, branch, sha256, checked.title, open!.id).run();
-    return Response.json({ level_id, version, pull_request: pullRequest }, { status: open!.pull_request === null ? 201 : 200 });
   } catch (error) {
     console.error(error);
-    // A row this request created must not block the level: release it so the player can retry.
-    if (open!.pull_request === null) {
+    // Nothing is published yet: a row this request reserved must not block the level, so release it.
+    if (reserved) {
       await env.DB.batch([
         env.DB.prepare("DELETE FROM submissions WHERE id = ?").bind(open!.id),
         ...(isNewLevel ? [env.DB.prepare("DELETE FROM levels WHERE id = ?").bind(level_id)] : []),
       ]);
     }
-    throw new HttpError(502, "GitHub did not accept the submission; try again later.");
+    throw unavailable();
   }
+
+  // The pull request exists from here on, so the row is never deleted: the webhook links it by branch if recording fails.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await env.DB.prepare("UPDATE submissions SET pull_request = ?, branch = ?, sha256 = ?, title = ? WHERE id = ?").bind(result.pullRequest, result.branch, sha256, checked.title, open!.id).run();
+      break;
+    } catch (error) {
+      console.error(error);
+      if (attempt === RECORD_ATTEMPTS) throw new HttpError(502, `Pull request #${result.pullRequest} was opened but could not be recorded; it will be linked when GitHub reports on it.`);
+    }
+  }
+  return Response.json({ level_id, version, pull_request: result.pullRequest }, { status: open!.pull_request === null ? 201 : 200 });
 }
 
 export async function getMySubmissions(request: Request, env: Env): Promise<Response> {
@@ -188,7 +226,7 @@ async function buildIndex(env: Env): Promise<string> {
   return `${JSON.stringify({ levels: entries }, null, 2)}\n`;
 }
 
-const rebuildIndex = async (env: Env, fetchFn: typeof fetch) => commitIndex(env, fetchFn, await buildIndex(env));
+const rebuildIndex = (env: Env, fetchFn: typeof fetch) => commitIndex(env, fetchFn, () => buildIndex(env));
 
 /** HMAC-SHA-256 of the raw body under the webhook secret; `verify` compares in constant time. */
 async function validSignature(env: Env, body: Uint8Array<ArrayBuffer>, header: string | null): Promise<boolean> {
@@ -198,27 +236,58 @@ async function validSignature(env: Env, body: Uint8Array<ArrayBuffer>, header: s
   return crypto.subtle.verify("HMAC", key, Uint8Array.from(hex.match(/../g)!, (byte) => parseInt(byte, 16)), body);
 }
 
-async function closePullRequest(env: Env, fetchFn: typeof fetch, number: number, merged: boolean): Promise<boolean> {
-  const row = await env.DB.prepare("SELECT * FROM submissions WHERE pull_request = ?").bind(number).first<SubmissionRow>();
+/** The submission of a pull request: by number, else by its `submission/<id>` branch when the request that opened it never recorded the number. */
+async function findSubmission(env: Env, pull: PullRequest): Promise<SubmissionRow | null> {
+  const byNumber = await env.DB.prepare("SELECT * FROM submissions WHERE pull_request = ?").bind(pull.number).first<SubmissionRow>();
+  if (byNumber) return byNumber;
+  const level = pull.head?.ref?.match(/^submission\/(lvl_[a-z0-9]{10})$/)?.[1];
+  const byBranch = level ? await env.DB.prepare("SELECT * FROM submissions WHERE level = ? AND pull_request IS NULL ORDER BY id DESC").bind(level).first<SubmissionRow>() : null;
+  if (!byBranch) return null;
+  await env.DB.prepare("UPDATE submissions SET pull_request = ?, branch = ? WHERE id = ? AND pull_request IS NULL").bind(pull.number, pull.head!.ref, byBranch.id).run();
+  return { ...byBranch, pull_request: pull.number };
+}
+
+async function closePullRequest(env: Env, fetchFn: typeof fetch, pull: PullRequest): Promise<boolean> {
+  const row = await findSubmission(env, pull);
   if (!row) return false;
-  if (merged) {
-    if (row.status === "rejected") return false;
-    // One transaction, each statement guarded by the submission still being open: a repeated delivery changes nothing.
-    // OR IGNORE: a level file identical to a published one cannot take a second versions row.
-        await env.DB.batch([
-      env.DB.prepare("INSERT OR IGNORE INTO versions (level, version, sha256, approved) SELECT level, version, sha256, ?2 FROM submissions WHERE id = ?1 AND status = 'open'").bind(row.id, now()),
-      env.DB.prepare(
-        `UPDATE levels SET latest = (SELECT version FROM submissions WHERE id = ?1), title = (SELECT title FROM submissions WHERE id = ?1)
-         WHERE id = (SELECT level FROM submissions WHERE id = ?1) AND (SELECT status FROM submissions WHERE id = ?1) = 'open'`,
-      ).bind(row.id),
-      env.DB.prepare("UPDATE submissions SET status = 'approved', decided = ?2 WHERE id = ?1 AND status = 'open'").bind(row.id, now()),
-    ]);
+  if (pull.merged) {
+    if (row.status !== "approved") {
+      // The version's hash is the merged file's, not what the player uploaded.
+      const path = `levels/${row.level}/v${row.version}.json`;
+      const file = await getFile(env, fetchFn, path);
+      if (!file) throw new Error(`${path} is missing on the default branch of a merged pull request.`);
+      const sha256 = await sha256Hex(file.bytes);
+      // One transaction, each statement guarded by the submission not being decided yet: a repeated delivery changes nothing.
+      // A hash that is already published makes the versions insert fail and roll everything back, leaving the submission undecided.
+      const undecided = "(SELECT status FROM submissions WHERE id = ?1) IN ('open', 'rejected')";
+      await env.DB.batch([
+        env.DB.prepare(`INSERT INTO versions (level, version, sha256, approved) SELECT level, version, ?3, ?2 FROM submissions WHERE id = ?1 AND ${undecided}`).bind(row.id, now(), sha256),
+        env.DB.prepare(
+          `UPDATE levels SET latest = (SELECT version FROM submissions WHERE id = ?1), title = (SELECT title FROM submissions WHERE id = ?1)
+           WHERE id = (SELECT level FROM submissions WHERE id = ?1) AND ${undecided}`,
+        ).bind(row.id),
+        env.DB.prepare(`UPDATE submissions SET status = 'approved', decided = ?2, comment = NULL, sha256 = ?3 WHERE id = ?1 AND status IN ('open', 'rejected')`).bind(row.id, now(), sha256),
+      ]);
+    }
     // Also on a repeated delivery: it completes an index commit that failed the first time, and is a no-op otherwise.
     await rebuildIndex(env, fetchFn);
   } else if (row.status === "open") {
-    const comment = (await lastComment(env, fetchFn, number))?.slice(0, MAX_COMMENT) ?? null;
+    const comment = (await lastComment(env, fetchFn, pull.number))?.slice(0, MAX_COMMENT) ?? null;
     await env.DB.prepare("UPDATE submissions SET status = 'rejected', decided = ?, comment = ? WHERE id = ? AND status = 'open'").bind(now(), comment, row.id).run();
   }
+  return true;
+}
+
+/** A closed pull request that is reopened is under review again, unless the level has meanwhile been submitted anew. */
+async function reopenPullRequest(env: Env, pull: PullRequest): Promise<boolean> {
+  const row = await findSubmission(env, pull);
+  if (!row) return false;
+  await env.DB.prepare(
+    `UPDATE submissions SET status = 'open', decided = NULL, comment = NULL
+     WHERE id = ?1 AND status = 'rejected' AND NOT EXISTS (SELECT 1 FROM submissions WHERE level = ?2 AND status = 'open')`,
+  )
+    .bind(row.id, row.level)
+    .run();
   return true;
 }
 
@@ -233,12 +302,18 @@ async function refreshHidden(env: Env, fetchFn: typeof fetch): Promise<void> {
   await rebuildIndex(env, fetchFn);
 }
 
+interface PullRequest {
+  number: number;
+  merged: boolean;
+  head?: { ref?: string };
+}
+
 /** The parts of a delivery this server reads. */
 interface WebhookPayload {
   action?: string;
   ref?: string;
   repository?: { full_name?: string };
-  pull_request?: { number?: number; merged?: boolean };
+  pull_request?: { number?: number; merged?: boolean; head?: { ref?: string } };
   commits?: { added?: string[]; modified?: string[]; removed?: string[] }[];
 }
 
@@ -258,8 +333,10 @@ export async function postGithub(request: Request, env: Env, _params: Record<str
   if (payload?.repository?.full_name !== env.LEVELS_REPO) return new Response(null, { status: 204 });
 
   let handled = false;
-  if (event === "pull_request" && payload.action === "closed" && typeof payload.pull_request?.number === "number") {
-    handled = await closePullRequest(env, fetchFn, payload.pull_request.number, payload.pull_request.merged === true);
+  const number = payload.pull_request?.number;
+  if (event === "pull_request" && typeof number === "number" && (payload.action === "closed" || payload.action === "reopened")) {
+    const pull = { number, merged: payload.pull_request?.merged === true, head: payload.pull_request?.head };
+    handled = payload.action === "closed" ? await closePullRequest(env, fetchFn, pull) : await reopenPullRequest(env, pull);
   } else if (event === "push" && payload.ref === "refs/heads/main") {
     const touched = (payload.commits ?? []).some((commit) => [commit.added, commit.modified, commit.removed].some((files) => files?.includes("hidden.txt")));
     if (touched) {

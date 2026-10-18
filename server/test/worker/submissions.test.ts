@@ -11,6 +11,8 @@ const LEVEL_01 = bytes(env.LEVEL_01);
 const DEMO_01 = bytes(env.DEMO_LEVEL_01);
 const LEVEL_05 = bytes(env.LEVEL_05);
 const DEMO_TELEPORT = bytes(env.DEMO_TELEPORT);
+const LEVEL_01_TEXT = new TextDecoder().decode(LEVEL_01);
+const LEVEL_05_TEXT = new TextDecoder().decode(LEVEL_05);
 const SHA_01 = await sha256Hex(LEVEL_01);
 const SHA_05 = await sha256Hex(LEVEL_05);
 const REPO = "/repos/BRAITG/zero-gx-levels";
@@ -24,7 +26,7 @@ const testEnv: Env = { ...env, ALLOW_TEST_VERIFIER: "1", GITHUB_APP_ID: "12345",
 
 const call = (path: string, init?: RequestInit) => worker.fetch(new Request(`https://example.com${path}`, init), testEnv);
 const nonce = async () => ((await (await call("/nonce")).json()) as { nonce: string }).nonce;
-const failed = (e: { message: string; status: number }) => Response.json({ error: e.message }, { status: e.status });
+const failed = (e: { message: string; status?: number }) => Response.json({ error: e.message }, { status: e.status ?? 500 });
 
 async function signIn(id: string, name: string) {
   const n = await nonce();
@@ -44,8 +46,18 @@ class Github {
   calls: Call[] = [];
   files = new Map<string, { text: string; sha: string }>();
   branches = new Set<string>();
-  comments = new Map<number, string[]>();
-  state = { nextPull: 1, conflicts: 0, fail: null as RegExp | null, shas: 0 };
+  comments = new Map<number, { body: string; author_association: string }[]>();
+  state = {
+    nextPull: 1,
+    conflicts: 0,
+    fail: null as RegExp | null,
+    shas: 0,
+    /** A pull request that already exists for the branch: creating another answers 422. */
+    existingPull: null as number | null,
+    pullState: "open",
+    /** Runs once, just before the next contents PUT is processed. */
+    onPut: null as (() => Promise<void>) | null,
+  };
 
   fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const { calls, files, branches, comments, state } = this;
@@ -68,10 +80,12 @@ class Github {
       return json({}, 201);
     }
     if (method === "PATCH" && path.startsWith(`${REPO}/git/refs/heads/`)) return json({});
-    if (method === "POST" && path === `${REPO}/pulls`) return json({ number: state.nextPull++ }, 201);
+    if (method === "POST" && path === `${REPO}/pulls`) return state.existingPull ? json({}, 422) : json({ number: state.nextPull++ }, 201);
+    if (method === "GET" && path.startsWith(`${REPO}/pulls?`)) return json(state.existingPull ? [{ number: state.existingPull }] : []);
+    if (method === "GET" && path.match(/\/pulls\/\d+$/)) return json({ state: state.pullState, merged: state.pullState === "merged" });
     if (method === "PATCH" && path.startsWith(`${REPO}/pulls/`)) return json({});
     const thread = path.match(/\/issues\/(\d+)\/comments/);
-    if (method === "GET" && thread) return json((comments.get(Number(thread[1])) ?? []).map((text) => ({ body: text })));
+    if (method === "GET" && thread) return json(comments.get(Number(thread[1])) ?? []);
     const contents = path.match(/\/contents\/([^?]+)/)?.[1];
     if (method === "GET" && contents) {
       const file = files.get(contents);
@@ -79,11 +93,17 @@ class Github {
       return file ? json({ sha: file.sha, content: `${btoa(file.text).replace(/(.{20})/g, "$1\n")}\n` }) : json({}, 404);
     }
     if (method === "PUT" && contents) {
+      if (state.onPut) {
+        const run = state.onPut;
+        state.onPut = null;
+        await run();
+      }
       const current = files.get(contents);
       if (state.conflicts > 0) {
         state.conflicts--;
         return json({}, 409);
       }
+      if (current && !body.sha) return json({}, 422);
       if (current?.sha !== body.sha) return json({}, 409);
       files.set(contents, { text: new TextDecoder().decode(bytes(body.content)), sha: `file${++state.shas}` });
       return json({}, 200);
@@ -104,7 +124,7 @@ interface Fields {
   based_on?: string;
 }
 
-async function submit(token: string, fields: Fields, gh: Github) {
+async function submit(token: string, fields: Fields, gh: Github, submitEnv: Env = testEnv) {
   const n = await nonce();
   const form = new FormData();
   form.set("level", new File([fields.level ?? LEVEL_01], "level.json"));
@@ -112,7 +132,7 @@ async function submit(token: string, fields: Fields, gh: Github) {
   if (fields.level_id) form.set("level_id", fields.level_id);
   if (fields.based_on) form.set("based_on", fields.based_on);
   const request = new Request("https://example.com/submissions", { method: "POST", body: form, headers: { Authorization: `Bearer ${token}`, "X-Integrity": `ok:${n}`, "X-Nonce": n } });
-  return postSubmission(request, testEnv, {}, gh.fetchFn).catch(failed);
+  return postSubmission(request, submitEnv, {}, gh.fetchFn).catch(failed);
 }
 
 async function sign(body: string, secret = SECRET) {
@@ -250,6 +270,7 @@ describe("POST /submissions", () => {
     expect(await response.json()).toEqual({ level_id: first.level_id, version: 1, pull_request: first.pull_request });
     const second = gh.calls.slice(before).filter((c) => !c.path.startsWith("/app/"));
     expect(second.map((c) => `${c.method} ${c.path.replace(REPO, "")}`)).toEqual([
+      `GET /pulls/${first.pull_request}`,
       "GET /git/ref/heads/main",
       "GET /git/commits/base0",
       "POST /git/blobs",
@@ -433,6 +454,7 @@ describe("POST /github", () => {
     await env.DB.prepare("INSERT INTO hidden_levels VALUES ('lvl_cccccccccc')").run();
     await seedLevel("lvl_dddddddddd", bo.player.id); // never approved: not listed
     const gh = github();
+    gh.files.set("levels/lvl_aaaaaaaaaa/v1.json", { text: LEVEL_01_TEXT, sha: "m1" });
 
     const response = await hook(gh, "pull_request", closed(7, true));
     expect(response.status).toBe(200);
@@ -485,6 +507,7 @@ describe("POST /github", () => {
     await seedLevel("lvl_aaaaaaaaaa", player.id);
     await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 7, "Alpha", SHA_01);
     const gh = github();
+    gh.files.set("levels/lvl_aaaaaaaaaa/v1.json", { text: LEVEL_01_TEXT, sha: "m1" });
     gh.state.conflicts = 1;
     expect((await hook(gh, "pull_request", closed(7, true))).status).toBe(200);
     expect(gh.where("PUT", "/contents/index.json")).toHaveLength(2);
@@ -498,7 +521,11 @@ describe("POST /github", () => {
     await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 7);
     await seedOpen("lvl_bbbbbbbbbb", 1, player.id, 8);
     const gh = github();
-    gh.comments.set(7, ["first", "x".repeat(600)]);
+    gh.comments.set(7, [
+      { body: "first", author_association: "MEMBER" },
+      { body: "x".repeat(600), author_association: "OWNER" },
+      { body: "drive-by", author_association: "NONE" },
+    ]);
     expect((await hook(gh, "pull_request", closed(7, false))).status).toBe(200);
     expect((await hook(gh, "pull_request", closed(8, false))).status).toBe(200);
     const [a, b] = await rows<{ status: string; comment: string | null; decided: number }>("SELECT status, comment, decided FROM submissions ORDER BY pull_request");
@@ -509,7 +536,7 @@ describe("POST /github", () => {
     expect(gh.calls.some((c) => c.method === "PUT")).toBe(false);
 
     // A later comment must not rewrite a decided submission.
-    gh.comments.set(7, ["changed"]);
+    gh.comments.set(7, [{ body: "changed", author_association: "OWNER" }]);
     await hook(gh, "pull_request", closed(7, false));
     expect((await rows<{ comment: string }>("SELECT comment FROM submissions WHERE pull_request = 7"))[0]!.comment).toBe("x".repeat(500));
   });
@@ -545,5 +572,205 @@ describe("POST /github", () => {
     expect((await hook(gh, "pull_request", closed(99, true))).status).toBe(204);
     expect((await hook(gh, "pull_request", { ...closed(7, true), action: "opened" })).status).toBe(204);
     expect(gh.calls).toEqual([]);
+  });
+});
+
+describe("recovering from partial failures", () => {
+  const merged = (number: number, head?: string) => ({ action: "closed", repository, pull_request: { number, merged: true, head: head ? { ref: head } : undefined } });
+  const levelFile = (gh: Github, level: string, version: number, text = LEVEL_01_TEXT) => gh.files.set(`levels/${level}/v${version}.json`, { text, sha: `main-${level}-${version}` });
+  /** Inserts an open submission whose pull request was never recorded, created `age` seconds ago. */
+  const seedUnrecorded = (level: string, player: string, age: number) =>
+    env.DB.prepare("INSERT INTO submissions (level, version, player, status, created) VALUES (?, 1, ?, 'open', ?)").bind(level, player, Math.floor(Date.now() / 1000) - age).run();
+
+  it("keeps the row when recording the pull request fails, and the webhook links it by branch", async () => {
+    const { token } = await signIn("fix-1", "Una");
+    const gh = github();
+    const flaky = {
+      ...testEnv,
+      DB: new Proxy(env.DB, {
+        get(target, prop) {
+          if (prop !== "prepare") return Reflect.get(target, prop, target).bind(target);
+          return (sql: string) => {
+            if (sql.startsWith("UPDATE submissions SET pull_request")) throw new Error("D1 is down");
+            return target.prepare(sql);
+          };
+        },
+      }) as unknown as D1Database,
+    };
+    const response = await submit(token, {}, gh, flaky);
+    expect(response.status).toBe(502);
+    expect(gh.where("POST", "/pulls")).toHaveLength(1);
+    const [row] = await rows<{ level: string; pull_request: number | null }>("SELECT level, pull_request FROM submissions");
+    expect(row!.pull_request).toBeNull();
+    expect(await rows("SELECT id FROM levels")).toEqual([{ id: row!.level }]);
+
+    levelFile(gh, row!.level, 1);
+    expect((await hook(gh, "pull_request", merged(1, `submission/${row!.level}`))).status).toBe(200);
+    expect(await rows("SELECT status, pull_request, branch FROM submissions")).toEqual([{ status: "approved", pull_request: 1, branch: `submission/${row!.level}` }]);
+    expect(await rows("SELECT latest FROM levels")).toEqual([{ latest: 1 }]);
+  });
+
+  it("takes over a submission whose pull request was never recorded once it is stale, and refuses while it is fresh", async () => {
+    const { token, player } = await signIn("fix-2", "Val");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedUnrecorded("lvl_aaaaaaaaaa", player.id, 10);
+    const fresh = github();
+    expect((await submit(token, { level_id: "lvl_aaaaaaaaaa" }, fresh)).status).toBe(409);
+    expect(fresh.calls).toEqual([]);
+
+    await env.DB.prepare("UPDATE submissions SET created = 1").run();
+    const gh = github();
+    gh.branches.add("refs/heads/submission/lvl_aaaaaaaaaa");
+    const response = await submit(token, { level_id: "lvl_aaaaaaaaaa" }, gh);
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual({ level_id: "lvl_aaaaaaaaaa", version: 1, pull_request: 1 });
+    expect(await rows("SELECT level, status, pull_request, branch FROM submissions")).toEqual([{ level: "lvl_aaaaaaaaaa", status: "open", pull_request: 1, branch: "submission/lvl_aaaaaaaaaa" }]);
+  });
+
+  it("finds the pull request that already exists when a takeover cannot create one", async () => {
+    const { token, player } = await signIn("fix-3", "Wes");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedUnrecorded("lvl_aaaaaaaaaa", player.id, 3600);
+    const gh = github();
+    gh.state.existingPull = 42;
+    const response = await submit(token, { level_id: "lvl_aaaaaaaaaa" }, gh);
+    expect(await response.json()).toMatchObject({ pull_request: 42 });
+    expect(gh.ops()).toContain("GET /pulls?head=BRAITG:submission/lvl_aaaaaaaaaa&state=open");
+    expect(await rows("SELECT pull_request FROM submissions")).toEqual([{ pull_request: 42 }]);
+  });
+
+  it("does not count stale unrecorded submissions toward the open limit, but counts fresh ones", async () => {
+    const { token, player } = await signIn("fix-4", "Xia");
+    for (const id of ["lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb", "lvl_cccccccccc"]) {
+      await seedLevel(id, player.id);
+      await seedUnrecorded(id, player.id, 3600);
+    }
+    expect((await submit(token, {}, github())).status).toBe(201);
+    await env.DB.prepare("UPDATE submissions SET created = ? WHERE level = 'lvl_aaaaaaaaaa'").bind(Math.floor(Date.now() / 1000)).run();
+    await env.DB.prepare("UPDATE submissions SET created = ? WHERE level = 'lvl_bbbbbbbbbb'").bind(Math.floor(Date.now() / 1000)).run();
+    // Two fresh unrecorded plus the new one above is the limit.
+    expect((await submit(token, { level: LEVEL_05, demo: bytes(env.DEMO_LEVEL_05) }, github())).status).toBe(429);
+  });
+
+  it("refuses to update a pull request that GitHub has closed or merged", async () => {
+    const { token, player } = await signIn("fix-5", "Yan");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 4);
+    for (const state of ["closed", "merged"]) {
+      const gh = github();
+      gh.state.pullState = state;
+      const response = await submit(token, { level_id: "lvl_aaaaaaaaaa" }, gh);
+      expect(response.status).toBe(409);
+      expect(gh.ops()).toEqual(["GET /pulls/4"]);
+    }
+  });
+
+  it("refuses a level whose bytes another open submission already carries", async () => {
+    const { token, player } = await signIn("fix-6", "Zed");
+    const other = await signIn("fix-6b", "Abe");
+    await seedLevel("lvl_aaaaaaaaaa", other.player.id);
+    await seedOpen("lvl_aaaaaaaaaa", 1, other.player.id, 5, "Theirs", SHA_01);
+    const gh = github();
+    expect((await submit(token, {}, gh)).status).toBe(409);
+    expect(gh.calls).toEqual([]);
+    expect(await rows("SELECT * FROM levels WHERE owner = ?", player.id)).toEqual([]);
+    // The owner may resubmit the same bytes to their own open submission.
+    const own = await signIn("fix-6c", "Bea");
+    await seedLevel("lvl_bbbbbbbbbb", own.player.id);
+    await seedOpen("lvl_bbbbbbbbbb", 1, own.player.id, 6, "Mine", "e".repeat(64));
+    await env.DB.prepare("UPDATE submissions SET status = 'rejected' WHERE level = 'lvl_aaaaaaaaaa'").run();
+    expect((await submit(own.token, { level_id: "lvl_bbbbbbbbbb" }, github())).status).toBe(200);
+  });
+
+  it("takes the last open slot for only one of two concurrent submissions", async () => {
+    const { token, player } = await signIn("fix-7", "Cai");
+    for (const [i, id] of ["lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb"].entries()) {
+      await seedLevel(id, player.id);
+      await seedOpen(id, 1, player.id, 10 + i, "Seeded", `${i}`.repeat(64));
+    }
+    const gh = github();
+    const both = await Promise.all([submit(token, {}, gh), submit(token, { level: LEVEL_05, demo: bytes(env.DEMO_LEVEL_05) }, gh)]);
+    expect(both.map((r) => r.status).sort()).toEqual([201, 429]);
+    expect(await rows("SELECT id FROM levels")).toHaveLength(3);
+    expect(await rows("SELECT id FROM submissions WHERE status = 'open'")).toHaveLength(3);
+  });
+
+  it("records the hash of the merged file, not the uploaded one", async () => {
+    const { player } = await signIn("fix-8", "Dee");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 7, "Alpha", "f".repeat(64));
+    const gh = github();
+    levelFile(gh, "lvl_aaaaaaaaaa", 1, LEVEL_05_TEXT);
+    expect((await hook(gh, "pull_request", merged(7))).status).toBe(200);
+    expect(await rows("SELECT sha256 FROM versions")).toEqual([{ sha256: SHA_05 }]);
+    expect(await rows("SELECT sha256, status FROM submissions")).toEqual([{ sha256: SHA_05, status: "approved" }]);
+    expect(JSON.parse(gh.files.get("index.json")!.text).levels[0].versions).toEqual([{ version: 1, sha256: SHA_05 }]);
+  });
+
+  it("fails loudly and leaves the submission open when the merged file's hash is already published", async () => {
+    const { player } = await signIn("fix-9", "Eli");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedLevel("lvl_bbbbbbbbbb", player.id, { latest: 1, sha: SHA_05 });
+    await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 7, "Alpha");
+    const gh = github();
+    levelFile(gh, "lvl_aaaaaaaaaa", 1, LEVEL_05_TEXT);
+    expect((await hook(gh, "pull_request", merged(7))).status).toBe(500);
+    expect(await rows("SELECT status FROM submissions")).toEqual([{ status: "open" }]);
+    expect(await rows("SELECT latest FROM levels WHERE id = 'lvl_aaaaaaaaaa'")).toEqual([{ latest: 0 }]);
+    expect(gh.calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+
+  it("keeps both levels in the index when two merges race", async () => {
+    const { player } = await signIn("fix-10", "Fay");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedLevel("lvl_bbbbbbbbbb", player.id);
+    await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 7, "Alpha");
+    await seedOpen("lvl_bbbbbbbbbb", 1, player.id, 8, "Beta");
+    const gh = github();
+    levelFile(gh, "lvl_aaaaaaaaaa", 1, LEVEL_01_TEXT);
+    levelFile(gh, "lvl_bbbbbbbbbb", 1, LEVEL_05_TEXT);
+    gh.files.set("index.json", { text: '{"levels": []}\n', sha: "i0" });
+    // The second merge lands completely between the first one's read of the index and its write.
+    gh.state.onPut = async () => {
+      expect((await hook(gh, "pull_request", merged(8))).status).toBe(200);
+    };
+    expect((await hook(gh, "pull_request", merged(7))).status).toBe(200);
+    expect(JSON.parse(gh.files.get("index.json")!.text).levels.map((l: { id: string }) => l.id)).toEqual(["lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb"]);
+  });
+
+  it("approves a merged pull request that was closed first, and puts a reopened one back under review", async () => {
+    const { player } = await signIn("fix-11", "Gil");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedLevel("lvl_bbbbbbbbbb", player.id);
+    for (const [id, pr] of [["lvl_aaaaaaaaaa", 7], ["lvl_bbbbbbbbbb", 8]] as const) {
+      await env.DB.prepare("INSERT INTO submissions (level, version, player, pull_request, status, comment, created, decided, title, sha256) VALUES (?, 1, ?, ?, 'rejected', 'no', 1, 2, 'T', ?)").bind(id, player.id, pr, "f".repeat(64)).run();
+    }
+    const gh = github();
+    levelFile(gh, "lvl_aaaaaaaaaa", 1);
+    levelFile(gh, "lvl_bbbbbbbbbb", 1, LEVEL_05_TEXT);
+    const reopened = (number: number) => ({ action: "reopened", repository, pull_request: { number, merged: false } });
+
+    expect((await hook(gh, "pull_request", reopened(7))).status).toBe(200);
+    expect(await rows("SELECT status, comment, decided FROM submissions WHERE pull_request = 7")).toEqual([{ status: "open", comment: null, decided: null }]);
+    expect((await hook(gh, "pull_request", merged(7))).status).toBe(200);
+    expect((await hook(gh, "pull_request", merged(8))).status).toBe(200);
+    expect(await rows("SELECT pull_request, status, comment FROM submissions ORDER BY pull_request")).toEqual([
+      { pull_request: 7, status: "approved", comment: null },
+      { pull_request: 8, status: "approved", comment: null },
+    ]);
+    expect(await rows("SELECT latest FROM levels ORDER BY id")).toEqual([{ latest: 1 }, { latest: 1 }]);
+  });
+
+  it("does not reopen a rejected submission when the level has a newer open one", async () => {
+    const { player } = await signIn("fix-12", "Hui");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await env.DB.prepare("INSERT INTO submissions (level, version, player, pull_request, status, created) VALUES ('lvl_aaaaaaaaaa', 1, ?, 7, 'rejected', 1)").bind(player.id).run();
+    await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 9);
+    const gh = github();
+    expect((await hook(gh, "pull_request", { action: "reopened", repository, pull_request: { number: 7, merged: false } })).status).toBe(200);
+    expect(await rows("SELECT pull_request, status FROM submissions ORDER BY pull_request")).toEqual([
+      { pull_request: 7, status: "rejected" },
+      { pull_request: 9, status: "open" },
+    ]);
   });
 });
