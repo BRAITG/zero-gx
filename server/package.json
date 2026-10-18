@@ -4,12 +4,14 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "cli": "tsx src/cli.ts"
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "1.4.4",
     "@cloudflare/workers-types": "5.20261018.1",
     "@types/node": "26.6.5",
+    "tsx": "4.23.15",
     "typescript": "7.0.2",
     "vitest": "5.0.5",
     "wrangler": "4.151.1"

@@ -1,0 +1,10 @@
+Level files (levels/), proof demos (proof/) and meta files in this repository are
+contributions by their authors, licensed under the Creative Commons
+Attribution-ShareAlike 4.0 International license (CC BY-SA 4.0):
+https://creativecommons.org/licenses/by-sa/4.0/
+
+The author named in a level's meta.json is the attribution to give.
+
+The workflow files under .github/ are licensed under the GNU Affero General
+Public License, version 3 or later (AGPL-3.0-or-later), like the Zero-GX game:
+https://github.com/BRAITG/zero-gx
