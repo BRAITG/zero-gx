@@ -12,6 +12,10 @@ const MAX_DECOMPRESSED := 8 * 1024 * 1024
 const MAGIC := "ZGXD"
 const ROTATION_SCALE := 1000.0  # stored milliradians per radian
 const FUEL_SCALE := 10.0  # tenths
+# Decode bounds, so a hostile file cannot make us allocate or loop without limit. Levels allow
+# 150 asteroids plus planet shards; MAX_ALIVE is far above that.
+const MAX_ALIVE := 1024  # most asteroids alive at once
+const MAX_ASTEROID_FRAMES := 4_000_000  # sum over frames of asteroids alive (12 bytes each stored)
 
 enum Event { PICKUP_TAKEN = 1, PLANET_SHATTERED = 2, SHIP_LOST = 3, GOAL_REACHED = 4, ASTEROID_SPAWNED = 5, ASTEROID_REMOVED = 6 }
 
@@ -40,9 +44,9 @@ class _Span:
 
 
 ## Append one frame. `asteroids` is every live asteroid (id < 65536); one missing from it is gone.
-## Returns false, and marks the demo truncated, once the frame limit is reached.
+## Returns false, and marks the demo truncated, once the frame limit or MAX_ALIVE is exceeded.
 func add_frame(ship: Dictionary, asteroids: Dictionary) -> bool:
-	if frame_count() >= MAX_FRAMES:
+	if frame_count() >= MAX_FRAMES or asteroids.size() > MAX_ALIVE:
 		truncated = true
 		return false
 	var position: Vector2 = ship["position"]
@@ -158,11 +162,11 @@ static func decode(bytes: PackedByteArray) -> Demo:
 	if frames > MAX_FRAMES:
 		return null
 	var rocks := {}
+	var asteroid_frames := 0
 	for f in frames:
 		if buf.get_available_bytes() < FRAME_MIN_BYTES:
 			return null
 		var ship := PackedInt32Array([buf.get_32(), buf.get_32(), buf.get_16(), buf.get_u8(), buf.get_u16(), buf.get_u16()])
-		rocks = rocks.duplicate()
 		for n in buf.get_u16():
 			if buf.get_available_bytes() < 3:
 				return null
@@ -176,6 +180,11 @@ static func decode(bytes: PackedByteArray) -> Demo:
 				rocks[id] += Vector3i(buf.get_16(), buf.get_16(), buf.get_16())
 			else:
 				return null
+			if rocks.size() > MAX_ALIVE:
+				return null
+		asteroid_frames += rocks.size()
+		if asteroid_frames > MAX_ASTEROID_FRAMES:
+			return null
 		demo._push(ship, rocks)
 	if buf.get_available_bytes() < 4:
 		return null
@@ -206,23 +215,34 @@ func _push(ship: PackedInt32Array, rocks: Dictionary) -> void:
 			if step == Vector3i.ZERO:
 				pass
 			elif absi(step.x) <= 32767 and absi(step.y) <= 32767:
-				entries.append_array([id, DELTA, step.x, step.y, step.z])
+				_append_entry(entries, id, DELTA, step)
 			else:
-				entries.append_array([id, ABSOLUTE, now.x, now.y, now.z])
+				_append_entry(entries, id, ABSOLUTE, now)
 		else:
 			span = _Span.new()
 			span.start = frame_count() - 1
 			if not _tracks.has(id):
 				_tracks[id] = []
 			_tracks[id].append(span)
-			entries.append_array([id, ABSOLUTE, now.x, now.y, now.z])
-		span.data.append_array([now.x, now.y, now.z])
+			_append_entry(entries, id, ABSOLUTE, now)
+		span.data.append(now.x)
+		span.data.append(now.y)
+		span.data.append(now.z)
 		_alive[id] = now
-	for id in _alive.keys():
-		if not rocks.has(id):
-			entries.append_array([id, REMOVED, 0, 0, 0])
-			_alive.erase(id)
+	if _alive.size() > rocks.size():  # something alive last frame is missing from this one
+		for id in _alive.keys():
+			if not rocks.has(id):
+				_append_entry(entries, id, REMOVED, Vector3i.ZERO)
+				_alive.erase(id)
 	_log.append(entries)
+
+
+static func _append_entry(entries: PackedInt32Array, id: int, flag: int, values: Vector3i) -> void:
+	entries.append(id)
+	entries.append(flag)
+	entries.append(values.x)
+	entries.append(values.y)
+	entries.append(values.z)
 
 
 func _hash_bytes() -> PackedByteArray:

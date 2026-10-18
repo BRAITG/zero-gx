@@ -73,3 +73,50 @@ func test_malformed_hash_encodes_as_zeros() -> void:
 	demo.level_sha256 = "not a hash"
 	demo.add_frame(SHIP, {})
 	check(Demo.decode(demo.encode()).level_sha256 == "0".repeat(64), "zero hash")
+
+
+func test_too_many_alive_asteroids_stop_recording_and_decoding() -> void:
+	var rocks := {}
+	for id in Demo.MAX_ALIVE + 1:
+		rocks[id] = Transform2D.IDENTITY
+	var demo := Demo.new()
+	check(not demo.add_frame(SHIP, rocks) and demo.truncated and demo.frame_count() == 0, "add_frame refuses too many")
+	# Hand-built hostile body: one frame adding MAX_ALIVE + 1 ids.
+	var buf := StreamPeerBuffer.new()
+	buf.put_data(Demo.MAGIC.to_ascii_buffer())
+	buf.put_u8(Demo.FORMAT_VERSION)
+	buf.put_data(PackedByteArray(demo._hash_bytes()))
+	buf.put_u32(1)
+	buf.put_u8(0)
+	buf.put_data(PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+	buf.put_u16(Demo.MAX_ALIVE + 1)
+	for id in Demo.MAX_ALIVE + 1:
+		buf.put_u16(id)
+		buf.put_u8(Demo.ABSOLUTE)
+		buf.put_data(PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+	buf.put_u32(0)
+	var start := Time.get_ticks_msec()
+	check(Demo.decode(buf.data_array.compress(FileAccess.COMPRESSION_GZIP)) == null, "too many alive must not decode")
+	check(Time.get_ticks_msec() - start < 500, "rejected quickly")
+
+
+func test_decode_budget_caps_total_asteroid_frames() -> void:
+	# MAX_ALIVE asteroids for every one of MAX_FRAMES frames exceeds MAX_ASTEROID_FRAMES.
+	var buf := StreamPeerBuffer.new()
+	buf.put_data(Demo.MAGIC.to_ascii_buffer())
+	buf.put_u8(Demo.FORMAT_VERSION)
+	buf.put_data(PackedByteArray(Demo.new()._hash_bytes()))
+	buf.put_u32(Demo.MAX_FRAMES)
+	buf.put_u8(0)
+	for f in Demo.MAX_FRAMES:
+		buf.put_data(PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+		buf.put_u16(Demo.MAX_ALIVE if f == 0 else 0)
+		if f == 0:
+			for id in Demo.MAX_ALIVE:
+				buf.put_u16(id)
+				buf.put_u8(Demo.ABSOLUTE)
+				buf.put_data(PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
+	buf.put_u32(0)
+	var start := Time.get_ticks_msec()
+	check(Demo.decode(buf.data_array.compress(FileAccess.COMPRESSION_GZIP)) == null, "budget exceeded must not decode")
+	check(Time.get_ticks_msec() - start < 3000, "rejected quickly")
