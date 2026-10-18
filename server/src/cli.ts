@@ -10,6 +10,9 @@ const LEVEL_FILE = /^levels\/(lvl_[a-z0-9]{10})\/(meta\.json|v([1-9][0-9]*)\.jso
 const PROOF_FILE = /^proof\/(lvl_[a-z0-9]{10})\/v([1-9][0-9]*)\.demo\.gz$/;
 const AUTHOR = /^[A-Za-z0-9_-]{8,64}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
+const LEVEL_ID = /^lvl_[a-z0-9]{10}$/;
+const MAX_META_BYTES = 1024;
+const MAX_HIDDEN_BYTES = 65536;
 
 export interface Result {
   ok: string | null;
@@ -17,21 +20,43 @@ export interface Result {
 }
 
 export async function checkPr(root: string, base: string, head: string): Promise<Result> {
+  try {
+    return await check(root, base, head);
+  } catch (e) {
+    // A git or decode failure must read as a verdict, not a stack trace.
+    return fail(`The check could not be completed: ${String(e instanceof Error ? e.message : e).split("\n")[0]}.`);
+  }
+}
+
+async function check(root: string, base: string, head: string): Promise<Result> {
   // A ref starting with "-" would be read by git as an option.
   if (base.startsWith("-") || head.startsWith("-")) return fail("The refs must not start with a dash.");
-  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, maxBuffer: 64 * 1024 * 1024 });
+  const git = (...args: string[]) => execFileSync("git", args, { cwd: root, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+  // Sizes come from git before any blob is read, so an oversized file is never loaded or parsed.
+  const size = (path: string) => Number(git("cat-file", "-s", `${head}:${path}`).toString());
+  const show = (path: string) => git("show", `${head}:${path}`);
 
-  const tokens = git("diff", "--name-status", "--no-renames", "-z", `${base}...${head}`).toString("utf8").split("\0");
-  const changes: { status: string; path: string }[] = [];
-  for (let i = 0; i + 1 < tokens.length; i += 2) changes.push({ status: tokens[i], path: tokens[i + 1] });
+  // --raw gives the new file mode; `git show` would return a symlink's target text as if it were the file.
+  const tokens = git("diff", "--raw", "--no-renames", "-z", `${base}...${head}`).toString("utf8").split("\0");
+  const changes: { status: string; mode: string; path: string }[] = [];
+  for (let i = 0; i + 1 < tokens.length; i += 2) {
+    const [, mode, , , status] = tokens[i].split(" ");
+    changes.push({ status, mode, path: tokens[i + 1] });
+  }
   if (changes.length === 0) return fail("The pull request has no changes.");
 
-  if (changes.some((c) => c.path === "hidden.txt")) {
-    if (changes.length > 1) return fail("hidden.txt must be changed on its own, not together with other files.");
-    return changes[0].status === "A" || changes[0].status === "M" ? { ok: "OK: hidden.txt", problems: [] } : fail("hidden.txt must not be deleted.");
+  const problems: string[] = [];
+  for (const { status, mode, path } of changes) {
+    if (status !== "D" && mode !== "100644") problems.push(`${path} must be a regular file (mode 100644), not mode ${mode}.`);
   }
 
-  const problems: string[] = [];
+  if (changes.some((c) => c.path === "hidden.txt")) {
+    if (changes.length > 1) problems.push("hidden.txt must be changed on its own, not together with other files.");
+    else if (changes[0].status === "D") problems.push("hidden.txt must not be deleted.");
+    else if (problems.length === 0) problems.push(...checkHidden(size("hidden.txt"), () => show("hidden.txt")));
+    return problems.length > 0 ? { ok: null, problems } : { ok: "OK: hidden.txt", problems };
+  }
+
   const ids = new Set<string>();
   for (const { status, path } of changes) {
     if (status !== "A") problems.push(`Only additions are allowed, but ${path} has status ${status}.`);
@@ -64,12 +89,12 @@ export async function checkPr(root: string, base: string, head: string): Promise
   }
   if (problems.length > 0) return { ok: null, problems };
 
-  // Sizes come from git before any blob is read, so an oversized file is never loaded or parsed.
-  const size = (path: string) => Number(git("cat-file", "-s", `${head}:${path}`).toString());
-  const show = (path: string) => git("show", `${head}:${path}`);
   if (size(levelPath) > MAX_LEVEL_BYTES) problems.push(`${levelPath} is larger than ${MAX_LEVEL_BYTES} bytes.`);
   if (size(demoPath) > MAX_BYTES) problems.push(`${demoPath} is larger than ${MAX_BYTES} bytes.`);
-  if (isNew) problems.push(...checkMeta(metaPath, show(metaPath)));
+  if (isNew) {
+    if (size(metaPath) > MAX_META_BYTES) problems.push(`${metaPath} is larger than ${MAX_META_BYTES} bytes.`);
+    else problems.push(...checkMeta(metaPath, show(metaPath)));
+  }
   if (problems.length > 0) return { ok: null, problems };
 
   const levelBytes = show(levelPath);
@@ -109,6 +134,13 @@ function checkMeta(path: string, bytes: Uint8Array): string[] {
     problems.push(`${path} "based_on" must be 64 lowercase hex characters.`);
   }
   return problems;
+}
+
+function checkHidden(bytes: number, read: () => Uint8Array): string[] {
+  if (bytes > MAX_HIDDEN_BYTES) return [`hidden.txt is larger than ${MAX_HIDDEN_BYTES} bytes.`];
+  const lines = new TextDecoder().decode(read()).split("\n");
+  const bad = lines.findIndex((l) => l !== "" && !LEVEL_ID.test(l));
+  return bad < 0 ? [] : [`hidden.txt line ${bad + 1} is not empty or a level id like lvl_abcdefghij.`];
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {

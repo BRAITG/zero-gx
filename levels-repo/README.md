@@ -27,8 +27,13 @@ A pull request that only changes `hidden.txt` is also accepted. Mixing it with l
 
 ## Review
 
-Pull requests are reviewed by the `@BRAITG/moderators` team (see `CODEOWNERS`) and merged once the check passes
-and the level is acceptable. The check does not judge content.
+Pull requests are reviewed by the `@BRAITG/moderators` team (see `CODEOWNERS`). A pull request is merged only when
+the check has passed and the level is acceptable; the check does not judge content. A failing or missing check must
+never be merged.
+
+The workflow runs from the pull request's own merge commit, so a pull request can edit or delete `check.yml` to skip
+the check. The checker fails any change under `.github/` and the submission bot never touches it, so moderators
+must reject any pull request that does. Branch protection on the default branch must require the `check` status.
 
 ## Hiding a level
 

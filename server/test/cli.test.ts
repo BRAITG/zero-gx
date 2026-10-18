@@ -15,21 +15,29 @@ const meta = JSON.stringify({ author: AUTHOR });
 
 const A = "lvl_abcdefghij";
 const B = "lvl_klmnopqrst";
-type Files = Record<string, Buffer | string | null>; // null deletes
+// null deletes; `mode` stages the entry with that git mode (symlink, gitlink); `from` renames an existing file.
+type Files = Record<string, Buffer | string | null | { mode: string; content: string } | { from: string }>;
 
 const dirs: string[] = [];
 afterAll(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
-// Builds a repository whose `base` branch holds `before` and whose `head` branch applies `change` on top.
-function repo(before: Files, change: Files): string {
+// Builds a repository whose `main` branch holds `before` and whose `pr` branch applies `change` on top;
+// `baseAfter` then lands on `main`, leaving `pr` behind it.
+function repo(before: Files, change: Files, baseAfter: Files = {}): string {
   const root = mkdtempSync(join(tmpdir(), "zgx-cli-"));
   dirs.push(root);
-  const git = (...args: string[]) => execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: root, stdio: "pipe" });
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-c", "user.name=t", "-c", "user.email=t@t", ...args], { cwd: root, stdio: "pipe" }).toString().trim();
   const apply = (files: Files) => {
     for (const [path, content] of Object.entries(files)) {
+      mkdirSync(dirname(join(root, path)), { recursive: true });
       if (content === null) git("rm", "-q", path);
-      else {
-        mkdirSync(dirname(join(root, path)), { recursive: true });
+      else if (typeof content === "object" && "from" in content) git("mv", content.from, path);
+      else if (typeof content === "object" && "mode" in content) {
+        writeFileSync(join(root, path), content.content);
+        const sha = content.mode === "160000" ? git("rev-parse", "HEAD") : git("hash-object", "-w", path);
+        git("update-index", "--add", "--cacheinfo", `${content.mode},${sha},${path}`);
+      } else {
         writeFileSync(join(root, path), content);
         git("add", path);
       }
@@ -41,6 +49,9 @@ function repo(before: Files, change: Files): string {
   git("checkout", "-q", "-b", "pr");
   apply(change);
   git("commit", "-q", "--allow-empty", "-m", "head");
+  git("checkout", "-q", "-f", "main");
+  apply(baseAfter);
+  git("commit", "-q", "--allow-empty", "-m", "base moves on");
   return root;
 }
 
@@ -54,7 +65,7 @@ const newLevel = (id = A): Files => ({
   [`levels/${id}/meta.json`]: meta,
   [`proof/${id}/v1.demo.gz`]: demo,
 });
-const problems = (before: Files, change: Files) => checkPr(repo(before, change), "main", "pr");
+const problems = (before: Files, change: Files, baseAfter: Files = {}) => checkPr(repo(before, change, baseAfter), "main", "pr");
 
 describe("check-pr accepts", () => {
   it("a new level", async () => {
@@ -66,14 +77,19 @@ describe("check-pr accepts", () => {
     expect(await problems(existing, change)).toEqual({ ok: `OK: ${A} v2`, problems: [] });
   });
 
+  it("a branch that is behind base while its version is still latest + 1", async () => {
+    const change = { [`levels/${A}/v2.json`]: level, [`proof/${A}/v2.demo.gz`]: demo };
+    expect(await problems(existing, change, newLevel(B))).toEqual({ ok: `OK: ${A} v2`, problems: [] });
+  });
+
   it("a change to hidden.txt alone", async () => {
     expect(await problems({}, { "hidden.txt": `${A}\n` })).toEqual({ ok: "OK: hidden.txt", problems: [] });
   });
 });
 
 describe("check-pr rejects", () => {
-  const fails = async (before: Files, change: Files, sentence: string) => {
-    const r = await problems(before, change);
+  const fails = async (before: Files, change: Files, sentence: string, baseAfter: Files = {}) => {
+    const r = await problems(before, change, baseAfter);
     expect(r.ok).toBeNull();
     expect(r.problems.some((p) => p.includes(sentence)), r.problems.join("\n")).toBe(true);
   };
@@ -118,6 +134,37 @@ describe("check-pr rejects", () => {
     for (const bad of ["[]", "{}", '{"author":"short"}', `{"author":"${AUTHOR}","extra":1}`, `{"author":"${AUTHOR}","based_on":"ABC"}`, "nope"]) {
       await fails({}, { ...newLevel(), [`levels/${A}/meta.json`]: bad }, "meta.json");
     }
+  });
+  it("a symlink in place of a file", async () => {
+    for (const path of [`levels/${A}/meta.json`, `levels/${A}/v1.json`, `proof/${A}/v1.demo.gz`]) {
+      await fails({}, { ...newLevel(), [path]: { mode: "120000", content: "../../index.json" } }, "regular file");
+    }
+    await fails({}, { "hidden.txt": { mode: "120000", content: "index.json" } }, "regular file");
+  });
+  it("a gitlink", () => fails({}, { ...newLevel(), [`levels/${A}/meta.json`]: { mode: "160000", content: "" } }, "mode 160000"));
+  it("an executable file", () => fails({}, { ...newLevel(), [`levels/${A}/meta.json`]: { mode: "100755", content: meta } }, "regular file"));
+  it("a rename", () => fails(existing, { [`levels/${A}/v2.json`]: { from: `levels/${A}/v1.json` }, [`proof/${A}/v2.demo.gz`]: demo }, "Only additions"));
+  it("a base that already holds the version", () =>
+    fails(existing, { [`levels/${A}/v2.json`]: level, [`proof/${A}/v2.demo.gz`]: demo }, "next version", {
+      [`levels/${A}/v2.json`]: level + " ",
+      [`proof/${A}/v2.demo.gz`]: demo,
+    }));
+  it("hidden.txt lines that are not level ids", async () => {
+    for (const bad of ["lvl_short\n", "lvl_abcdefghij lvl_klmnopqrst\n", "../x\n"]) await fails({}, { "hidden.txt": bad }, "hidden.txt line 1");
+  });
+  it("an oversized hidden.txt", () => fails({}, { "hidden.txt": "\n".repeat(65537) }, "65536"));
+  it("an oversized meta.json", () => fails({}, { ...newLevel(), [`levels/${A}/meta.json`]: " ".repeat(1025) + meta }, "1024"));
+  it("refs that start with a dash", async () => {
+    const root = repo({}, newLevel());
+    for (const [base, head] of [["--output=x", "pr"], ["main", "-x"]]) {
+      expect((await checkPr(root, base, head)).problems).toEqual(["The refs must not start with a dash."]);
+    }
+  });
+  it("an unknown ref as one sentence", async () => {
+    const r = await checkPr(repo({}, newLevel()), "main", "nope");
+    expect(r.ok).toBeNull();
+    expect(r.problems).toHaveLength(1);
+    expect(r.problems[0]).toMatch(/^The check could not be completed: .*\.$/);
   });
   it("accepts a meta.json with based_on", async () => {
     const withBase = JSON.stringify({ author: AUTHOR, based_on: "a".repeat(64) });
