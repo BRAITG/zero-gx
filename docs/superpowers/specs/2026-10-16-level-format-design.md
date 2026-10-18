@@ -9,7 +9,7 @@ Community levels need a parseable, versioned format that the game, the in-app ed
 
 ## Format
 
-A level is a JSON object, stored gzip-compressed as `*.json.gz`. Coordinates are world pixels, as integers where possible (10 px = 1 m).
+A level is a JSON object. Official levels and tutorials are plain `*.json` files in a stable layout (sorted keys, 2-space indent, whole numbers as integers, trailing newline); player drafts are gzip-compressed `*.json.gz`. A level version is identified by `LevelFormat.sha256`, the SHA-256 of that text. Coordinates are world pixels, as integers where possible (10 px = 1 m).
 
 ```jsonc
 {
@@ -55,8 +55,8 @@ A level is a JSON object, stored gzip-compressed as `*.json.gz`. Coordinates are
 ## Game changes
 
 - `scripts/level_format.gd` (`class_name LevelFormat`): `read(path)`, `write(path, data)`, `validate(data) -> PackedStringArray`, `build(data, script) -> Level`, `serialize(level) -> Dictionary`.
-- Stages are opened through `Progress.open(id)`. Levels build from `levels/<id>.json.gz` with `level.gd`. Tutorials build from `tutorials/<id>.json.gz` with their lesson script `tutorials/<id>.gd`. Retry rebuilds the same way.
-- The `.tscn` level and tutorial scenes are removed. The export packs the `.json.gz` files.
+- Stages are opened through `Progress.open(id)`. Levels build from `levels/<id>.json` with `level.gd`. Tutorials build from `tutorials/<id>.json` with their lesson script `tutorials/<id>.gd`. Retry rebuilds the same way.
+- The `.tscn` level and tutorial scenes are removed. The export packs the `.json` files.
 
 ## Verification
 

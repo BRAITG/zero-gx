@@ -1,7 +1,7 @@
 class_name LevelFormat
 extends RefCounted
 ## The level file format shared by the game, the in-app editor and the community server:
-## versioned JSON, plain in the repository and gzip-compressed (`.gz`) for player drafts. See docs/superpowers/specs/2026-10-16-level-format-design.md.
+## versioned JSON: plain `.json` for official levels and tutorials, in the stable layout `to_json` writes, and gzip-compressed `.json.gz` for player drafts. See docs/superpowers/specs/2026-10-16-level-format-design.md.
 
 const FORMAT := "zero-gx-level"
 const VERSION := 1

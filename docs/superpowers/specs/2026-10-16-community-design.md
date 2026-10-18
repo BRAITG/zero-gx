@@ -1,7 +1,7 @@
 # Community Levels and Rankings Design (sub-projects 3 and 4 of community levels)
 
 Date: 2026-10-16
-Status: Approved in conversation; awaiting written-spec review
+Status: Approved in conversation; sub-project 1 (demos and JSON levels) implemented
 
 ## Purpose
 

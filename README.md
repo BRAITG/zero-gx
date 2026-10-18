@@ -65,7 +65,11 @@ Seven guided stages (`tutorials/`, under **Training** in the main menu) teach on
 
 ## Level files
 
-Levels and tutorials are stored as gzip-compressed JSON (`levels/*.json.gz`, `tutorials/*.json.gz`) in the format described in `docs/superpowers/specs/2026-10-16-level-format-design.md`; `scripts/level_format.gd` reads, writes, validates and builds them. Tutorials pair their file with a lesson script (`tutorials/tutorial_N.gd`). Fuel and hull are per-level values and either can be unlimited. The in-app editor saves this format, and community levels and the server will use it too.
+Official levels and tutorials are plain JSON (`levels/level_NN.json`, `tutorials/tutorial_N.json`) in a stable layout (sorted keys, 2-space indent, trailing newline), so the SHA-256 of a level's file identifies one version of it. Player drafts are gzip-compressed (`user://levels/<id>.json.gz`). The format is described in `docs/superpowers/specs/2026-10-16-level-format-design.md`; `scripts/level_format.gd` reads, writes, validates and builds them. Tutorials pair their file with a lesson script (`tutorials/tutorial_N.gd`). Fuel and hull are per-level values and either can be unlimited. The in-app editor saves this format, and community levels and the server will use it too.
+
+## Demos
+
+Every run of an official level or a draft is recorded as a demo (tutorials are not recorded): the ship and asteroids 30 times a second, plus events such as pickups taken, planets shattered, asteroids spawned or removed, the goal reached and the ship lost. A demo is gzip-compressed and capped at 512 KB and 10 minutes. `scenes/demo_recorder.gd` records it. `scripts/demo_check.gd` (`DemoCheck`) checks it against its level: the level's hash, start and goal, speed, walls, red walls, stars and black holes, fuel, and the claimed points, time, fuel and hull. `scenes/demo_viewer.gd` replays a demo without physics, with pause, 0.5x, 1x and 2x speeds and a timeline. The end panel's **Replay** opens the viewer. In **My levels**, **Watch** appears for a draft whose last finished test run still matches its current content. The best run of each official level is kept in `user://demos/`.
 
 ## Scoring and progress
 
