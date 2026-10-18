@@ -3,6 +3,7 @@
  * - SESSION_KEY: HMAC key for session tokens (any long random string).
  * - GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET: the OAuth web client that Play Games server auth codes are issued for.
  * - PLAY_SERVICE_ACCOUNT: the service-account JSON key (as text) allowed to call the Play Integrity API.
+ * - ADMIN_TOKEN: bearer token the release workflow uses to register the official levels.
  */
 export interface Env {
   DB: D1Database;
@@ -13,4 +14,5 @@ export interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   PLAY_SERVICE_ACCOUNT: string;
+  ADMIN_TOKEN: string;
 }

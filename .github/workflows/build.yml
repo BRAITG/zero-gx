@@ -28,6 +28,8 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write  # gh release create
+    env:
+      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}  # job level: a step's `if` cannot see its own env or secrets
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -115,6 +117,17 @@ jobs:
           gh release create "$tag" build/zero-gx.apk build/zero-gx.aab --target "$GITHUB_SHA" --prerelease \
             --title "Zero-GX prototype r${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
             --notes "Debug-signed prototype build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Install: open this page on the phone, download zero-gx.apk, allow installs from the browser, open the file. Later builds install over this one. zero-gx.aab is the signed bundle for Google Play."
+
+      - name: Register official levels with the community server
+        # Needs the release tag above, so it runs with the publish step, and only where the server is configured.
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && env.ADMIN_TOKEN != '' && vars.COMMUNITY_API != '' }}
+        env:
+          COMMUNITY_API: ${{ vars.COMMUNITY_API }}
+        run: |
+          levels=$(sha256sum levels/level_*.json | jq -R -s -c 'split("\n")[:-1] | map(split("  ") | {name: (.[1] | ltrimstr("levels/") | rtrimstr(".json")), sha256: .[0]})')
+          jq -n -c --arg release "prototype-r${GITHUB_RUN_NUMBER}" --argjson levels "$levels" '{release: $release, levels: $levels}' |
+            curl --fail-with-body -sS -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
+              --data-binary @- "$COMMUNITY_API/admin/official"
 
   server:
     runs-on: ubuntu-24.04

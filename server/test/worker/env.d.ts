@@ -8,6 +8,12 @@ declare global {
     }
     interface Env extends ServerEnv {
       TEST_MIGRATIONS: D1Migration[];
+      // Base64 fixture files, see vitest.config.ts.
+      LEVEL_01: string;
+      DEMO_LEVEL_01: string;
+      DEMO_TELEPORT: string;
+      LEVEL_05: string;
+      DEMO_LEVEL_05: string;
     }
   }
 }
