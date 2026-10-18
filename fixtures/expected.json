@@ -1,8 +1,37 @@
 {
   "demos": {
+    "floor.demo.gz": {
+      "errors": [],
+      "level": "floor.json",
+      "points": 100
+    },
+    "level_01.claim_late.demo.gz": {
+      "claim": {
+        "fuel": 82.7,
+        "hull": 100.0,
+        "points": 2522,
+        "seconds": 9.16666666666667
+      },
+      "errors": [
+        "seconds, the run took"
+      ],
+      "level": "level_01.json",
+      "points": 2522
+    },
+    "level_01.claim_ok.demo.gz": {
+      "claim": {
+        "fuel": 82.7,
+        "hull": 100.0,
+        "points": 2522,
+        "seconds": 9.11666666666667
+      },
+      "errors": [],
+      "level": "level_01.json",
+      "points": 2522
+    },
     "level_01.clock_moved.demo.gz": {
       "errors": [
-        "clock"
+        "clock started at frame"
       ],
       "level": "level_01.json",
       "points": null
@@ -11,6 +40,20 @@
       "errors": [],
       "level": "level_01.json",
       "points": 2522
+    },
+    "level_01.no_clock.demo.gz": {
+      "errors": [
+        "never started"
+      ],
+      "level": "level_01.json",
+      "points": null
+    },
+    "level_01.phantom_clock.demo.gz": {
+      "errors": [
+        "never fired"
+      ],
+      "level": "level_01.json",
+      "points": null
     },
     "level_01.red_graze.demo.gz": {
       "errors": [
@@ -32,6 +75,18 @@
       ],
       "level": "level_01.json",
       "points": null
+    },
+    "level_01.two_clocks.demo.gz": {
+      "errors": [
+        "clock events"
+      ],
+      "level": "level_01.json",
+      "points": null
+    },
+    "level_01.unlimited_fuel.demo.gz": {
+      "errors": [],
+      "level": "level_01.unlimited_fuel.json",
+      "points": 1282
     },
     "level_01.wall_crossing.demo.gz": {
       "errors": [
@@ -59,6 +114,7 @@
     }
   },
   "levels": {
+    "floor.json": [],
     "invalid.black_hole_weak.json": [
       "black hole must pull harder"
     ],
@@ -74,6 +130,7 @@
     "level_01.crossed.json": [],
     "level_01.json": [],
     "level_01.red.json": [],
+    "level_01.unlimited_fuel.json": [],
     "level_05.json": [],
     "level_10.json": []
   },

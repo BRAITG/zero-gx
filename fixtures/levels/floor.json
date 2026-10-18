@@ -1,0 +1,19 @@
+{
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      100,
+      0
+    ]
+  },
+  "ship": {
+    "fuel": 1,
+    "hull": 1,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Floor",
+  "version": 1
+}

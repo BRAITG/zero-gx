@@ -1,2 +1,8 @@
-Shared fixtures: levels, demos and `expected.json` (the errors `LevelFormat.validate` and `DemoCheck.check` report, the server-side score, and the official level hashes). The Godot tests and the community server's tests both check their implementations against them.
-Generated, not hand-edited. Regenerate with `godot --headless --path . -s tools/make_fixtures.gd`, then commit the result.
+Shared fixtures: levels, demos and `expected.json`. The Godot tests and the community server's tests both check their implementations against them. Generated, not hand-edited: regenerate with `godot --headless --path . -s tools/make_fixtures.gd`, then commit the result.
+
+`expected.json`: `levels` maps a level file to the error substrings `LevelFormat.validate` reports (empty = valid); `demos` maps a demo file to its `level` file, the error substrings `DemoCheck.check` reports (empty = valid; each substring appears in some error and every error contains one), the server-side `points` (null for tampered demos), and an optional `claim` {points, fuel, hull, seconds} that is passed to the check; `official_hashes` maps each official level to its `LevelFormat.sha256`.
+
+Score (server-side, from the demo alone, default weights, never the live tuning):
+`points = max(100, round(1000 + fuel*15 + hull*3 - seconds*2))`, with `seconds = (frame_count - clock_frame) * (1/30)` (0 when the demo has no clock event), `fuel` and `hull` taken from the last frame (stored in tenths), unlimited tanks (per the level) counted as 0, and `round` half away from zero (not JavaScript's `Math.round`, which rounds half up). Compute in this order: the sum, then the rounding, then the floor. A claim's seconds may differ from the demo's by up to 2 frames (2/30 s); fuel and hull by 0.5; points by 2.
+
+Clock rule: exactly one clock event, within 1 frame of the first frame whose ship is firing; none is fine only when the ship never fires. The recorder samples every second physics tick, so thrust lasting a single unsampled tick leaves a clock event with no firing frame, which the rule rejects.

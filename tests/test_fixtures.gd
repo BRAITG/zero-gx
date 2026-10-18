@@ -28,7 +28,10 @@ func test_fixtures_match_their_expectations() -> void:
 		check(demo != null, "%s does not decode" % file)
 		if demo == null:
 			continue
-		var problem := mismatch(DemoCheck.check(level, demo), entry.errors)
+		var claim: Dictionary = entry.get("claim", {})
+		if not claim.is_empty():
+			claim.points = int(claim.points)
+		var problem := mismatch(DemoCheck.check(level, demo, claim), entry.errors)
 		check(problem == "", "%s: %s" % [file, problem])
 		if entry.points != null:
 			check(DemoCheck.score(level, demo).points == int(entry.points), "%s: scored %d, expected %s" % [file, DemoCheck.score(level, demo).points, entry.points])

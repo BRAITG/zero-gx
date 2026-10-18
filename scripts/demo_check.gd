@@ -89,7 +89,7 @@ static func check(level: Dictionary, demo: Demo, claim: Dictionary = {}) -> Pack
 	if not claim.is_empty():
 		var clock := _clock_seconds(demo)
 		if absf(claim.seconds - clock) > SECONDS_TOLERANCE:
-			errors.append("claimed %.2f seconds, the clock ran %.2f" % [claim.seconds, clock])
+			errors.append("claimed %.2f seconds, the run took %.2f" % [claim.seconds, clock])
 		if absf(claim.fuel - last.fuel) > CLAIM_TOLERANCE:
 			errors.append("claimed fuel %.1f, the demo ends with %.1f" % [claim.fuel, last.fuel])
 		if absf(claim.hull - last.hull) > CLAIM_TOLERANCE:
