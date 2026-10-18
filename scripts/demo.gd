@@ -17,7 +17,7 @@ const FUEL_SCALE := 10.0  # tenths
 const MAX_ALIVE := 1024  # most asteroids alive at once
 const MAX_ASTEROID_FRAMES := 4_000_000  # sum over frames of asteroids alive (12 bytes each stored)
 
-enum Event { PICKUP_TAKEN = 1, PLANET_SHATTERED = 2, SHIP_LOST = 3, GOAL_REACHED = 4, ASTEROID_SPAWNED = 5, ASTEROID_REMOVED = 6 }
+enum Event { PICKUP_TAKEN = 1, PLANET_SHATTERED = 2, SHIP_LOST = 3, GOAL_REACHED = 4, ASTEROID_SPAWNED = 5, ASTEROID_REMOVED = 6, CLOCK_STARTED = 7 }
 
 # Asteroid log entry flags: how an entry's three values relate to the asteroid's previous ones.
 const DELTA := 0
@@ -161,6 +161,17 @@ func encode() -> PackedByteArray:
 	return buf.data_array.compress(FileAccess.COMPRESSION_GZIP)
 
 
+## The level hash a demo file names, read from its header alone; "" for anything that is not a
+## demo or has no frames.
+static func peek_level_sha256(bytes: PackedByteArray) -> String:
+	if bytes.size() > MAX_BYTES or bytes.size() < 2 or bytes[0] != 0x1f or bytes[1] != 0x8b:
+		return ""
+	var raw := bytes.decompress_dynamic(MAX_DECOMPRESSED, FileAccess.COMPRESSION_GZIP)
+	if raw.size() < 42 or raw.slice(0, 4).get_string_from_ascii() != MAGIC or raw[4] != FORMAT_VERSION or raw.decode_u32(37) == 0:
+		return ""
+	return raw.slice(5, 37).hex_encode()
+
+
 ## Null for anything malformed, oversized, truncated, or of another format version.
 static func decode(bytes: PackedByteArray) -> Demo:
 	# Not gzip: decompress_dynamic would log an error on it.
@@ -211,9 +222,9 @@ static func decode(bytes: PackedByteArray) -> Demo:
 		var frame := buf.get_u32()
 		var code := buf.get_u8()
 		var arg := buf.get_u16()
-		if frame > frames or code < Event.PICKUP_TAKEN or code > Event.ASTEROID_REMOVED:
+		if frame > frames or code < Event.PICKUP_TAKEN or code > Event.CLOCK_STARTED:
 			return null
-		var takes_arg: bool = code != Event.SHIP_LOST and code != Event.GOAL_REACHED
+		var takes_arg: bool = code != Event.SHIP_LOST and code != Event.GOAL_REACHED and code != Event.CLOCK_STARTED
 		demo._events.append([frame, code, [arg] if takes_arg else []])
 	return demo
 

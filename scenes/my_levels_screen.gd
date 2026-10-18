@@ -60,9 +60,8 @@ func _fill() -> void:
 		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		row.add_child(label)
 		_button(row, "Edit", _edit.bind(id))
-		var demo := MyLevels.demo(id)
-		if demo:
-			_button(row, "Watch", _watch.bind(data, demo))
+		if MyLevels.has_demo(id):
+			_button(row, "Watch", _watch.bind(id, data))
 		var play := _button(row, "Play", func() -> void: Progress.open(id))
 		play.disabled = data.is_empty() or not LevelFormat.validate(data).is_empty()
 		_button(row, "Delete", _confirm_delete.bind(id, data.get("title", "?")))
@@ -72,7 +71,11 @@ func _edit(id: String) -> void:
 	get_tree().change_scene_to_node(LevelEditor.create(id))
 
 
-func _watch(data: Dictionary, demo: Demo) -> void:
+func _watch(id: String, data: Dictionary) -> void:
+	var demo := MyLevels.demo(id)
+	if demo == null:  # a file that passed the header check but does not decode
+		_fill()
+		return
 	var tree := get_tree()
 	tree.change_scene_to_node(DemoViewer.create(data, demo, func() -> void: tree.change_scene_to_node(MyLevelsScreen.new())))
 

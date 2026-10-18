@@ -68,9 +68,22 @@ func test_a_lost_run_is_still_a_whole_demo() -> void:
 	check(not events.is_empty() and events.back()[1] == Demo.Event.SHIP_LOST, "the last event must be SHIP_LOST: %s" % [events])
 
 
-func test_a_run_lost_before_any_thrust_has_a_frame() -> void:
+func test_recording_starts_with_the_first_tick_and_marks_the_clock() -> void:
 	var lvl := draft(blank_with({}))
-	await frames(2)
+	var start := lvl.ship.global_position
+	await frames(60)  # idle: no thrust, no clock
+	check(lvl.demo.frame_count() >= 25, "an idle second must be recorded, got %d frames" % lvl.demo.frame_count())
+	check(lvl.demo.ship_at(0).position.distance_to(start) <= DemoCheck.START_TOLERANCE, "frame 0 is %s, the start %s" % [lvl.demo.ship_at(0).position, start])
+	var clock := lvl.demo.events().filter(func(e: Array) -> bool: return e[1] == Demo.Event.CLOCK_STARTED)
+	check(clock.is_empty(), "the clock must not start before the first thrust")
+	lvl.ship.start_boost()
+	await frames(10)
+	clock = lvl.demo.events().filter(func(e: Array) -> bool: return e[1] == Demo.Event.CLOCK_STARTED)
+	check(clock.size() == 1 and clock[0][0] >= 25, "one CLOCK_STARTED after the idle frames expected: %s" % [lvl.demo.events()])
+
+
+func test_a_run_lost_before_any_tick_has_a_frame() -> void:
+	var lvl := draft(blank_with({}))
 	lvl.finish(false)
 	check(lvl.demo.frame_count() == 1, "expected the final frame, got %d" % lvl.demo.frame_count())
 
@@ -106,10 +119,18 @@ func test_draft_demo_is_kept_only_while_the_draft_is_unchanged() -> void:
 	world.add_child(lvl)
 	await frames(2)
 	lvl.finish(true)
-	check(MyLevels.demo(id) != null, "a won test flight must keep its demo")
+	check(MyLevels.demo(id) != null and MyLevels.has_demo(id), "a won test flight must keep its demo")
 	data.title = "Changed"
 	MyLevels.save(id, data)
-	check(MyLevels.demo(id) == null, "an edited draft must drop the demo")
+	check(MyLevels.demo(id) == null and not MyLevels.has_demo(id), "an edited draft must drop the demo")
+
+
+func test_a_won_play_of_a_draft_keeps_no_best_demo() -> void:
+	var lvl := draft(blank_with({}))
+	await frames(2)
+	lvl.finish(true)
+	check(not FileAccess.file_exists(Progress.demos_dir + lvl.level_id + ".demo.gz"), "a draft's best demo must not be stored")
+	MyLevels.delete(lvl.level_id)
 
 
 func test_the_demo_is_frozen_when_the_run_ends() -> void:

@@ -36,7 +36,7 @@ A demo is a gzip-compressed binary file.
 
 - **Header:** demo format version, `level_sha256` (the SHA-256 of the level file it was recorded on, 64 hex characters), the time step (1/30 s), the frame count, and the starting state of every moving object.
 - **Each frame:** the ship as integers (position in px, rotation in milliradians, engine on/off, fuel and hull in tenths), then only the asteroids and planet shards that moved, as differences from the previous frame.
-- **Events:** frame number and code for pickup taken, planet shattered, ship lost, goal reached.
+- **Events:** frame number and code for pickup taken, planet shattered, ship lost, goal reached, asteroid spawned or removed, and clock started (the tick the score clock starts, at the first thrust). Recording begins with the first physics tick, so frame 0 is the level's start even when the ship drifts before thrusting.
 - **Size:** about 10–30 KB for a one-minute run without asteroids, 100–200 KB with 30 asteroids (estimates).
 
 Playback places every object where the frame says and interpolates between frames; no physics runs, so a demo looks the same on every device. One decoder in GDScript (playback, and a local copy of the checks for tests) and one in TypeScript (the Worker and the Actions validator).
@@ -49,7 +49,9 @@ Run by the Worker on every score and by Actions on every submission, against the
 2. Frame 0 is at the level's start; the last frame is inside the goal, with a goal-reached event.
 3. Between frames the ship moves no more than the game's hard speed limit (`Ship.TUNNEL_LIMIT`, 1,200 px/s) allows, plus a margin.
 4. The ship's path crosses no wall segment and never touches a red wall, a star or a black hole.
-5. Fuel never rises except at a pickup event; the claimed points match fuel, hull and time under `Progress.points`, within a tolerance; the claimed time is the frame count over 30, within one frame.
+5. Fuel never rises except at a pickup event; the claimed points match fuel, hull and time under `Progress.points`, within a tolerance; the claimed time is the frames from the clock-started event to the last frame, over 30, within one frame (a demo without that event has 0 seconds).
+
+Implementations stop at the first failing frame of each rule and test a wall segment only against steps whose bounding box, grown by the contact distance, overlaps it, so hostile input stays cheap. The red-wall rule tests each frame-to-frame step segment against each red wall segment, not only the frames.
 
 These checks do not make a forged demo impossible; they make one expensive to fake. They take a few milliseconds per demo.
 

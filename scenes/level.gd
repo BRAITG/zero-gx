@@ -140,7 +140,7 @@ func finish(won: bool) -> void:
 				MyLevels.save_demo(level_id, demo)
 	var result := _score() if won else {"cause": ship.death_cause}
 	result.name = display_name()
-	if demo and result.get("new_best", false):
+	if demo and result.get("new_best", false) and not level_id.begins_with(MyLevels.PREFIX):  # a draft's best demo would never be read
 		Progress.save_best_demo(level_id, demo)
 	hud.show_result(won, result)
 	finished.emit(won)

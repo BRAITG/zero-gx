@@ -12,8 +12,11 @@ func test_round_trip_keeps_every_object() -> void:
 			rocks[7] = Transform2D(0.0, Vector2(400 - f * 2, 10))  # a shard from frame 30
 		if f == 30: demo.add_event(Demo.Event.ASTEROID_SPAWNED, [7])
 		demo.add_frame({"position": Vector2(f * 3.5, -f), "rotation": f * 0.05, "firing": f % 2 == 0, "fuel": 100 - f * 0.1, "hull": 100.0}, rocks)
+	demo.add_event(Demo.Event.CLOCK_STARTED)
 	demo.add_event(Demo.Event.GOAL_REACHED)
 	var back := Demo.decode(demo.encode())
+	check(Demo.peek_level_sha256(demo.encode()) == demo.level_sha256, "the header names the level")
+	check(back.events().any(func(e: Array) -> bool: return e == [90, Demo.Event.CLOCK_STARTED, []]), "CLOCK_STARTED survives encoding: %s" % [back.events()])
 	check(back != null and back.frame_count() == 90 and back.level_sha256 == demo.level_sha256, "header")
 	check(back.ship_at(60).position.distance_to(Vector2(210, -60)) <= 1.0 / Demo.POSITION_SCALE, "ship at 60: %s" % back.ship_at(60))
 	check(not back.asteroids_at(29).has(7) and back.asteroids_at(60)[7].origin.distance_to(Vector2(280, 10)) < 0.2, "shard appears at 30")

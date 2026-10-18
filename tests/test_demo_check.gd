@@ -3,8 +3,9 @@ extends "res://tests/test_case.gd"
 const FLIGHT_LIMIT := 4800  # frames: 80 s
 
 
-## Flies `lvl` along its hidden Route and returns it once won; null when the run is not won.
-func fly_level(lvl: Level) -> Level:
+## Flies `lvl` along its hidden Route, after `idle` physics ticks without thrust, and returns it
+## once won; null when the run is not won.
+func fly_level(lvl: Level, idle := 0) -> Level:
 	world.add_child(lvl)
 	var outcome := {"won": null}
 	lvl.finished.connect(func(won: bool): outcome.won = won)
@@ -16,6 +17,7 @@ func fly_level(lvl: Level) -> Level:
 	var coast: PackedInt32Array = route.get_meta("coast", PackedInt32Array())
 	var cruise: float = route.get_meta("cruise", CRUISE)
 	var pilot := {"next": 0}
+	await frames(idle)
 	for frame in FLIGHT_LIMIT:
 		await frames(1)
 		if outcome.won != null:
@@ -63,6 +65,19 @@ func test_every_official_autopilot_demo_passes() -> void:
 			lvl.free()
 
 
+## The ship drifts under gravity before the first thrust; the demo still starts at the level's start.
+func test_an_honest_run_after_idle_drift_passes() -> void:
+	var lvl := await fly_level(Progress.build("level_10"), 60)
+	check(lvl != null, "level_10: autopilot did not win after idling")
+	if lvl == null:
+		return
+	var start := Vector2(lvl.level_data.ship.position[0], lvl.level_data.ship.position[1])
+	check(lvl.demo.ship_at(0).position.distance_to(start) <= DemoCheck.START_TOLERANCE, "frame 0 is %s, the start %s" % [lvl.demo.ship_at(0).position, start])
+	var errors := DemoCheck.check(lvl.level_data, lvl.demo, claim_from(lvl))
+	check(errors.is_empty(), "idle drift: %s" % [errors])
+	lvl.free()
+
+
 func test_tampered_demos_fail() -> void:
 	var lvl := await fly_level(Progress.build("level_01"))
 	check(lvl != null, "level_01: autopilot did not win")
@@ -80,7 +95,7 @@ func test_tampered_demos_fail() -> void:
 	check(errors.size() == 1 and has_error(errors, "different level"), "a wrong level hash must fail on the hash alone: %s" % [errors])
 
 	var jumped := rebuilt(demo, func(f: int, ship: Dictionary): ship.position += Vector2(0, 200) if f == mid else Vector2.ZERO)
-	check(has_error(DemoCheck.check(level, jumped), "moved 2"), "a 200 px jump must fail")
+	check(has_error(DemoCheck.check(level, jumped), "px in one frame"), "a 200 px jump must fail")
 
 	# Frame `mid` is the reflection of the one before it across the nearest point of the first wall,
 	# so the step between them crosses that wall.
@@ -92,6 +107,13 @@ func test_tampered_demos_fail() -> void:
 
 	var refueled := rebuilt(demo, func(f: int, ship: Dictionary): ship.fuel += 10.0 if f == mid else 0.0)
 	check(has_error(DemoCheck.check(level, refueled), "fuel rose"), "fuel that rises must fail")
+
+	var moved_start := rebuilt(demo, func(f: int, ship: Dictionary): ship.position += Vector2(10, 0) if f == 0 else Vector2.ZERO)
+	check(has_error(DemoCheck.check(level, moved_start), "does not start"), "a frame 0 moved 10 px must fail")
+
+	var slow := claim.duplicate()
+	slow.seconds += 0.5
+	check(has_error(DemoCheck.check(level, demo, slow), "seconds"), "a claim 0.5 s off must fail")
 
 	var rich := claim.duplicate()
 	rich.points += 100
@@ -174,3 +196,20 @@ func test_a_step_through_a_black_hole_fails() -> void:
 	check(has_error(DemoCheck.check(through[0], through[1]), "hit a black hole"), "a step through a black hole must fail")
 	var past := flown(hole, [Vector2(100, 100), Vector2(130, 100), Vector2(160, 100)])
 	check(not has_error(DemoCheck.check(past[0], past[1]), "hit a"), "a path 100 px past the hole must not count as a hit")
+
+
+## Both frames are clear of the wall (26 and 23 px), but the step between them passes 0.3 px from its end.
+func test_a_step_past_a_red_wall_end_fails() -> void:
+	var wall := {"walls": [{"kind": "red", "points": [[100, 0], [100, 100]]}]}
+	var grazing := flown(wall, [Vector2(78, -14), Vector2(123, 14)])
+	check(has_error(DemoCheck.check(grazing[0], grazing[1]), "red wall"), "a step grazing a red wall's end must fail")
+	var clear := flown(wall, [Vector2(78, -40), Vector2(123, -40)])
+	check(not has_error(DemoCheck.check(clear[0], clear[1]), "red wall"), "a step 40 px from the wall's end must pass the red wall rule")
+
+
+## Each rule reports once, however many frames break it.
+func test_each_rule_reports_its_first_failing_frame_only() -> void:
+	var wall := {"walls": [{"kind": "red", "points": [[-100, 100], [400, 100]]}]}
+	var near := flown(wall, along(90.0, 8))
+	var errors := DemoCheck.check(near[0], near[1])
+	check(Array(errors).filter(func(e: String) -> bool: return "red wall" in e).size() == 1, "one red wall error expected: %s" % [errors])

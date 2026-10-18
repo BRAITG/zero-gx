@@ -124,7 +124,7 @@ func test_a_demo_without_frames_is_no_demo() -> void:
 	var empty := Demo.new()
 	empty.level_sha256 = LevelFormat.sha256(MyLevels.load_level(id))
 	MyLevels.save_demo(id, empty)
-	check(MyLevels.demo(id) == null, "a zero-frame draft demo must not be offered")
+	check(MyLevels.demo(id) == null and not MyLevels.has_demo(id), "a zero-frame draft demo must not be offered")
 	Progress.save_best_demo("level_01", empty)
 	check(Progress.best_demo("level_01") == null, "a zero-frame best demo must not be offered")
 	DirAccess.remove_absolute(Progress.demos_dir + "level_01.demo.gz")

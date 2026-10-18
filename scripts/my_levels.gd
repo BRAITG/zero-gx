@@ -47,6 +47,11 @@ static func demo(id: String) -> Demo:
 	return found if found and found.frame_count() > 0 and found.level_sha256 == LevelFormat.sha256(load_level(id)) else null
 
 
+## Whether `demo(id)` has something to show, without decoding the frames.
+static func has_demo(id: String) -> bool:
+	return Demo.peek_level_sha256(FileAccess.get_file_as_bytes(_demo_path(id))) == LevelFormat.sha256(load_level(id))
+
+
 static func save_demo(id: String, run: Demo) -> void:
 	run.save(_demo_path(id))
 

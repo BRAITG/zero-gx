@@ -96,12 +96,12 @@ func _show(at: float) -> void:
 	var here := _demo.asteroids_at(f)
 	var ahead := _demo.asteroids_at(next)
 	for id in here:
-		var rock := rock(id)
+		var node := rock(id)
 		var xform: Transform2D = here[id]
 		var to: Transform2D = ahead.get(id, xform)
-		rock.visible = true
-		rock.global_position = xform.origin.lerp(to.origin, t)
-		rock.global_rotation = lerp_angle(xform.get_rotation(), to.get_rotation(), t)
+		node.visible = true
+		node.global_position = xform.origin.lerp(to.origin, t)
+		node.global_rotation = lerp_angle(xform.get_rotation(), to.get_rotation(), t)
 	for id in _rocks:
 		if not here.has(id):
 			_rocks[id].visible = false

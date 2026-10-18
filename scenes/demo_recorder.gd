@@ -1,11 +1,13 @@
 class_name DemoRecorder
 extends Node
-## Records a level run into a Demo: one frame every second physics tick from the first thrust
-## (when the score clock starts), plus the level's events.
+## Records a level run into a Demo: one frame every second physics tick from the first tick (the
+## ship drifts under gravity before the first thrust), plus the level's events. A CLOCK_STARTED
+## event marks the tick the score clock starts.
 
 var demo := Demo.new()
 var _level: Level
 var _started := false
+var _clock_started := false
 var _tick := 0
 var _rocks := {}  # id -> Asteroid alive
 var _next_id := 0
@@ -31,15 +33,16 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if not _started and _level.ship.flight_time <= 0.0:
-		return
 	_start()
+	if not _clock_started and _level.ship.flight_time > 0.0:
+		_clock_started = true
+		demo.add_event(Demo.Event.CLOCK_STARTED)
 	if _tick % 2 == 0:
 		_record_frame()
 	_tick += 1
 
 
-## The run is over: the last state and the result, whether or not recording had begun.
+## The run is over: the last state and the result, whether or not a tick has run yet.
 func finish(won: bool) -> void:
 	set_physics_process(false)
 	_start()

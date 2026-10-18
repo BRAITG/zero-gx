@@ -34,35 +34,48 @@ static func check(level: Dictionary, demo: Demo, claim: Dictionary = {}) -> Pack
 	if events.is_empty() or events.back()[1] != Demo.Event.GOAL_REACHED or events.back()[0] != count:
 		errors.append("the demo does not end with the goal event")
 
+	# Hostile input must stay cheap: each rule reports its first failing frame only, and a wall is
+	# tested only against steps whose bounding box comes near it.
 	var max_step := Ship.TUNNEL_LIMIT * SPEED_MARGIN * Demo.STEP
 	var walls := _wall_segments(level)
 	var hazards: Array = level.get("bodies", []).filter(func(b: Dictionary) -> bool: return b.kind != "planet")
 	var fuel_limited: bool = not LevelFormat.is_unlimited(level.ship.get("fuel", Ship.MAX_FUEL))
+	var failed := {}
 	for f in count:
 		var now: Dictionary = demo.ship_at(f)
 		var before: Dictionary = demo.ship_at(maxi(f - 1, 0))
+		var step := Rect2(before.position, Vector2.ZERO).expand(now.position)
 		for wall in walls:
-			if wall.kind == "red" and Geometry2D.get_closest_point_to_segment(now.position, wall.a, wall.b).distance_to(now.position) < RED_CONTACT:
+			if not wall.box.intersects(step):
+				continue
+			if not failed.has("red") and wall.kind == "red" and _segment_gap(before.position, now.position, wall.a, wall.b) < RED_CONTACT:
+				failed.red = true
 				errors.append("frame %d: the ship touched a red wall" % f)
+			if f > 0 and not failed.has("crossed") and Geometry2D.segment_intersects_segment(before.position, now.position, wall.a, wall.b) != null:
+				failed.crossed = true
+				errors.append("frame %d: the ship crossed a wall" % f)
 		for body in hazards:
+			if failed.has("hazard"):
+				break
 			# The whole step, so a fast frame cannot hop over the body.
 			var centre := _vec(body.position)
 			if Geometry2D.get_closest_point_to_segment(centre, before.position, now.position).distance_to(centre) < LevelFormat.body_value(body, "radius") + Ship.RADIUS - CONTACT_MARGIN:
+				failed.hazard = true
 				errors.append("frame %d: the ship hit a %s" % [f, body.kind.replace("_", " ")])
 		if f == 0:
 			continue
 		var moved: float = now.position.distance_to(before.position)
-		if moved > max_step:
+		if moved > max_step and not failed.has("speed"):
+			failed.speed = true
 			errors.append("frame %d: the ship moved %d px in one frame" % [f, moved])
-		for wall in walls:
-			if Geometry2D.segment_intersects_segment(before.position, now.position, wall.a, wall.b) != null:
-				errors.append("frame %d: the ship crossed a wall" % f)
-		if fuel_limited and now.fuel > before.fuel:
+		if fuel_limited and now.fuel > before.fuel and not failed.has("fuel"):
+			failed.fuel = true
 			errors.append("frame %d: fuel rose from %.1f to %.1f" % [f, before.fuel, now.fuel])
 
 	if not claim.is_empty():
-		if absf(claim.seconds - demo.seconds()) > Demo.STEP:
-			errors.append("claimed %.2f seconds, the demo lasts %.2f" % [claim.seconds, demo.seconds()])
+		var clock := _clock_seconds(demo)
+		if absf(claim.seconds - clock) > Demo.STEP:
+			errors.append("claimed %.2f seconds, the clock ran %.2f" % [claim.seconds, clock])
 		if absf(claim.fuel - last.fuel) > CLAIM_TOLERANCE:
 			errors.append("claimed fuel %.1f, the demo ends with %.1f" % [claim.fuel, last.fuel])
 		if absf(claim.hull - last.hull) > CLAIM_TOLERANCE:
@@ -73,14 +86,31 @@ static func check(level: Dictionary, demo: Demo, claim: Dictionary = {}) -> Pack
 	return errors
 
 
-## Every wall as separate segments {kind, a, b}; a closed wall includes last point back to first.
+## Seconds from the clock-started event to the last frame; 0 when the clock never started.
+static func _clock_seconds(demo: Demo) -> float:
+	for event in demo.events():
+		if event[1] == Demo.Event.CLOCK_STARTED:
+			return (demo.frame_count() - event[0]) * Demo.STEP
+	return 0.0
+
+
+## The least distance between segments a-b and c-d.
+static func _segment_gap(a: Vector2, b: Vector2, c: Vector2, d: Vector2) -> float:
+	var closest := Geometry2D.get_closest_points_between_segments(a, b, c, d)
+	return closest[0].distance_to(closest[1])
+
+
+## Every wall as separate segments {kind, a, b, box}; a closed wall includes last point back to
+## first. `box` is the segment's bounding box grown by the largest contact distance.
 static func _wall_segments(level: Dictionary) -> Array:
 	var out := []
 	for wall: Dictionary in level.get("walls", []):
 		var points: Array = wall.points
 		var n: int = points.size() if wall.get("closed", false) else points.size() - 1
 		for i in n:
-			out.append({"kind": wall.kind, "a": _vec(points[i]), "b": _vec(points[(i + 1) % points.size()])})
+			var a := _vec(points[i])
+			var b := _vec(points[(i + 1) % points.size()])
+			out.append({"kind": wall.kind, "a": a, "b": b, "box": Rect2(a, Vector2.ZERO).expand(b).grow(RED_CONTACT)})
 	return out
 
 
