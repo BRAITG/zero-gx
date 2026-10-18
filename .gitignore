@@ -3,3 +3,6 @@
 *.apk
 *.idsig
 godot/
+
+# Android Gradle build template, installed by the export (see docs/release/google-play.md)
+/android/

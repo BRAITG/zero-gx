@@ -1,6 +1,6 @@
 # Google Play Release Preparation
 
-Status: preparing. No release is planned yet. This file tracks what a Play release needs and what is already in place.
+Status: the build side is ready; the Play Console account is being set up. The first release goes to **internal testing**, then **closed testing**; production comes later.
 
 ## Already in place
 
@@ -9,30 +9,40 @@ Status: preparing. No release is planned yet. This file tracks what a Play relea
 | Package name | `com.braitg.zerogx` (permanent once uploaded to Play) |
 | Target API | 36 (Android 16), from Godot 4.7.2. Meets the rule that new apps target API 36 from 31 August 2026. Min API 24. |
 | Permissions | `VIBRATE` only |
+| App bundle | The `Android Play` export preset builds `build/zero-gx.aab` with Gradle. CI builds it on every push to `master` and attaches it to the prerelease next to the sideload APK. |
+| Version code | CI sets `version/code` to the workflow run number, so every bundle is higher than the last. `version/name` stays `0.1.0` until we tag versions. |
+| Upload key | An RSA 4096 keystore, alias `upload`, valid 10,000 days. CI reads it from the secrets `ANDROID_UPLOAD_KEYSTORE_B64` and `ANDROID_UPLOAD_KEYSTORE_PASSWORD`. The original lives outside the repository in `~/.zero-gx/` on the maintainer's Mac; keep a backup in a password manager. Upload certificate SHA-256: `BB:D0:06:DA:67:BC:DA:49:B7:5D:EA:E6:5A:5D:2A:4A:DA:BF:DD:57:F2:B7:22:14:15:2A:62:01:FF:70:FB:21`. |
 | App icon | `assets/icon.svg`, with adaptive foreground and background layers for Android launchers |
 | Store icon | `store/icon-512.png` (512 × 512, full-bleed; Play applies its own mask) |
 | Feature graphic | `store/feature-graphic.png` (1024 × 500) |
 | Screenshots | `store/screenshots/` (four 1920 × 1080 landscape shots) |
 | Listing text | `store/listing.md` (draft) |
-| Privacy policy | `PRIVACY.md` (draft: the game collects no data today) |
-| License | AGPL-3.0-or-later (`LICENSE`); third-party assets in `assets/LICENSES.md` |
+| Privacy policy | `PRIVACY.md` (the game collects no data today). Public URL: `https://github.com/BRAITG/zero-gx/blob/master/PRIVACY.md` |
+| License | AGPL-3.0-or-later (`LICENSE`) with an additional permission under section 7 for Google Play's client libraries (`LICENSE-EXCEPTION`); third-party assets in `assets/LICENSES.md` |
 
-## Still to do
+## Building the bundle locally
 
-1. **Developer account.** A Play Console account. A personal account created after 13 November 2023 must run a **closed test with at least 12 testers opted in for 14 continuous days** before it can apply for production access. Start that test early.
-2. **Android App Bundle.** Play accepts only AABs. Godot builds AABs only with a Gradle build: install the Android build template (Project → Install Android Build Template, which adds `android/`), set `gradle_build/use_gradle_build=true` and the AAB export format in a separate "Android Release" export preset, and teach CI to build it.
-3. **Signing.** Create an upload key (kept out of the repository, stored as a CI secret) and enroll in Play App Signing so Google holds the app signing key. The current debug key stays for prerelease APKs.
-4. **Versioning.** `version/code` must increase with every upload. Derive it from the CI run number or a tag, and set `version/name` from tags such as `v0.2.0`.
-5. **Privacy policy URL.** Publish `PRIVACY.md` at a public URL (for example GitHub Pages) and update it before adding any online feature.
-6. **Data safety form.** Today: no data collected or shared. Revisit when cloud saves or rankings arrive.
-7. **Content rating.** Fill in the IARC questionnaire (no violence beyond abstract crashes, no ads, no purchases, no user communication until community levels arrive).
-8. **Target audience.** Choose 13+ unless the game is designed for children; a children's audience brings the Families policy.
-9. **Repository visibility.** The repository is private. Making it public is part of being open source, and the AGPL requires offering source to everyone who receives the app.
+Gradle 8.11 needs JDK 17 (newer JDKs fail with "Unsupported class file major version"). Point Godot's editor setting `export/android/java_sdk_path` at a JDK 17, then:
 
-## Open question: AGPL and Google SDKs
+```sh
+export GODOT_ANDROID_KEYSTORE_RELEASE_PATH=~/.zero-gx/upload.keystore
+export GODOT_ANDROID_KEYSTORE_RELEASE_USER=upload
+export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=<password from ~/.zero-gx/upload.keystore.txt>
+godot --headless --path . --install-android-build-template --export-release "Android Play" build/zero-gx.aab
+```
 
-Play Games Services (cloud saves, leaderboards) and Firebase ship as proprietary libraries. Linking them into an AGPL game is possible for the copyright holders, but contributors' AGPL code would then be distributed together with non-free code, which the AGPL does not allow without permission. Options, to decide with the online-features design:
+The export installs the Gradle template in `android/` (ignored by git). It needs `android_source.zip` in Godot's export templates.
 
-- Add an explicit **additional permission** (AGPL section 7) allowing the game to be linked with Google Play services libraries, accepted by every contributor (for example through the contribution guidelines).
-- Build **two flavors**: a free build without Google libraries (fit for F-Droid) and a Play build with them, keeping the Google integration in a separate, optional module.
-- Use only **free/open backends** for rankings and community levels (for example a self-hosted server), and Play's cloud save only in the Play flavor.
+## Steps in the Play Console
+
+1. **Create the app:** name Zero-GX, game, free, default language English.
+2. **App signing:** keep "Google-generated app signing key" (Play App Signing). Our upload key signs uploads only.
+3. **Internal testing:** create a release, upload the latest `zero-gx.aab` from the GitHub prerelease, and add testers by email (up to 100). Testers join through the opt-in link and install from the Play Store.
+4. **App content forms:** privacy policy URL (above), app access (no login), ads (none), content rating questionnaire, target audience (13+), data safety (no data collected or shared), government apps (no), financial features (none), health (none).
+5. **Store listing:** text from `store/listing.md`, icon, feature graphic and screenshots from `store/`.
+6. **Closed testing:** a personal account created after 13 November 2023 must run a closed test with **at least 12 testers opted in for 14 consecutive days** before it can apply for production. Start it as soon as the forms pass review.
+
+## Later
+
+- Revisit the data safety form, privacy policy and content rating (user-generated content) before community levels and rankings ship.
+- `sensorLandscape` (both landscape directions regardless of the rotation lock) is now possible through the Gradle template if wanted.

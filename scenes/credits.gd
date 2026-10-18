@@ -6,6 +6,7 @@ const SOURCE_URL := "https://github.com/BRAITG/zero-gx"
 ## Packed into the APK by the export preset's include filter.
 const LICENSE_FILES := [
 	["GNU Affero General Public License, version 3 (Zero-GX)", "res://LICENSE"],
+	["Additional permission under section 7 (Zero-GX)", "res://LICENSE-EXCEPTION"],
 	["SIL Open Font License 1.1 (Orbitron)", "res://assets/fonts/Orbitron-OFL.txt"],
 	["SIL Open Font License 1.1 (Exo 2)", "res://assets/fonts/Exo2-OFL.txt"],
 	["CC0 1.0 (Kenney Sci-fi Sounds)", "res://assets/sounds/Kenney-SciFi-License.txt"],
@@ -16,7 +17,7 @@ const LICENSE_FILES := [
 static func open(parent: Node) -> Overlay:
 	var o := Overlay.open(parent, "Credits")
 	o.heading("Zero-GX")
-	o.paragraph("Copyright © 2026 the Zero-GX contributors. Zero-GX is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License, version 3 or (at your option) any later version. It comes with no warranty. Source code: %s" % SOURCE_URL)
+	o.paragraph("Copyright © 2026 the Zero-GX contributors. Zero-GX is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License, version 3 or (at your option) any later version. It comes with no warranty. An additional permission allows linking it with Google Play's client libraries. Source code: %s" % SOURCE_URL)
 	o.heading("Fonts")
 	o.paragraph("Orbitron. Copyright 2018 The Orbitron Project Authors (https://github.com/theleagueof/orbitron), with Reserved Font Name \"Orbitron\". Licensed under the SIL Open Font License 1.1.")
 	o.paragraph("Exo 2. Copyright 2013 The Exo 2 Project Authors (https://github.com/googlefonts/Exo-2.0). Licensed under the SIL Open Font License 1.1.")

@@ -97,6 +97,6 @@ Fonts (Orbitron, Exo 2; SIL Open Font License) and sound effects (Kenney, CC0) l
 
 ## License
 
-Zero-GX is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See `LICENSE`.
+Zero-GX is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See `LICENSE`. `LICENSE-EXCEPTION` adds one permission under section 7 of that license: the game may be linked with Google Play's client libraries (Play Games Services sign-in and Play Integrity), which are not free software.
 
 The bundled fonts and sound effects keep their own licenses (SIL Open Font License 1.1 and CC0 1.0); see `assets/LICENSES.md`. Godot Engine is MIT-licensed.

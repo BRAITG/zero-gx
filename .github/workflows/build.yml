@@ -38,7 +38,7 @@ jobs:
           path: |
             ~/godot
             ~/.local/share/godot/export_templates
-          key: godot-${{ env.GODOT_VERSION }}-android
+          key: godot-${{ env.GODOT_VERSION }}-android-gradle
 
       - name: Install Godot and Android templates
         if: steps.godot-cache.outputs.cache-hit != 'true'
@@ -48,11 +48,12 @@ jobs:
           curl -fsSL -o /tmp/godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
           unzip -q /tmp/godot.zip -d ~/godot
           mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
-          # Only the two Android template APKs (the full bundle is ~1 GB of other platforms).
+          # Only the Android templates (the full bundle is ~1 GB of other platforms): the two APKs for
+          # the sideload build, the Gradle source for the Play bundle.
           curl -fsSL -o /tmp/templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
           dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
           mkdir -p "$dest"
-          unzip -q -j /tmp/templates.tpz templates/android_debug.apk templates/android_release.apk templates/version.txt -d "$dest"
+          unzip -q -j /tmp/templates.tpz templates/android_debug.apk templates/android_release.apk templates/android_source.zip templates/version.txt -d "$dest"
           rm /tmp/godot.zip /tmp/templates.tpz
 
       - name: Test
@@ -79,10 +80,30 @@ jobs:
           unzip -l build/zero-gx.apk | grep -q 'lib/arm64-v8a/libgodot_android.so'
           ls -lh build/zero-gx.apk
 
+      - name: Export Play bundle
+        # Signed with the upload key; Play re-signs it for delivery. Fork PRs have no secrets: skip.
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          UPLOAD_KEYSTORE_B64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_B64 }}
+          UPLOAD_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_PASSWORD }}
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PATH="$RUNNER_TEMP/upload.keystore"
+          export GODOT_ANDROID_KEYSTORE_RELEASE_USER=upload
+          export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD="$UPLOAD_KEYSTORE_PASSWORD"
+          echo "$UPLOAD_KEYSTORE_B64" | base64 -d > "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
+          # Play needs a higher version code for every upload: the run number always grows.
+          sed -i "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" export_presets.cfg
+          ~/godot/godot --headless --path . --install-android-build-template --export-release "Android Play" build/zero-gx.aab
+          jarsigner -verify build/zero-gx.aab
+          ls -lh build/zero-gx.aab
+
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: zero-gx-apk
-          path: build/zero-gx.apk
+          path: |
+            build/zero-gx.apk
+            build/zero-gx.aab
           if-no-files-found: error
 
       - name: Publish prerelease
@@ -91,6 +112,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="prototype-r${GITHUB_RUN_NUMBER}"
-          gh release create "$tag" build/zero-gx.apk --target "$GITHUB_SHA" --prerelease \
+          gh release create "$tag" build/zero-gx.apk build/zero-gx.aab --target "$GITHUB_SHA" --prerelease \
             --title "Zero-GX prototype r${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
-            --notes "Debug-signed prototype build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Install: open this page on the phone, download zero-gx.apk, allow installs from the browser, open the file. Later builds install over this one."
+            --notes "Debug-signed prototype build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Install: open this page on the phone, download zero-gx.apk, allow installs from the browser, open the file. Later builds install over this one. zero-gx.aab is the signed bundle for Google Play."
