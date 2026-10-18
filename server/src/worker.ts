@@ -2,6 +2,7 @@ import type { Env } from "./env";
 import { type Handler, HttpError } from "./http";
 import { getBoard, getDemo, postOfficial, postScore } from "./scores";
 import { getNonce, postSession } from "./session";
+import { getMySubmissions, postGithub, postSubmission } from "./submissions";
 
 /** Method + path pattern -> handler. `:name` segments are captured into the handler's params. */
 const routes: [method: string, pattern: string, handler: Handler][] = [
@@ -11,6 +12,9 @@ const routes: [method: string, pattern: string, handler: Handler][] = [
   ["GET", "/boards/:sha256", getBoard],
   ["GET", "/demos/:sha256/:player/:file", getDemo],
   ["POST", "/admin/official", postOfficial],
+  ["POST", "/submissions", postSubmission],
+  ["GET", "/me/submissions", getMySubmissions],
+  ["POST", "/github", postGithub],
 ];
 
 function match(pattern: string, path: string): Record<string, string> | null {

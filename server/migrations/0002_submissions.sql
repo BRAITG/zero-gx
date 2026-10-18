@@ -1,0 +1,4 @@
+ALTER TABLE submissions ADD COLUMN sha256 TEXT;
+ALTER TABLE submissions ADD COLUMN title TEXT;
+ALTER TABLE submissions ADD COLUMN branch TEXT;
+ALTER TABLE levels ADD COLUMN title TEXT;

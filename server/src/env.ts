@@ -4,6 +4,9 @@
  * - GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET: the OAuth web client that Play Games server auth codes are issued for.
  * - PLAY_SERVICE_ACCOUNT: the service-account JSON key (as text) allowed to call the Play Integrity API.
  * - ADMIN_TOKEN: bearer token the release workflow uses to register the official levels.
+ * - GITHUB_APP_ID, GITHUB_INSTALLATION_ID: the levels repository's GitHub App and its installation.
+ * - GITHUB_APP_KEY: the App's private key as PKCS#8 PEM (GitHub issues PKCS#1; convert with `openssl pkcs8 -topk8 -nocrypt`).
+ * - GITHUB_WEBHOOK_SECRET: the secret GitHub signs webhook deliveries with.
  */
 export interface Env {
   DB: D1Database;
@@ -15,4 +18,8 @@ export interface Env {
   GOOGLE_CLIENT_SECRET: string;
   PLAY_SERVICE_ACCOUNT: string;
   ADMIN_TOKEN: string;
+  GITHUB_APP_ID: string;
+  GITHUB_APP_KEY: string;
+  GITHUB_INSTALLATION_ID: string;
+  GITHUB_WEBHOOK_SECRET: string;
 }

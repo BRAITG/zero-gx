@@ -13,7 +13,7 @@ export class HttpError extends Error {
 export type Handler = (request: Request, env: Env, params: Record<string, string>) => Promise<Response>;
 
 /** Reads the raw body, refusing more than `maxBytes` actually received (Content-Length is only a shortcut). */
-export async function readBytes(request: Request, maxBytes: number): Promise<Uint8Array> {
+export async function readBytes(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
   const tooBig = new HttpError(413, `The request body is over ${maxBytes} bytes.`);
   if (Number(request.headers.get("Content-Length")) > maxBytes) throw tooBig;
   const chunks: Uint8Array[] = [];
