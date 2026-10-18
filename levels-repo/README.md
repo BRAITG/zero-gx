@@ -33,7 +33,7 @@ never be merged.
 
 The workflow runs from the pull request's own merge commit, so a pull request can edit or delete `check.yml` to skip
 the check. The checker fails any change under `.github/` and the submission bot never touches it, so moderators
-must reject any pull request that does. Branch protection on the default branch must require the `check` status.
+must reject any pull request that does. The ruleset on the default branch must require the `check` status.
 
 ## Hiding a level
 
@@ -49,5 +49,5 @@ An author or a rights holder can ask for a level to be removed. A moderator:
 
 1. Adds the level to `hidden.txt` (the server rebuilds `index.json` from it).
 2. Rewrites history with `git filter-repo` to drop `levels/<lvl_id>/` and `proof/<lvl_id>/`.
-3. Force-pushes the rewritten history, with admin approval for the branch protection.
+3. Force-pushes the rewritten history. The ruleset blocks force pushes, so the repository admin temporarily adds themselves to its bypass list with **Always allow** (or disables the ruleset), pushes, and restores it.
 4. Asks GitHub Support to purge cached views and pull request diffs, which a force-push alone does not remove.

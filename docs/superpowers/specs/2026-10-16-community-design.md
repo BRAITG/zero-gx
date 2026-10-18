@@ -25,7 +25,7 @@ Players publish the levels they build, download and play other players' levels, 
 
 1. **Demos and JSON levels (app only).** Record runs, play them back, keep the last finished test run of each draft. Move official levels and tutorials from `.json.gz` to plain JSON.
 2. **Android plumbing.** The licence permission, a Gradle-based Android build, the Play Games sign-in plugin (with a server auth code) and a small Play Integrity plugin.
-3. **Server and levels repository.** The Worker, D1 and R2, the GitHub App, the repository's Actions and branch protection.
+3. **Server and levels repository.** The Worker, D1 and R2, the GitHub App, the repository's Actions and ruleset.
 4. **Community in the app.** Community screens, submission from My levels, boards, the demo viewer.
 
 Each gets its own implementation plan.
@@ -85,7 +85,7 @@ On every pull request:
 
 ### Review
 
-Branch protection on the default branch requires the checks to pass and an approving review from a member of the `moderators` team. A moderator merges to approve or closes with a comment to reject. A GitHub webhook tells the Worker, which records the outcome and the comment in D1 for the author's My levels view. On merge, an Action rebuilds `index.json` (see "Levels repository").
+A ruleset on the default branch requires the checks to pass and an approving review from a member of the `moderators` team. A moderator merges to approve or closes with a comment to reject. A GitHub webhook tells the Worker, which records the outcome and the comment in D1 for the author's My levels view. On merge, an Action rebuilds `index.json` (see "Levels repository").
 
 Pull requests, including rejected ones, are public. Rejected proof demos are not kept anywhere else.
 
@@ -177,7 +177,7 @@ These rulings supersede the text above where they differ.
 - **R2:** the server computes a score's points, fuel, hull and time from the demo itself; the client claims nothing. The app posts scores only with the default tuning.
 - **R3:** clock rule for demos: exactly one clock event, at the first frame in which the thrust fires, with a tolerance of one frame; seconds are compared with a tolerance of two frames.
 - **R4:** sign-in and integrity checks are pluggable verifiers. The Google verifier is the default; the test verifier is reachable only when `ALLOW_TEST_VERIFIER` is `"1"`, which a deployment never sets.
-- The Worker needs the Cloudflare Workers Paid plan: checking a demo takes roughly 40 to 100 ms of CPU, above the Free plan's 10 ms per request.
+- The Worker needs the Cloudflare Workers Paid plan: checking a demo is estimated (from timings in Node, not measured on Workers) at 40 to 100 ms of CPU, above the Free plan's 10 ms per request.
 
 ## Out of scope
 
