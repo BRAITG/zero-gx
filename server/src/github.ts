@@ -181,12 +181,12 @@ export async function lastComment(env: GithubEnv, fetchFn: Fetch, pullRequest: n
   return comments.filter((comment) => MODERATORS.includes(comment.author_association ?? "")).at(-1)?.body ?? null;
 }
 
-/** Opens an issue in the levels repository. Without the label if GitHub refuses it (this creates no labels). */
+/** Opens an issue in the levels repository. Without the label if GitHub rejects it as invalid (422); this creates no labels. */
 export async function openIssue(env: GithubEnv, fetchFn: Fetch, issue: { title: string; body: string; label: string }): Promise<number> {
   const { gh, repo } = await client(env, fetchFn);
   const { label, ...rest } = issue;
   const created = await gh<{ number: number }>("POST", `${repo}/issues`, { ...rest, labels: [label] }).catch((error) => {
-    if (!(error instanceof GithubError)) throw error;
+    if (!(error instanceof GithubError && error.status === 422)) throw error;
     return gh<{ number: number }>("POST", `${repo}/issues`, rest);
   });
   return created.number;

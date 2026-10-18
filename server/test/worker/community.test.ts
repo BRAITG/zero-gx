@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getIndex, postReport, runCron } from "../../src/community";
+import { getIndex, postReport, runCron, sweepDemos } from "../../src/community";
 import type { Env } from "../../src/env";
 import { signSession } from "../../src/session";
 import worker from "../../src/worker";
@@ -49,8 +49,8 @@ interface Item {
 class Github {
   calls: { method: string; path: string }[] = [];
   issues: Issue[] = [];
-  /** Labelled issue creation answers 422, as for an unknown label. */
-  refuseLabels = false;
+  /** The status labelled issue creation answers with instead of succeeding (422 for an unknown label); 0 = none. */
+  labelError = 0;
   down = false;
   head = "head0";
   fetchFn = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -62,7 +62,7 @@ class Github {
     if (url.pathname.startsWith("/app/")) return Response.json({ token: "inst-token", expires_at: new Date(Date.now() + 3600_000).toISOString() }, { status: 201 });
     if (method === "GET" && url.pathname === `${REPO}/git/ref/heads/main`) return Response.json({ object: { sha: this.head } });
     if (method === "POST" && url.pathname === `${REPO}/issues`) {
-      if (this.refuseLabels && body.labels) return Response.json({}, { status: 422 });
+      if (this.labelError && body.labels) return Response.json({}, { status: this.labelError });
       this.issues.push(body);
       return Response.json({ number: this.issues.length }, { status: 201 });
     }
@@ -73,7 +73,7 @@ class Github {
 }
 
 beforeEach(async () => {
-  await env.DB.batch(["players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(["players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
   const { objects } = await env.DEMOS.list();
   if (objects.length) await env.DEMOS.delete(objects.map((o) => o.key));
 });
@@ -223,10 +223,24 @@ describe("POST /levels/:level/report", () => {
 
   it("opens the issue without the label when GitHub refuses it", async () => {
     const gh = new Github();
-    gh.refuseLabels = true;
+    gh.labelError = 422;
     expect((await report(gh, "p_a", "lvl_aaaaaaaaaa")).status).toBe(201);
     expect(gh.issues).toHaveLength(1);
     expect(gh.issues[0].labels).toBeUndefined();
+  });
+
+  it("does not retry without the label on a server error", async () => {
+    const gh = new Github();
+    gh.labelError = 500;
+    expect((await report(gh, "p_a", "lvl_aaaaaaaaaa")).status).toBe(502);
+    expect(gh.ops()).toEqual(["POST /issues"]);
+    expect(gh.issues).toEqual([]);
+  });
+
+  it("keeps a lone carriage return inside the blockquote", async () => {
+    const gh = new Github();
+    expect((await report(gh, "p_a", "lvl_aaaaaaaaaa", { reason: "one\rtwo\r\nthree" })).status).toBe(201);
+    expect(gh.issues[0]!.body).toContain("> one\n> two\n> three\n");
   });
 
   it("lets the player try again when GitHub is down", async () => {
@@ -320,5 +334,47 @@ describe("cron", () => {
     ]);
     expect(await rows("SELECT nonce FROM nonces")).toEqual([{ nonce: "fresh" }]);
     expect(await rows("SELECT player, points, rank FROM player_ranking")).toEqual([{ player: "p_a", points: 7, rank: 1 }]);
+  });
+
+  it("resumes the demo sweep where the previous run stopped, and wraps around when the listing ends", async () => {
+    const keyOf = (i: number | string) => `demos/lvl/p_a/o${i}.demo.gz`;
+    for (let i = 0; i < 7; i++) await env.DEMOS.put(keyOf(i), new Uint8Array([1]));
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 2 * 3600_000);
+    const keys = async () => (await env.DEMOS.list()).objects.map((o) => o.key);
+
+    await sweepDemos(testEnv, 1); // five pages of one object
+    expect(await keys()).toEqual([keyOf(5), keyOf(6)]);
+    expect(await rows("SELECT last_key FROM sweep")).toEqual([{ last_key: keyOf(4) }]);
+
+    await sweepDemos(testEnv, 1);
+    expect(await keys()).toEqual([]);
+    expect(await rows("SELECT last_key FROM sweep")).toEqual([]);
+
+    await env.DEMOS.put(keyOf("0a"), new Uint8Array([1])); // sorts before the old cursor: only a wrapped sweep sees it
+    await sweepDemos(testEnv, 1);
+    expect(await keys()).toEqual([]);
+  });
+
+  it("runs every step even when one throws", async () => {
+    await env.DEMOS.put("demos/lvl/p_a/orphan.demo.gz", new Uint8Array([1]));
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 2 * 3600_000);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const broken = {
+      ...testEnv,
+      DB: new Proxy(env.DB, {
+        get(target, prop) {
+          if (prop !== "prepare") return Reflect.get(target, prop, target).bind(target);
+          return (sql: string) => {
+            if (sql.startsWith("DELETE FROM player_ranking")) throw new Error("D1 is down");
+            return target.prepare(sql);
+          };
+        },
+      }) as unknown as D1Database,
+    };
+    const gh = new Github();
+    gh.down = true;
+    await runCron(broken, gh.fetchFn);
+    expect((await env.DEMOS.list()).objects).toEqual([]);
+    expect(gh.calls.length).toBeGreaterThan(0);
   });
 });

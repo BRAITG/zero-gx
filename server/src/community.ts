@@ -13,7 +13,7 @@ const LEVEL_ID = /^lvl_[a-z0-9]{10}$/;
 /** Demos younger than this may belong to a post that has not stored its score row yet. */
 const ORPHAN_AGE_MS = 60 * 60 * 1000;
 const SWEEP_PAGE = 1000;
-// shortcut: the sweep reads the first 5000 demo keys per run, so a bucket larger than that needs a persisted cursor.
+// Each run reads at most this many pages and saves where it stopped.
 const SWEEP_PAGES = 5;
 /** Rate windows are kept this many windows past the current one. */
 const RATE_KEEP = 2;
@@ -98,8 +98,8 @@ async function limitReports(env: Env, player: string): Promise<void> {
   if (row!.count > REPORTS_PER_DAY) throw new HttpError(429, "Too many reports today; try again tomorrow.");
 }
 
-/** Quotes the reason line by line; the zero-width space stops `@name` from notifying anyone. */
-const quote = (reason: string) => reason.replace(/@/g, "@\u200b").split(/\r?\n/).map((line) => `> ${line}`).join("\n");
+/** Quotes the reason line by line (a lone CR also ends a line in Markdown); the zero-width space stops `@name` from notifying anyone. */
+const quote = (reason: string) => reason.replace(/@/g, "@\u200b").split(/\r\n|\r|\n/).map((line) => `> ${line}`).join("\n");
 
 /** `fetchFn` is the injection point for tests. */
 export async function postReport(request: Request, env: Env, params: Record<string, string>, fetchFn: typeof fetch = fetch): Promise<Response> {
@@ -151,11 +151,12 @@ async function recomputeRanking(env: Env): Promise<void> {
   ]);
 }
 
-/** Deletes R2 demos that no score row points to, skipping recent ones. */
-async function sweepDemos(env: Env): Promise<void> {
-  let cursor: string | undefined;
+/** Deletes R2 demos that no score row points to, skipping recent ones. Resumes after the key the previous run stopped at and wraps to the start once the listing ends. */
+export async function sweepDemos(env: Env, pageSize = SWEEP_PAGE): Promise<void> {
+  const saved = await env.DB.prepare("SELECT last_key FROM sweep WHERE id = 1").first<{ last_key: string }>();
+  let startAfter = saved?.last_key;
   for (let page = 0; page < SWEEP_PAGES; page++) {
-    const listing = await env.DEMOS.list({ prefix: "demos/", limit: SWEEP_PAGE, cursor });
+    const listing = await env.DEMOS.list({ prefix: "demos/", limit: pageSize, startAfter });
     const old = listing.objects.filter((object) => object.uploaded.getTime() < Date.now() - ORPHAN_AGE_MS).map((object) => object.key);
     if (old.length > 0) {
       const { results } = await env.DB.prepare("SELECT demo FROM scores WHERE demo IN (SELECT value FROM json_each(?))").bind(JSON.stringify(old)).all<{ demo: string }>();
@@ -163,25 +164,35 @@ async function sweepDemos(env: Env): Promise<void> {
       const orphans = old.filter((key) => !used.has(key));
       if (orphans.length > 0) await env.DEMOS.delete(orphans);
     }
-    if (!listing.truncated) return;
-    cursor = listing.cursor;
+    startAfter = listing.objects.at(-1)?.key;
+    if (!listing.truncated || !startAfter) {
+      await env.DB.prepare("DELETE FROM sweep").run();
+      return;
+    }
+  }
+  await env.DB.prepare("INSERT INTO sweep (id, last_key) VALUES (1, ?1) ON CONFLICT (id) DO UPDATE SET last_key = ?1").bind(startAfter).run();
+}
+
+/** One cron step: a failure is logged and the other steps still run. */
+async function step(name: string, run: () => Promise<unknown>): Promise<void> {
+  try {
+    await run();
+  } catch (error) {
+    console.error(`cron: ${name} failed`, error);
   }
 }
 
 /** The 10-minute cron. `fetchFn` is the injection point for tests. */
 export async function runCron(env: Env, fetchFn: typeof fetch = fetch): Promise<void> {
   const time = now();
-  await recomputeRanking(env);
-  await env.DB.batch([
-    // Per-minute counters ('score') and per-day ones ('submit', 'report'); the action name says which unit the window is in.
-    env.DB.prepare(`DELETE FROM rate WHERE (action = 'score' AND "window" < ?1) OR (action IN ('submit', 'report') AND "window" < ?2)`).bind(Math.floor(time / 60) - RATE_KEEP, Math.floor(time / 86400) - RATE_KEEP),
-    env.DB.prepare("DELETE FROM nonces WHERE expires < ?").bind(time),
-  ]);
-  await sweepDemos(env);
-  // Last, so that a GitHub outage costs only the index refresh.
-  try {
-    await rebuildIndex(env, fetchFn);
-  } catch (error) {
-    console.error(error);
-  }
+  await step("ranking", () => recomputeRanking(env));
+  await step("cleanup", () =>
+    env.DB.batch([
+      // Per-minute counters ('score') and per-day ones ('submit', 'report'); the action name says which unit the window is in.
+      env.DB.prepare(`DELETE FROM rate WHERE (action = 'score' AND "window" < ?1) OR (action IN ('submit', 'report') AND "window" < ?2)`).bind(Math.floor(time / 60) - RATE_KEEP, Math.floor(time / 86400) - RATE_KEEP),
+      env.DB.prepare("DELETE FROM nonces WHERE expires < ?").bind(time),
+    ]),
+  );
+  await step("demo sweep", () => sweepDemos(env));
+  await step("index rebuild", () => rebuildIndex(env, fetchFn));
 }
