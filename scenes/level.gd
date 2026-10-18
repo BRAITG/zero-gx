@@ -46,6 +46,7 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.ship = ship
 	hud.menu_text = "Edit" if testing else "Menu"
+	hud.can_replay = demo != null
 	ship.show_velocity = show_velocity or Settings.show_velocity
 	hud.goal = goal
 	add_child(hud)
@@ -59,6 +60,7 @@ func _ready() -> void:
 		_show_intro()
 	hud.retry_requested.connect(func(): Progress.open(level_id, testing))
 	hud.menu_requested.connect(_to_menu)
+	hud.replay_requested.connect(_replay)
 	hud.next_requested.connect(func(): Progress.open(Progress.next_level(level_id)))
 	goal.reached.connect(finish.bind(true))
 	ship.destroyed.connect(_ship_lost)
@@ -101,14 +103,23 @@ func _notification(what: int) -> void:
 
 
 func _to_menu() -> void:
+	leave_to(get_tree(), level_id, testing)
+
+
+## Where leaving stage `level_id` goes: the editor after a test flight, else the screen it came from.
+static func leave_to(tree: SceneTree, level_id: String, testing: bool) -> void:
 	if testing:
-		get_tree().change_scene_to_node(LevelEditor.create(level_id))
+		tree.change_scene_to_node(LevelEditor.create(level_id))
 	elif level_id.begins_with(MyLevels.PREFIX):
-		get_tree().change_scene_to_node(MyLevelsScreen.new())
+		tree.change_scene_to_node(MyLevelsScreen.new())
 	elif level_id.begins_with("tutorial_"):
-		get_tree().change_scene_to_node(load("res://scenes/main.gd").menu(true))
+		tree.change_scene_to_node(load("res://scenes/main.gd").menu(true))
 	else:
-		get_tree().change_scene_to_file(MENU)
+		tree.change_scene_to_file(MENU)
+
+
+func _replay() -> void:
+	get_tree().change_scene_to_node(DemoViewer.create(level_data, demo, leave_to.bind(get_tree(), level_id, testing)))
 
 
 ## Ends the level once; later calls (a hit and the goal on one frame) are ignored.

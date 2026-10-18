@@ -56,10 +56,13 @@ func _fill() -> void:
 		var best := Progress.best_points(id)
 		label.text = "%s%s · %s" % ["✓ " if MyLevels.is_completed(id) else "", data.get("title", "?"), "—" if best < 0 else str(best)]
 		label.add_theme_font_size_override("font_size", 24)
-		label.custom_minimum_size.x = 640
+		label.custom_minimum_size.x = 460  # room for Watch beside Edit, Play and Delete
 		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		row.add_child(label)
 		_button(row, "Edit", _edit.bind(id))
+		var demo := MyLevels.demo(id)
+		if demo:
+			_button(row, "Watch", _watch.bind(data, demo))
 		var play := _button(row, "Play", func() -> void: Progress.open(id))
 		play.disabled = data.is_empty() or not LevelFormat.validate(data).is_empty()
 		_button(row, "Delete", _confirm_delete.bind(id, data.get("title", "?")))
@@ -67,6 +70,11 @@ func _fill() -> void:
 
 func _edit(id: String) -> void:
 	get_tree().change_scene_to_node(LevelEditor.create(id))
+
+
+func _watch(data: Dictionary, demo: Demo) -> void:
+	var tree := get_tree()
+	tree.change_scene_to_node(DemoViewer.create(data, demo, func() -> void: tree.change_scene_to_node(MyLevelsScreen.new())))
 
 
 func _confirm_delete(id: String, title: String) -> void:

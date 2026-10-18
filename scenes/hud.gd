@@ -5,6 +5,7 @@ extends CanvasLayer
 signal retry_requested
 signal menu_requested
 signal next_requested
+signal replay_requested
 
 const INTRO_FADE := 0.6  # s
 const INTRO_WIDTH := 860.0  # px; the hint wraps inside this
@@ -20,6 +21,8 @@ var menu_text := "Menu"
 var ship: Ship
 var goal: Node2D
 var restart_button: Button
+## Whether the end panel offers a Replay (the level recorded a demo).
+var can_replay := false
 var _fuel: ProgressBar
 var _health: ProgressBar
 var _effect: Label
@@ -37,6 +40,7 @@ var _total: Label
 var _best: Label
 var _parts := {}  # ScoreIcon.Kind -> value Label
 var _next: Button
+var _replay: Button
 var _time: Label
 var _arrow: Control
 var _intro: PanelContainer
@@ -179,6 +183,7 @@ func _ready() -> void:
 	column.add_child(_detail)
 	_next = _button(column, "Next", next_requested.emit)
 	_button(column, "Retry", retry_requested.emit)
+	_replay = _button(column, "Replay", replay_requested.emit)
 	_button(column, menu_text, menu_requested.emit)
 	_arrow = Control.new()
 	_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -249,6 +254,7 @@ func show_result(won: bool, result: Dictionary) -> void:
 	else:
 		_detail.text = result.cause
 	_next.visible = won and result.has_next
+	_replay.visible = can_replay
 	_result.reset_size()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_result.show()
