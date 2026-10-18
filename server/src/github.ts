@@ -180,3 +180,20 @@ export async function lastComment(env: GithubEnv, fetchFn: Fetch, pullRequest: n
   const comments = await gh<{ body?: string; author_association?: string }[]>("GET", `${repo}/issues/${pullRequest}/comments?per_page=100`);
   return comments.filter((comment) => MODERATORS.includes(comment.author_association ?? "")).at(-1)?.body ?? null;
 }
+
+/** Opens an issue in the levels repository. Without the label if GitHub refuses it (this creates no labels). */
+export async function openIssue(env: GithubEnv, fetchFn: Fetch, issue: { title: string; body: string; label: string }): Promise<number> {
+  const { gh, repo } = await client(env, fetchFn);
+  const { label, ...rest } = issue;
+  const created = await gh<{ number: number }>("POST", `${repo}/issues`, { ...rest, labels: [label] }).catch((error) => {
+    if (!(error instanceof GithubError)) throw error;
+    return gh<{ number: number }>("POST", `${repo}/issues`, rest);
+  });
+  return created.number;
+}
+
+/** The sha of the default branch's head commit. */
+export async function getHeadCommit(env: GithubEnv, fetchFn: Fetch): Promise<string> {
+  const { gh, repo } = await client(env, fetchFn);
+  return (await gh<{ object: { sha: string } }>("GET", `${repo}/git/ref/heads/${DEFAULT_BRANCH}`)).object.sha;
+}

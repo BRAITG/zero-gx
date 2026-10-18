@@ -1,5 +1,6 @@
 import type { Env } from "./env";
 import { type Handler, HttpError } from "./http";
+import { getIndex, getLevels, getPlayers, postReport, putLike, runCron } from "./community";
 import { getBoard, getDemo, postOfficial, postScore } from "./scores";
 import { getNonce, postSession } from "./session";
 import { getMySubmissions, postGithub, postSubmission } from "./submissions";
@@ -15,6 +16,12 @@ const routes: [method: string, pattern: string, handler: Handler][] = [
   ["POST", "/submissions", postSubmission],
   ["GET", "/me/submissions", getMySubmissions],
   ["POST", "/github", postGithub],
+  ["POST", "/levels/:level/like", putLike],
+  ["DELETE", "/levels/:level/like", putLike],
+  ["POST", "/levels/:level/report", postReport],
+  ["GET", "/levels", getLevels],
+  ["GET", "/players", getPlayers],
+  ["GET", "/index", getIndex],
 ];
 
 function match(pattern: string, path: string): Record<string, string> | null {
@@ -48,5 +55,8 @@ export default {
       console.error(error);
       return Response.json({ error: "Internal error." }, { status: 500 });
     }
+  },
+  async scheduled(_controller, env): Promise<void> {
+    await runCron(env);
   },
 } satisfies ExportedHandler<Env>;

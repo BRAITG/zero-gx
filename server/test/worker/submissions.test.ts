@@ -576,7 +576,7 @@ describe("POST /github", () => {
 });
 
 describe("recovering from partial failures", () => {
-  const merged = (number: number, head?: string) => ({ action: "closed", repository, pull_request: { number, merged: true, head: head ? { ref: head } : undefined } });
+  const merged = (number: number, head?: string, headRepo = repository.full_name) => ({ action: "closed", repository, pull_request: { number, merged: true, head: head ? { ref: head, repo: { full_name: headRepo } } : undefined } });
   const levelFile = (gh: Github, level: string, version: number, text = LEVEL_01_TEXT) => gh.files.set(`levels/${level}/v${version}.json`, { text, sha: `main-${level}-${version}` });
   /** Inserts an open submission whose pull request was never recorded, created `age` seconds ago. */
   const seedUnrecorded = (level: string, player: string, age: number) =>
@@ -608,6 +608,16 @@ describe("recovering from partial failures", () => {
     expect((await hook(gh, "pull_request", merged(1, `submission/${row!.level}`))).status).toBe(200);
     expect(await rows("SELECT status, pull_request, branch FROM submissions")).toEqual([{ status: "approved", pull_request: 1, branch: `submission/${row!.level}` }]);
     expect(await rows("SELECT latest FROM levels")).toEqual([{ latest: 1 }]);
+  });
+
+  it("ignores a pull request from a fork whose branch has a submission's name", async () => {
+    const { player } = await signIn("fix-fork", "Fay");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedUnrecorded("lvl_aaaaaaaaaa", player.id, 10);
+    const gh = github();
+    expect((await hook(gh, "pull_request", merged(5, "submission/lvl_aaaaaaaaaa", "mallory/zero-gx-levels"))).status).toBe(204);
+    expect(await rows("SELECT status, pull_request FROM submissions")).toEqual([{ status: "open", pull_request: null }]);
+    expect(gh.calls).toEqual([]);
   });
 
   it("takes over a submission whose pull request was never recorded once it is stale, and refuses while it is fresh", async () => {

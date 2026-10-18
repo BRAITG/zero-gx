@@ -226,7 +226,7 @@ async function buildIndex(env: Env): Promise<string> {
   return `${JSON.stringify({ levels: entries }, null, 2)}\n`;
 }
 
-const rebuildIndex = (env: Env, fetchFn: typeof fetch) => commitIndex(env, fetchFn, () => buildIndex(env));
+export const rebuildIndex = (env: Env, fetchFn: typeof fetch) => commitIndex(env, fetchFn, () => buildIndex(env));
 
 /** HMAC-SHA-256 of the raw body under the webhook secret; `verify` compares in constant time. */
 async function validSignature(env: Env, body: Uint8Array<ArrayBuffer>, header: string | null): Promise<boolean> {
@@ -236,11 +236,11 @@ async function validSignature(env: Env, body: Uint8Array<ArrayBuffer>, header: s
   return crypto.subtle.verify("HMAC", key, Uint8Array.from(hex.match(/../g)!, (byte) => parseInt(byte, 16)), body);
 }
 
-/** The submission of a pull request: by number, else by its `submission/<id>` branch when the request that opened it never recorded the number. */
+/** The submission of a pull request: by number, else by its `submission/<id>` branch when the request that opened it never recorded the number. A fork's branch of that name does not count. */
 async function findSubmission(env: Env, pull: PullRequest): Promise<SubmissionRow | null> {
   const byNumber = await env.DB.prepare("SELECT * FROM submissions WHERE pull_request = ?").bind(pull.number).first<SubmissionRow>();
   if (byNumber) return byNumber;
-  const level = pull.head?.ref?.match(/^submission\/(lvl_[a-z0-9]{10})$/)?.[1];
+  const level = pull.head?.repo?.full_name === env.LEVELS_REPO ? pull.head.ref?.match(/^submission\/(lvl_[a-z0-9]{10})$/)?.[1] : undefined;
   const byBranch = level ? await env.DB.prepare("SELECT * FROM submissions WHERE level = ? AND pull_request IS NULL ORDER BY id DESC").bind(level).first<SubmissionRow>() : null;
   if (!byBranch) return null;
   await env.DB.prepare("UPDATE submissions SET pull_request = ?, branch = ? WHERE id = ? AND pull_request IS NULL").bind(pull.number, pull.head!.ref, byBranch.id).run();
@@ -305,7 +305,7 @@ async function refreshHidden(env: Env, fetchFn: typeof fetch): Promise<void> {
 interface PullRequest {
   number: number;
   merged: boolean;
-  head?: { ref?: string };
+  head?: { ref?: string; repo?: { full_name?: string } };
 }
 
 /** The parts of a delivery this server reads. */
@@ -313,7 +313,7 @@ interface WebhookPayload {
   action?: string;
   ref?: string;
   repository?: { full_name?: string };
-  pull_request?: { number?: number; merged?: boolean; head?: { ref?: string } };
+  pull_request?: { number?: number; merged?: boolean; head?: { ref?: string; repo?: { full_name?: string } } };
   commits?: { added?: string[]; modified?: string[]; removed?: string[] }[];
 }
 
