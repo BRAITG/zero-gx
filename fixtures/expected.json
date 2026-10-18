@@ -1,0 +1,94 @@
+{
+  "demos": {
+    "level_01.clock_moved.demo.gz": {
+      "errors": [
+        "clock"
+      ],
+      "level": "level_01.json",
+      "points": null
+    },
+    "level_01.demo.gz": {
+      "errors": [],
+      "level": "level_01.json",
+      "points": 2522
+    },
+    "level_01.red_graze.demo.gz": {
+      "errors": [
+        "red wall"
+      ],
+      "level": "level_01.red.json",
+      "points": null
+    },
+    "level_01.teleport.demo.gz": {
+      "errors": [
+        "px in one frame"
+      ],
+      "level": "level_01.json",
+      "points": null
+    },
+    "level_01.truncated.demo.gz": {
+      "errors": [
+        "truncated"
+      ],
+      "level": "level_01.json",
+      "points": null
+    },
+    "level_01.wall_crossing.demo.gz": {
+      "errors": [
+        "crossed a wall"
+      ],
+      "level": "level_01.crossed.json",
+      "points": null
+    },
+    "level_01.wrong_hash.demo.gz": {
+      "errors": [
+        "different level"
+      ],
+      "level": "level_01.json",
+      "points": null
+    },
+    "level_05.demo.gz": {
+      "errors": [],
+      "level": "level_05.json",
+      "points": 1307
+    },
+    "level_10.idle.demo.gz": {
+      "errors": [],
+      "level": "level_10.json",
+      "points": 1908
+    }
+  },
+  "levels": {
+    "invalid.black_hole_weak.json": [
+      "black hole must pull harder"
+    ],
+    "invalid.oversized.json": [
+      "larger than"
+    ],
+    "invalid.planet_radius.json": [
+      "radius must be"
+    ],
+    "invalid.wall_kind.json": [
+      "unknown kind"
+    ],
+    "level_01.crossed.json": [],
+    "level_01.json": [],
+    "level_01.red.json": [],
+    "level_05.json": [],
+    "level_10.json": []
+  },
+  "official_hashes": {
+    "level_01": "c29e9e0433e06133024cb6606f355ebf913c17658c7b18177d14b26d8888a7fc",
+    "level_02": "1c97cf6cbf99e2bbed6d87707a4dcefac11159584bfdc5414845f5bbac70f132",
+    "level_03": "c3aa969c04cea73c2fbda84ddcb4ab8702b09bb4435534020d5a7dc996a872ff",
+    "level_04": "d9be481e246ded029b2c843cab8da3a6239cbc7cb8813e054fe93a16618b3c10",
+    "level_05": "5429703016bf690eace1857cbee718f5c1dab37aed84950cfb3728a361a0a14b",
+    "level_06": "a45986313dea9918010f89598406500caf11ca865ff5276714d1afe33907d38f",
+    "level_07": "1e8e1a9f22727bf452daa28c121e2326f07fb212656631057520d2414f6c5c31",
+    "level_08": "649013dadd6de2ce0df3ad6e139dcd6ceecab67cde1ff3675c5082328bcb0046",
+    "level_09": "ad33d2d37e267282d60e600be946bbe51cd28300b2aa8ec411e9c743fc9f706f",
+    "level_10": "17784c42e0649755e35d6ce9c64f0fa618ed74004c0bc2a94e67f307e5e324fe",
+    "level_11": "e0166ee1688bddeb1b8bbad998003c5cc73f7d133aec711b40b2444d0741a814",
+    "level_12": "887ef399887e71439ff985d713971554afb1325ffb3ac831965596c4a607c681"
+  }
+}

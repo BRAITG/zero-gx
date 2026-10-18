@@ -5,7 +5,9 @@ extends RefCounted
 const START_TOLERANCE := 2.0  # px
 const SPEED_MARGIN := 1.1
 const CLAIM_TOLERANCE := 0.5  # fuel and hull
+const SECONDS_TOLERANCE := 2.0 * Demo.STEP
 const POINTS_TOLERANCE := 2
+const CLOCK_TOLERANCE := 1  # frames between the first thrust and the clock event
 const CONTACT_MARGIN := 2.0  # px a ship may overlap a lethal surface before it counts as contact
 ## Where the ship's circle meets a barrier's collision slab.
 const RED_CONTACT := Barrier.THICKNESS / 2.0 + Ship.RADIUS - CONTACT_MARGIN
@@ -41,8 +43,11 @@ static func check(level: Dictionary, demo: Demo, claim: Dictionary = {}) -> Pack
 	var hazards: Array = level.get("bodies", []).filter(func(b: Dictionary) -> bool: return b.kind != "planet")
 	var fuel_limited: bool = not LevelFormat.is_unlimited(level.ship.get("fuel", Ship.MAX_FUEL))
 	var failed := {}
+	var first_thrust := -1
 	for f in count:
 		var now: Dictionary = demo.ship_at(f)
+		if first_thrust < 0 and now.firing:
+			first_thrust = f
 		var before: Dictionary = demo.ship_at(maxi(f - 1, 0))
 		var step := Rect2(before.position, Vector2.ZERO).expand(now.position)
 		for wall in walls:
@@ -71,19 +76,43 @@ static func check(level: Dictionary, demo: Demo, claim: Dictionary = {}) -> Pack
 		if fuel_limited and now.fuel > before.fuel and not failed.has("fuel"):
 			failed.fuel = true
 			errors.append("frame %d: fuel rose from %.1f to %.1f" % [f, before.fuel, now.fuel])
+	var clocks := events.filter(func(e: Array) -> bool: return e[1] == Demo.Event.CLOCK_STARTED)
+	if clocks.size() > 1:
+		errors.append("the demo has %d clock events" % clocks.size())
+	elif clocks.size() == 1 and first_thrust < 0:
+		errors.append("the clock started but the ship never fired")
+	elif clocks.is_empty() and first_thrust >= 0:
+		errors.append("the ship fired at frame %d but the clock never started" % first_thrust)
+	elif clocks.size() == 1 and absi(clocks[0][0] - first_thrust) > CLOCK_TOLERANCE:
+		errors.append("the clock started at frame %d, the ship first fired at frame %d" % [clocks[0][0], first_thrust])
 
 	if not claim.is_empty():
 		var clock := _clock_seconds(demo)
-		if absf(claim.seconds - clock) > Demo.STEP:
+		if absf(claim.seconds - clock) > SECONDS_TOLERANCE:
 			errors.append("claimed %.2f seconds, the clock ran %.2f" % [claim.seconds, clock])
 		if absf(claim.fuel - last.fuel) > CLAIM_TOLERANCE:
 			errors.append("claimed fuel %.1f, the demo ends with %.1f" % [claim.fuel, last.fuel])
 		if absf(claim.hull - last.hull) > CLAIM_TOLERANCE:
 			errors.append("claimed hull %.1f, the demo ends with %.1f" % [claim.hull, last.hull])
-		var points: int = Progress.points(claim.fuel, claim.hull, claim.seconds)
+		var points := _points(claim.fuel, claim.hull, claim.seconds)
 		if absi(claim.points - points) > POINTS_TOLERANCE:
 			errors.append("claimed %d points, the claim is worth %d" % [claim.points, points])
 	return errors
+
+
+## What the demo is worth, by the default weights whatever the player tuned. An unlimited tank
+## scores nothing. `points`, `fuel`, `hull`, `seconds`.
+static func score(level: Dictionary, demo: Demo) -> Dictionary:
+	var last := demo.ship_at(demo.frame_count() - 1)
+	var fuel := 0.0 if LevelFormat.is_unlimited(level.ship.get("fuel", Ship.MAX_FUEL)) else float(last.get("fuel", 0.0))
+	var hull := 0.0 if LevelFormat.is_unlimited(level.ship.get("hull", Ship.MAX_HEALTH)) else float(last.get("hull", 0.0))
+	var seconds := _clock_seconds(demo)
+	return {"points": _points(fuel, hull, seconds), "fuel": fuel, "hull": hull, "seconds": seconds}
+
+
+static func _points(fuel: float, hull: float, seconds: float) -> int:
+	var weights := Tuning.DEFAULTS
+	return maxi(Progress.MIN_POINTS, roundi(Progress.BASE_POINTS + fuel * weights.points_fuel + hull * weights.points_hull - seconds * weights.points_per_second))
 
 
 ## Seconds from the clock-started event to the last frame; 0 when the clock never started.

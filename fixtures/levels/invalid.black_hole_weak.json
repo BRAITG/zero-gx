@@ -1,0 +1,138 @@
+{
+  "bodies": [
+    {
+      "kind": "star",
+      "position": [
+        2000,
+        -2000
+      ],
+      "radius": 300,
+      "strength": 60000
+    },
+    {
+      "kind": "black_hole",
+      "position": [
+        -1500,
+        1500
+      ],
+      "radius": 64,
+      "strength": 8000
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      3650,
+      -700
+    ]
+  },
+  "hint": "Touch and hold: the ship turns toward your finger and fires its engine. Reach the green ring.",
+  "route": {
+    "points": [
+      [
+        1550,
+        0
+      ],
+      [
+        2700,
+        -700
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Launch",
+  "tour": [
+    {
+      "position": [
+        800,
+        -170
+      ],
+      "text": "Blue walls are safe. You just bounce off them."
+    },
+    {
+      "position": [
+        0,
+        0
+      ],
+      "text": "Touch and hold anywhere: the ship turns toward your finger and fires its engine. Let go to coast."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          170
+        ],
+        [
+          -250,
+          -170
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          3900,
+          -530
+        ],
+        [
+          3900,
+          -870
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          170
+        ],
+        [
+          1650,
+          170
+        ],
+        [
+          2750,
+          -530
+        ],
+        [
+          3900,
+          -530
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -170
+        ],
+        [
+          1550,
+          -170
+        ],
+        [
+          2650,
+          -870
+        ],
+        [
+          3900,
+          -870
+        ]
+      ]
+    }
+  ]
+}

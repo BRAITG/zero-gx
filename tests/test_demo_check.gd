@@ -39,11 +39,16 @@ func claim_from(lvl: Level) -> Dictionary:
 func rebuilt(demo: Demo, edit: Callable) -> Demo:
 	var copy := Demo.new()
 	copy.level_sha256 = demo.level_sha256
+	var events := demo.events()
+	var next := 0
 	for f in demo.frame_count():
+		while next < events.size() and events[next][0] <= f:  # an event belongs before the frame it was recorded at
+			copy.add_event(events[next][1], events[next][2])
+			next += 1
 		var ship := demo.ship_at(f)
 		edit.call(f, ship)
 		copy.add_frame(ship, {})
-	for event in demo.events():
+	for event in events.slice(next):
 		copy.add_event(event[1], event[2])
 	return copy
 
@@ -213,3 +218,59 @@ func test_each_rule_reports_its_first_failing_frame_only() -> void:
 	var near := flown(wall, along(90.0, 8))
 	var errors := DemoCheck.check(near[0], near[1])
 	check(Array(errors).filter(func(e: String) -> bool: return "red wall" in e).size() == 1, "one red wall error expected: %s" % [errors])
+
+
+## A level and a 30 px/frame demo of `count` frames to its goal; the ship fires from frame `first_thrust` (never when
+## negative) and a CLOCK_STARTED event is recorded before each frame in `clock_frames`.
+func clocked(first_thrust: int, clock_frames: Array, count := 40, ship_extra := {}) -> Array:
+	var path := along(0.0, count)
+	var level := {"ship": {"position": [0, 0], "fuel": 100, "hull": 100}, "goal": {"position": [path[-1].x, 0]}}
+	level.ship.merge(ship_extra, true)
+	var demo := Demo.new()
+	demo.level_sha256 = LevelFormat.sha256(level)
+	for i in count:
+		if i in clock_frames:
+			demo.add_event(Demo.Event.CLOCK_STARTED)
+		demo.add_frame({"position": path[i], "rotation": 0.0, "firing": first_thrust >= 0 and i >= first_thrust, "fuel": 100.0, "hull": 100.0}, {})
+	demo.add_event(Demo.Event.GOAL_REACHED)
+	return [level, demo]
+
+
+func test_clock_event_must_match_the_first_thrust() -> void:
+	var honest := clocked(5, [5])
+	check(DemoCheck.check(honest[0], honest[1]).is_empty(), "a clock at the first thrust must pass: %s" % [DemoCheck.check(honest[0], honest[1])])
+	var late_by_one := clocked(5, [6])
+	check(DemoCheck.check(late_by_one[0], late_by_one[1]).is_empty(), "a clock one frame off must pass")
+	var idle := clocked(-1, [])
+	check(DemoCheck.check(idle[0], idle[1]).is_empty(), "no thrust and no clock must pass")
+	var moved := clocked(5, [35])
+	check(has_error(DemoCheck.check(moved[0], moved[1]), "clock"), "a clock 30 frames after the first thrust must fail")
+	var twice := clocked(5, [5, 6])
+	check(has_error(DemoCheck.check(twice[0], twice[1]), "clock"), "two clock events must fail")
+	var unstarted := clocked(5, [])
+	check(has_error(DemoCheck.check(unstarted[0], unstarted[1]), "clock"), "thrust without a clock event must fail")
+	var phantom := clocked(-1, [5])
+	check(has_error(DemoCheck.check(phantom[0], phantom[1]), "clock"), "a clock without thrust must fail")
+
+
+func test_the_claimed_seconds_have_a_two_frame_tolerance() -> void:
+	var run := clocked(5, [5])  # 35 frames on the clock
+	var seconds := 35 * Demo.STEP
+	var claim := {"points": DemoCheck.score(run[0], run[1]).points, "fuel": 100.0, "hull": 100.0, "seconds": seconds + 1.9 * Demo.STEP}
+	check(DemoCheck.check(run[0], run[1], claim).is_empty(), "1.9 frames off must pass: %s" % [DemoCheck.check(run[0], run[1], claim)])
+	claim.seconds = seconds + 2.5 * Demo.STEP
+	check(has_error(DemoCheck.check(run[0], run[1], claim), "seconds"), "2.5 frames off must fail")
+
+
+func test_score_uses_default_weights() -> void:
+	Tuning.points_fuel = 30.0
+	Tuning.points_hull = 10.0
+	Tuning.points_per_second = 20.0
+	var run := clocked(5, [5])
+	var score := DemoCheck.score(run[0], run[1])
+	check(is_equal_approx(score.seconds, 35 * Demo.STEP) and score.fuel == 100.0 and score.hull == 100.0, "score read from the demo: %s" % [score])
+	check(score.points == roundi(1000 + 100.0 * 15 + 100.0 * 3 - score.seconds * 2), "default weights expected, got %d" % score.points)
+	var long_run := clocked(0, [0], Demo.MAX_FRAMES, {"fuel": LevelFormat.UNLIMITED, "hull": LevelFormat.UNLIMITED})
+	score = DemoCheck.score(long_run[0], long_run[1])
+	check(score.fuel == 0.0 and score.hull == 0.0, "unlimited tanks score nothing: %s" % [score])
+	check(score.points == Progress.MIN_POINTS, "a 600 s run is floored at %d, got %d" % [Progress.MIN_POINTS, score.points])
