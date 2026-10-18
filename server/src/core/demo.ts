@@ -22,17 +22,15 @@ const DELTA = 0;
 const ABSOLUTE = 1;
 const REMOVED = 2;
 
-export interface DemoEvent {
-  frame: number;
-  code: number;
-}
-
 export interface Demo {
   levelSha256: string;
   truncated: boolean;
   frames: number;
   ship: Int32Array; // per frame: x, y, rotation, flags, fuel, hull, as stored
-  events: DemoEvent[];
+  // Events as parallel typed arrays: an 8 MiB body can hold over a million, which as objects would not fit a Worker.
+  // The event argument is not kept: no check uses it.
+  eventFrames: Uint32Array;
+  eventCodes: Uint8Array;
 }
 
 export interface ShipSample {
@@ -48,8 +46,9 @@ export function shipAt(demo: Demo, frame: number): ShipSample {
   const i = frame * 6;
   const s = demo.ship;
   return {
-    x: s[i] / POSITION_SCALE,
-    y: s[i + 1] / POSITION_SCALE,
+    // Vector2 components are float32 in the game.
+    x: Math.fround(Math.fround(s[i]) / POSITION_SCALE),
+    y: Math.fround(Math.fround(s[i + 1]) / POSITION_SCALE),
     rotation: s[i + 2] / ROTATION_SCALE,
     firing: (s[i + 3] & 1) !== 0,
     fuel: s[i + 4] / FUEL_SCALE,
@@ -129,12 +128,14 @@ export async function decodeDemo(bytes: Uint8Array): Promise<Demo | null> {
   const eventCount = view.getUint32(pos, true);
   pos += 4;
   if (left() !== eventCount * EVENT_BYTES) return null;
-  const events: DemoEvent[] = [];
+  const eventFrames = new Uint32Array(eventCount);
+  const eventCodes = new Uint8Array(eventCount);
   for (let n = 0; n < eventCount; n++, pos += EVENT_BYTES) {
     const frame = view.getUint32(pos, true);
     const code = raw[pos + 4];
     if (frame > frames || code < Event.PICKUP_TAKEN || code > Event.CLOCK_STARTED) return null;
-    events.push({ frame, code });
+    eventFrames[n] = frame;
+    eventCodes[n] = code;
   }
-  return { levelSha256, truncated, frames, ship, events };
+  return { levelSha256, truncated, frames, ship, eventFrames, eventCodes };
 }

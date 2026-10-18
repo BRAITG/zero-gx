@@ -195,19 +195,25 @@ function checkKindLimits(i: number, body: Obj, errors: string[]): void {
   }
 }
 
+// Godot's Vector2 is float32: every operation is rounded so thresholds compare as in the game.
 export type Vec = [number, number];
-export const vec = (v: unknown): Vec => [(v as number[])[0], (v as number[])[1]];
-export const dist = (a: Vec, b: Vec): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
+export const f32 = Math.fround;
+export const vec = (v: unknown): Vec => [f32((v as number[])[0]), f32((v as number[])[1])];
+export const dist = (a: Vec, b: Vec): number => {
+  const dx = f32(a[0] - b[0]);
+  const dy = f32(a[1] - b[1]);
+  return f32(Math.sqrt(f32(f32(dx * dx) + f32(dy * dy))));
+};
 
 // Geometry2D.get_closest_point_to_segment
 export function closestOnSegment(s: Vec, a: Vec, b: Vec): Vec {
-  const n: Vec = [b[0] - a[0], b[1] - a[1]];
-  const l2 = n[0] * n[0] + n[1] * n[1];
-  if (l2 < 1e-20) return a;
-  const t = (n[0] * (s[0] - a[0]) + n[1] * (s[1] - a[1])) / l2;
+  const n: Vec = [f32(b[0] - a[0]), f32(b[1] - a[1])];
+  const l2 = f32(f32(n[0] * n[0]) + f32(n[1] * n[1]));
+  if (l2 < f32(1e-20)) return a;
+  const t = f32(f32(f32(n[0] * f32(s[0] - a[0])) + f32(n[1] * f32(s[1] - a[1]))) / l2);
   if (t <= 0) return a;
   if (t >= 1) return b;
-  return [a[0] + n[0] * t, a[1] + n[1] * t];
+  return [f32(a[0] + f32(n[0] * t)), f32(a[1] + f32(n[1] * t))];
 }
 
 function checkStart(d: Obj, errors: string[]): void {

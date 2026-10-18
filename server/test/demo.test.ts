@@ -2,9 +2,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
-import { checkDemo, scoreDemo, type Claim } from "../src/core/check";
-import { MAX_BYTES, decodeDemo } from "../src/core/demo";
-import { sha256Hex } from "../src/core/level";
+import { checkDemo, scoreDemo, segmentsIntersect, type Claim } from "../src/core/check";
+import { MAX_BYTES, MAX_DECOMPRESSED, decodeDemo } from "../src/core/demo";
+import { sha256Hex, vec } from "../src/core/level";
 
 const root = join(import.meta.dirname, "../..");
 const expected = JSON.parse(readFileSync(join(root, "fixtures/expected.json"), "utf8")) as {
@@ -66,21 +66,97 @@ describe("decodeDemo rejects", () => {
     expect(await decodeDemo(bomb)).toBeNull();
   });
 
+  // A frame: ship record, changed-asteroid count, then the entries.
+  const frameOf = (...entries: Buffer[]) => {
+    const head = Buffer.alloc(17);
+    head.writeUInt16LE(entries.length, 15);
+    return Buffer.concat([head, ...entries]);
+  };
+  const absolute = (id: number) => Buffer.concat([u16(id), Buffer.from([1]), Buffer.alloc(10)]); // x, y s32, rotation s16
+  const entry = (id: number, flag: number, payload = 6) => Buffer.concat([u16(id), Buffer.from([flag]), Buffer.alloc(payload)]);
+  const eventsOf = (...list: [number, number][]) =>
+    Buffer.concat([u32(list.length), ...list.map(([frame, code]) => Buffer.concat([u32(frame), Buffer.from([code]), u16(0)]))]);
+  const decode = (...parts: Buffer[]) => decodeDemo(gzipSync(Buffer.concat(parts)));
+
   it("MAX_ALIVE + 1 asteroids", async () => {
-    const frame = Buffer.alloc(17);
-    frame.writeUInt16LE(1025, 15);
-    // id, ABSOLUTE flag, then x, y (s32) and rotation (s16)
-    const entries = Array.from({ length: 1025 }, (_, id) => Buffer.concat([u16(id), Buffer.from([1]), Buffer.alloc(10)]));
-    const body = Buffer.concat([header(1), frame, ...entries, Buffer.alloc(4)]);
-    expect(await decodeDemo(gzipSync(body))).toBeNull();
+    const entries = Array.from({ length: 1025 }, (_, id) => absolute(id));
+    expect(await decode(header(1), frameOf(...entries), eventsOf())).toBeNull();
     // The same body with MAX_ALIVE asteroids is fine.
-    frame.writeUInt16LE(1024, 15);
-    expect(await decodeDemo(gzipSync(Buffer.concat([header(1), frame, ...entries.slice(0, 1024), Buffer.alloc(4)])))).not.toBeNull();
+    expect(await decode(header(1), frameOf(...entries.slice(0, 1024)), eventsOf())).not.toBeNull();
   });
+
+  it("more than MAX_ASTEROID_FRAMES asteroid-frames", async () => {
+    const alive = frameOf(...Array.from({ length: 1024 }, (_, id) => absolute(id)));
+    const quiet = frameOf();
+    // 1024 alive for 3906 frames is 3,999,744: under the cap, one more frame is over.
+    expect(await decode(header(3906), alive, ...Array(3905).fill(quiet), eventsOf())).not.toBeNull();
+    expect(await decode(header(3907), alive, ...Array(3906).fill(quiet), eventsOf())).toBeNull();
+  });
+
+  it("a delta or removal of an asteroid that is not alive", async () => {
+    expect(await decode(header(1), frameOf(entry(5, 0)), eventsOf())).toBeNull();
+    expect(await decode(header(1), frameOf(entry(5, 2, 0)), eventsOf())).toBeNull();
+    expect(await decode(header(2), frameOf(absolute(5)), frameOf(entry(5, 2, 0), entry(5, 2, 0)), eventsOf())).toBeNull();
+    expect(await decode(header(1), frameOf(entry(5, 3, 0)), eventsOf())).toBeNull();
+    // A delta and a removal of a live one are fine.
+    expect(await decode(header(2), frameOf(absolute(5)), frameOf(entry(5, 0), entry(5, 2, 0)), eventsOf())).not.toBeNull();
+  });
+
+  it("an event with code 0 or 8, or past the last frame", async () => {
+    expect(await decode(header(1), frameOf(), eventsOf([1, 4]))).not.toBeNull();
+    expect(await decode(header(1), frameOf(), eventsOf([1, 0]))).toBeNull();
+    expect(await decode(header(1), frameOf(), eventsOf([1, 8]))).toBeNull();
+    expect(await decode(header(1), frameOf(), eventsOf([2, 4]))).toBeNull();
+    expect(await decode(header(1), frameOf(), eventsOf([1, 4]), Buffer.from([0]))).toBeNull();
+  });
+
+  it("the most events a body can hold decode into compact arrays", async () => {
+    const count = Math.floor((MAX_DECOMPRESSED - 42 - 4) / 7);
+    const events = Buffer.alloc(count * 7);
+    for (let i = 0; i < count; i++) events[i * 7 + 4] = 1 + (i % 7);
+    const body = Buffer.concat([header(0), u32(count), events]);
+    expect(body.length).toBeLessThanOrEqual(MAX_DECOMPRESSED);
+    const demo = await decodeDemo(gzipSync(body));
+    expect(demo?.eventCodes.length).toBe(count);
+    expect(demo?.eventCodes[count - 1]).toBe(1 + ((count - 1) % 7));
+  });
+});
+
+describe("segment geometry against Godot 4.7.2", () => {
+  // Geometry2D.segment_intersects_segment results, from a headless Godot run. The first group are
+  // exact touches (shared endpoint, T-touch) where float64 arithmetic gives the opposite verdict.
+  const cases: [number[], boolean][] = [
+    [[16, 16, 0, 40, 16, 16, 16, 0], true], // shared endpoint
+    [[24, 16, 0, 24, 0, 24, 32, 0], true], // shared endpoint
+    [[40, 0, 24, 24, 24, 24, 32, 16], false], // shared endpoint
+    [[8, 32, 16, 8, 8, 32, 24, 40], false], // shared endpoint
+    [[24, 24, 32, 0, 24, 8, 24, 32], true], // T-touch: a lies on the other segment
+    [[16, 16, 32, 24, 32, 8, 32, 32], true], // T-touch: b lies on the other segment
+    [[40, 16, 24, 8, 24, 0, 24, 40], true], // T-touch
+    [[0, 0, 10, 10, 10, 10, 20, 0], true],
+    [[0, 0, 10, 10, 20, 0, 10, 10], true],
+    [[0, 0, 10, 0, 10, 0, 10, 10], true],
+    [[0, 0, 10, 0, 5, 0, 5, 10], true], // T-touch
+    [[0, 0, 10, 0, 5, -10, 5, 0], true],
+    [[0.1, 0.1, 0.7, 0.3, 0.4, 0.2, 0.4, 5.0], true],
+    [[0.1, 0.3, 0.7, 0.9, 0.7, 0.9, 3.3, -1.1], true],
+    [[0, 0, 10, 0, 5, 5, 5, -5], true],
+    [[0, 0, 10, 0, 3, 1, 7, 1], false],
+  ];
+  for (const [c, want] of cases) {
+    it(c.join(","), () => {
+      expect(segmentsIntersect(vec([c[0], c[1]]), vec([c[2], c[3]]), vec([c[4], c[5]]), vec([c[6], c[7]]))).toBe(want);
+    });
+  }
 });
 
 const u16 = (n: number) => {
   const b = Buffer.alloc(2);
   b.writeUInt16LE(n);
+  return b;
+};
+const u32 = (n: number) => {
+  const b = Buffer.alloc(4);
+  b.writeUInt32LE(n);
   return b;
 };
