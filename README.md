@@ -59,6 +59,10 @@ The suite runs headless at a fixed 60 FPS. `tests/test_levels.gd` checks the lev
 
 `.github/workflows/build.yml` runs the tests, exports the APK, and uploads it as a workflow artifact on every pull request. On `master`, and on a manual run with `publish` checked, it also publishes a prerelease. The debug keystore is the `ANDROID_DEBUG_KEYSTORE_B64` repository secret.
 
+## Community server
+
+Players share levels and compete on boards through a Cloudflare Worker with a D1 database and R2 storage, under [`server/`](server/). Setup, routes and the operations runbook are in [`server/README.md`](server/README.md). Submitted levels live in a separate public repository, `BRAITG/zero-gx-levels`, created from the template in [`levels-repo/`](levels-repo/). The design is in [`docs/superpowers/specs/2026-10-16-community-design.md`](docs/superpowers/specs/2026-10-16-community-design.md).
+
 ## Tutorials
 
 Seven guided stages (`tutorials/`, under **Training** in the main menu) teach one idea each: no friction, walls, fuel, orange and red walls, gravity, black holes, and stars. Each is a script of steps built on `scenes/tutorial.gd`. A white arrow from the ship shows its velocity in the tutorials; players can turn it on for levels in **Settings** (`scripts/settings.gd`, saved in `user://settings.cfg`). Distances and speeds are shown in metres: 10 px is 1 m.

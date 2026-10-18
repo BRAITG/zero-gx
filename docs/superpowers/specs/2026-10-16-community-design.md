@@ -1,7 +1,7 @@
 # Community Levels and Rankings Design (sub-projects 3 and 4 of community levels)
 
 Date: 2026-10-16
-Status: Approved in conversation; sub-project 1 (demos and JSON levels) implemented
+Status: Approved in conversation; sub-project 1 (demos and JSON levels) and sub-project 3 (the server and the levels repository template) implemented; deployment pending
 
 ## Purpose
 
@@ -168,6 +168,14 @@ proof/<lvl_id>/v1.demo.gz, …
 - **Shared fixtures:** one folder of good and bad levels and demos used by the Godot tests, the Worker tests and the Actions validator, so the three implementations agree.
 - **Worker:** `vitest` with Cloudflare's Workers test pool (local D1 and R2): sessions, limits, best-score keeping, the webhook, with Google and GitHub calls mocked.
 - **End to end:** a local Worker against a test copy of the levels repository: submit, check, merge, download, post a score.
+
+## Rulings during implementation
+
+- **R1:** the bot writes `index.json`, rebuilt from D1 on every merge, on every `hidden.txt` change and every 10 minutes. Moderators hide a level by adding its id to `hidden.txt` in a pull request; they never edit `index.json`.
+- **R2:** the server computes a score's points, fuel, hull and time from the demo itself; the client claims nothing.
+- **R3:** clock rule for demos: exactly one clock event, at the first frame in which the thrust fires, with a tolerance of one frame; seconds are compared with a tolerance of two frames.
+- **R4:** sign-in and integrity checks are pluggable verifiers. The Google verifier is the default; the test verifier is reachable only when `ALLOW_TEST_VERIFIER` is `"1"`, which a deployment never sets.
+- The Worker needs the Cloudflare Workers Paid plan: checking a demo takes roughly 40 to 100 ms of CPU, above the Free plan's 10 ms per request.
 
 ## Out of scope
 
