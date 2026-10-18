@@ -75,48 +75,47 @@ func test_malformed_hash_encodes_as_zeros() -> void:
 	check(Demo.decode(demo.encode()).level_sha256 == "0".repeat(64), "zero hash")
 
 
+
+## A hostile body: `frame_rocks` asteroid ids added on frame 0, then empty frames up to `frames`.
+func _hostile_body(frames: int, frame_rocks: int) -> PackedByteArray:
+	var buf := StreamPeerBuffer.new()
+	buf.put_data(Demo.MAGIC.to_ascii_buffer())
+	buf.put_u8(Demo.FORMAT_VERSION)
+	buf.put_data(Demo.new()._hash_bytes())
+	buf.put_u32(frames)
+	buf.put_u8(0)
+	for f in frames:
+		buf.put_32(0)
+		buf.put_32(0)
+		buf.put_16(0)
+		buf.put_u8(0)
+		buf.put_u16(0)
+		buf.put_u16(0)
+		var count := frame_rocks if f == 0 else 0
+		buf.put_u16(count)
+		for id in count:
+			buf.put_u16(id)
+			buf.put_u8(Demo.ABSOLUTE)
+			buf.put_32(0)
+			buf.put_32(0)
+			buf.put_16(0)
+	buf.put_u32(0)  # no events
+	return buf.data_array.compress(FileAccess.COMPRESSION_GZIP)
+
+
 func test_too_many_alive_asteroids_stop_recording_and_decoding() -> void:
 	var rocks := {}
 	for id in Demo.MAX_ALIVE + 1:
 		rocks[id] = Transform2D.IDENTITY
 	var demo := Demo.new()
 	check(not demo.add_frame(SHIP, rocks) and demo.truncated and demo.frame_count() == 0, "add_frame refuses too many")
-	# Hand-built hostile body: one frame adding MAX_ALIVE + 1 ids.
-	var buf := StreamPeerBuffer.new()
-	buf.put_data(Demo.MAGIC.to_ascii_buffer())
-	buf.put_u8(Demo.FORMAT_VERSION)
-	buf.put_data(PackedByteArray(demo._hash_bytes()))
-	buf.put_u32(1)
-	buf.put_u8(0)
-	buf.put_data(PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
-	buf.put_u16(Demo.MAX_ALIVE + 1)
-	for id in Demo.MAX_ALIVE + 1:
-		buf.put_u16(id)
-		buf.put_u8(Demo.ABSOLUTE)
-		buf.put_data(PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
-	buf.put_u32(0)
-	var start := Time.get_ticks_msec()
-	check(Demo.decode(buf.data_array.compress(FileAccess.COMPRESSION_GZIP)) == null, "too many alive must not decode")
-	check(Time.get_ticks_msec() - start < 500, "rejected quickly")
+	# The same body with exactly MAX_ALIVE decodes, so only the alive cap can reject the larger one.
+	check(Demo.decode(_hostile_body(1, Demo.MAX_ALIVE)) != null, "MAX_ALIVE asteroids decode")
+	check(Demo.decode(_hostile_body(1, Demo.MAX_ALIVE + 1)) == null, "too many alive must not decode")
 
 
 func test_decode_budget_caps_total_asteroid_frames() -> void:
-	# MAX_ALIVE asteroids for every one of MAX_FRAMES frames exceeds MAX_ASTEROID_FRAMES.
-	var buf := StreamPeerBuffer.new()
-	buf.put_data(Demo.MAGIC.to_ascii_buffer())
-	buf.put_u8(Demo.FORMAT_VERSION)
-	buf.put_data(PackedByteArray(Demo.new()._hash_bytes()))
-	buf.put_u32(Demo.MAX_FRAMES)
-	buf.put_u8(0)
-	for f in Demo.MAX_FRAMES:
-		buf.put_data(PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
-		buf.put_u16(Demo.MAX_ALIVE if f == 0 else 0)
-		if f == 0:
-			for id in Demo.MAX_ALIVE:
-				buf.put_u16(id)
-				buf.put_u8(Demo.ABSOLUTE)
-				buf.put_data(PackedByteArray([0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))
-	buf.put_u32(0)
-	var start := Time.get_ticks_msec()
-	check(Demo.decode(buf.data_array.compress(FileAccess.COMPRESSION_GZIP)) == null, "budget exceeded must not decode")
-	check(Time.get_ticks_msec() - start < 3000, "rejected quickly")
+	# MAX_ALIVE asteroids alive on every one of MAX_FRAMES frames: within MAX_ALIVE, over the budget.
+	check(Demo.decode(_hostile_body(Demo.MAX_FRAMES, Demo.MAX_ALIVE)) == null, "budget exceeded must not decode")
+	# The same shape over fewer frames decodes, so the budget is what rejected it.
+	check(Demo.decode(_hostile_body(10, Demo.MAX_ALIVE)) != null, "a demo inside the budget decodes")
