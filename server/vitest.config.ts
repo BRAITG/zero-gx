@@ -24,7 +24,8 @@ export default defineConfig({
         plugins: [
           cloudflareTest({
             wrangler: { configPath: "./wrangler.toml" },
-            miniflare: { bindings: { TEST_MIGRATIONS: migrations, SESSION_KEY: "test-session-key", ADMIN_TOKEN: "test-admin-token", ...fixtures } },
+            // The suite signs in far more than 30 times a minute; the limiter itself is tested with a stub binding.
+            miniflare: { ratelimits: { AUTH_LIMITER: { namespace_id: "1001", simple: { limit: 1_000_000, period: 60 } } }, bindings: { TEST_MIGRATIONS: migrations, SESSION_KEY: "test-session-key", ADMIN_TOKEN: "test-admin-token", ...fixtures } },
           }),
         ],
         test: {

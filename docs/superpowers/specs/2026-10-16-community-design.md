@@ -171,8 +171,10 @@ proof/<lvl_id>/v1.demo.gz, …
 
 ## Rulings during implementation
 
-- **R1:** the bot writes `index.json`, rebuilt from D1 on every merge, on every `hidden.txt` change and every 10 minutes. Moderators hide a level by adding its id to `hidden.txt` in a pull request; they never edit `index.json`.
-- **R2:** the server computes a score's points, fuel, hull and time from the demo itself; the client claims nothing.
+These rulings supersede the text above where they differ.
+
+- **R1:** the bot writes `index.json`, rebuilt from D1 on every merge, on every `hidden.txt` change and every 10 minutes. Moderators hide a level by adding its id to `hidden.txt` in a pull request; they never edit `index.json`. A hidden level's board refuses scores.
+- **R2:** the server computes a score's points, fuel, hull and time from the demo itself; the client claims nothing. The app posts scores only with the default tuning.
 - **R3:** clock rule for demos: exactly one clock event, at the first frame in which the thrust fires, with a tolerance of one frame; seconds are compared with a tolerance of two frames.
 - **R4:** sign-in and integrity checks are pluggable verifiers. The Google verifier is the default; the test verifier is reachable only when `ALLOW_TEST_VERIFIER` is `"1"`, which a deployment never sets.
 - The Worker needs the Cloudflare Workers Paid plan: checking a demo takes roughly 40 to 100 ms of CPU, above the Free plan's 10 ms per request.

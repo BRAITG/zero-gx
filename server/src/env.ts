@@ -11,6 +11,8 @@
 export interface Env {
   DB: D1Database;
   DEMOS: R2Bucket;
+  /** Rate-limiting binding for the unauthenticated routes; absent in tests and plain local runs, which skips the check. */
+  AUTH_LIMITER?: RateLimit;
   LEVELS_REPO: string;
   ALLOW_TEST_VERIFIER: string;
   SESSION_KEY: string;

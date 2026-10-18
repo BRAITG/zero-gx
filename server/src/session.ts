@@ -15,7 +15,14 @@ export interface Player {
 
 const now = () => Math.floor(Date.now() / 1000);
 
-export async function getNonce(_request: Request, env: Env): Promise<Response> {
+/** 429 when the client IP is over the limit of the unauthenticated routes. */
+async function limitAuth(request: Request, env: Env): Promise<void> {
+  const outcome = await env.AUTH_LIMITER?.limit({ key: request.headers.get("cf-connecting-ip") ?? "unknown" });
+  if (outcome && !outcome.success) throw new HttpError(429, "Too many requests; try again in a minute.");
+}
+
+export async function getNonce(request: Request, env: Env): Promise<Response> {
+  await limitAuth(request, env);
   const nonce = base64url(crypto.getRandomValues(new Uint8Array(32)));
   await env.DB.batch([
     env.DB.prepare("DELETE FROM nonces WHERE expires <= ?").bind(now()),
@@ -77,6 +84,7 @@ export async function requireIntegrity(request: Request, env: Env, verifier: Ver
 }
 
 export async function postSession(request: Request, env: Env): Promise<Response> {
+  await limitAuth(request, env);
   const { authCode, integrityToken, nonce } = await readJson(request);
   if (typeof authCode !== "string" || typeof integrityToken !== "string" || typeof nonce !== "string") {
     throw new HttpError(400, "authCode, integrityToken and nonce are required.");

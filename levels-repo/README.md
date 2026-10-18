@@ -47,7 +47,7 @@ Level and proof files are contributed by their authors under CC BY-SA 4.0; see `
 
 An author or a rights holder can ask for a level to be removed. A moderator:
 
-1. Adds the level to `hidden.txt` and removes it from `index.json`.
+1. Adds the level to `hidden.txt` (the server rebuilds `index.json` from it).
 2. Rewrites history with `git filter-repo` to drop `levels/<lvl_id>/` and `proof/<lvl_id>/`.
 3. Force-pushes the rewritten history, with admin approval for the branch protection.
 4. Asks GitHub Support to purge cached views and pull request diffs, which a force-push alone does not remove.

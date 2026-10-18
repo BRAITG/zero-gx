@@ -32,7 +32,7 @@ Known limit: the demo recorder samples every second physics tick, so a run whose
 
 ## Deployment
 
-You need a Cloudflare account and the Workers **Paid** plan (US$5/month). The Free plan allows 10 ms of CPU per request; checking a 10-minute demo needs roughly 40 to 100 ms, so score posts and submissions fail there.
+You need a Cloudflare account with a payment method and the Workers **Paid** plan (US$5/month). The Free plan allows 10 ms of CPU per request, and also limits cron triggers to 10 ms of CPU. Checking a 10-minute demo is estimated at 40 to 100 ms (about 1 to 2 ms per 300 to 600 frames, measured in Node, not on Workers), so score posts and submissions would fail on Free. For deploys from CI, create a Cloudflare API token (template "Edit Cloudflare Workers", plus D1 and R2 edit) and give it to `wrangler` as `CLOUDFLARE_API_TOKEN`.
 
 All commands run in `server/`.
 
@@ -40,8 +40,8 @@ All commands run in `server/`.
 2. `npx wrangler d1 create zero-gx`. Put the printed `database_id` into `wrangler.toml` (it holds a placeholder).
 3. `npx wrangler r2 bucket create zero-gx-demos`.
 4. `npx wrangler d1 migrations apply zero-gx --remote`.
-5. `npx wrangler deploy`. Note the `https://zero-gx.<subdomain>.workers.dev` URL; the game and the GitHub App use it.
-6. Set every secret with `npx wrangler secret put NAME` (it prompts for the value):
+5. `npx wrangler deploy`. Deploy the Worker before the GitHub App, which needs its URL. Note the `https://zero-gx.<subdomain>.workers.dev` URL; the game and the GitHub App use it.
+6. Set every secret with `npx wrangler secret put NAME`, which prompts for the value. For multi-line values (the PEM, the JSON key) read it from a file instead: `npx wrangler secret put GITHUB_APP_KEY < app-pkcs8.pem`.
 
 | Secret | Value |
 |---|---|
@@ -61,7 +61,9 @@ Non-secret variables are in `wrangler.toml` under `[vars]`:
 
 ### Rate limiting
 
-`GET /nonce` is unauthenticated and writes to D1, and `POST /session` calls Google. Per-player limits cannot cover them, so add a Cloudflare rate-limiting rule (Security, WAF, Rate limiting rules) on the Worker's hostname, matching the paths `/nonce` and `/session`, for example 30 requests per minute per IP, action Block. (Workers on `workers.dev` need a custom domain for WAF rules; put the Worker on a route of a zone you control.)
+`GET /nonce` is unauthenticated and writes to D1, and `POST /session` calls Google, so per-player limits cannot cover them. The Worker limits both per client IP with a Workers Rate Limiting binding, `AUTH_LIMITER` in `wrangler.toml` (30 requests per 60 seconds, answered with 429). `namespace_id` is any number that is unique in the Cloudflare account; change it only if another Worker already uses `1001`. When the binding is absent (tests, plain local runs) the check is skipped. The limiter is per Cloudflare location and approximate.
+
+Alternative: a Cloudflare WAF rate-limiting rule on `/nonce` and `/session` (for example 30 requests per minute per IP, action Block). WAF rules are zone-scoped and do not apply to `workers.dev`, so this needs the Worker on a custom domain of your zone; then set `workers_dev = false` in `wrangler.toml` so the unprotected `workers.dev` URL is switched off.
 
 ### Google setup
 
@@ -74,48 +76,48 @@ To complete when the Play Console account exists.
 
 ### GitHub setup
 
-1. Create the public repository `BRAITG/zero-gx-levels` from `levels-repo/`: copy its files (including `.github/`) into a new directory, `git init -b main`, commit, add the remote and push.
-2. Create the team `moderators` in the BRAITG organization and add the moderators (`CODEOWNERS` names `@BRAITG/moderators`). The team needs write access to the repository.
+1. Create the public repository `BRAITG/zero-gx-levels` from `levels-repo/`: copy its files (including `.github/`) into a new directory, `git init -b main`, commit, add the remote and push. Its check workflow runs the checker from `BRAITG/zero-gx@master`, so it fails until `server/` is merged to `master` there.
+2. Create the team `moderators` in the BRAITG organization and add the moderators (`CODEOWNERS` names `@BRAITG/moderators`). The team needs write access to the repository. With code-owner review required, a lone moderator cannot approve their own pull requests: add a second moderator, or have an organization owner or admin (who can bypass the ruleset) merge.
 3. Create a GitHub App owned by BRAITG:
    - Repository permissions: Contents read and write, Pull requests read and write, Issues read and write, Metadata read.
    - Webhook URL `<worker URL>/github`, secret = `GITHUB_WEBHOOK_SECRET`; subscribe to `pull_request` and `push`.
    - Generate a private key (give its PKCS#8 form to `GITHUB_APP_KEY`), note the App ID.
    - Install it on `zero-gx-levels` only; the number in the installation's URL is `GITHUB_INSTALLATION_ID`.
-4. Protect `main` (branch protection or a ruleset): require pull requests, require the `check` status, require a review from code owners, and let the App bypass these rules so it can commit `index.json` directly.
+4. Protect `main` with a **ruleset** (Settings, Rules, Rulesets), not classic branch protection: require a pull request, require review from Code Owners, require the `check` status, block force pushes, and add the GitHub App to the bypass list with **Always allow**. Classic branch protection cannot do this: its bypass of pull-request rules does not lift required status checks, so the App's direct `index.json` commit, which has no `check` run, would be rejected (GH006).
 5. In `BRAITG/zero-gx`, add the repository secret `ADMIN_TOKEN` (same value as the Worker's) and the repository variable `COMMUNITY_API` (the Worker URL, no trailing slash). The Build workflow then registers the official level hashes after each published release; without them official boards do not exist.
 6. In the App's Advanced tab, a ping delivery should show a 200.
 
 ## Operations
 
-Open a shell in `server/`. `D1="npx wrangler d1 execute zero-gx --remote"` is used below.
+Run these in `server/`.
 
 **Ban a player.** Takes effect on their next request (the session check reads the flag); the ranking drops them at the next cron run.
 
 ```sh
-$D1 --command "UPDATE players SET banned = 1 WHERE id = 'p_xxxxxxxxxxxxxxxx'"
+npx wrangler d1 execute zero-gx --remote --command "UPDATE players SET banned = 1 WHERE id = 'p_xxxxxxxxxxxxxxxx'"
 ```
 
-Set it back to `0` to unban. Player ids are in the board and level responses; names are not unique.
+Set it back to `0` to unban. Player ids are not in `GET /levels`; find them in board responses, in `levels/<lvl_id>/meta.json` (the author), in report issues (`Reporter:`) or as `levels.owner` in D1. Names are not unique. A banned player's rows stay on level boards (the boards have no banned filter); the player ranking hides them at once and recomputes at the next cron run.
 
-**Hide a level.** Open a pull request in the levels repository that adds its `lvl_id` to `hidden.txt` and changes nothing else. When it is merged the webhook (a `push` touching `hidden.txt`) refreshes D1 and rebuilds the index.
+**Hide a level.** Open a pull request in the levels repository that adds its `lvl_id` to `hidden.txt` and changes nothing else. When it is merged the webhook (a `push` touching `hidden.txt`) refreshes D1 and rebuilds the index. Hiding hides the whole level: its earlier approved versions also disappear from the index, the boards and the player ranking, and the boards stop accepting scores.
 
 **A merge that was not recorded.** The webhook records a merged submission in one transaction. If the merged file's hash equals an already published version, the unique constraint on `versions.sha256` rolls everything back: the submission stays `open`, GitHub shows a failed (500) delivery, and the level cannot take another submission. Find these:
 
 ```sh
-$D1 --command "SELECT id, level, version, pull_request FROM submissions WHERE status = 'open' AND pull_request IS NOT NULL"
+npx wrangler d1 execute zero-gx --remote --command "SELECT id, level, version, pull_request FROM submissions WHERE status = 'open' AND pull_request IS NOT NULL"
 ```
 
-Compare with the merged pull requests (`gh pr list --repo BRAITG/zero-gx-levels --state merged`). For a merged one, find the file's hash and the version that already has it:
+Compare with the merged pull requests (`gh pr list --repo BRAITG/zero-gx-levels --state merged`). For a merged one, find the file's hash and the version that already has it. This needs a local clone: `git clone https://github.com/BRAITG/zero-gx-levels` and `git pull` for the latest. Use `sha256sum` instead of `shasum -a 256` on Linux.
 
 ```sh
 git show origin/main:levels/<lvl_id>/v<N>.json | shasum -a 256
-$D1 --command "SELECT level, version FROM versions WHERE sha256 = '<hash>'"
+npx wrangler d1 execute zero-gx --remote --command "SELECT level, version FROM versions WHERE sha256 = '<hash>'"
 ```
 
 The file is already published under that other version, so close the submission and hide that submission's level:
 
 ```sh
-$D1 --command "UPDATE submissions SET status = 'rejected', decided = CAST(strftime('%s','now') AS INTEGER), comment = 'Duplicate of an already published level.' WHERE id = <submission id>"
+npx wrangler d1 execute zero-gx --remote --command "UPDATE submissions SET status = 'rejected', decided = CAST(strftime('%s','now') AS INTEGER), comment = 'Duplicate of an already published level.' WHERE id = <submission id>"
 ```
 
 Then add that level's `lvl_id` to `hidden.txt` in a pull request (the file `v<N>.json` stays in the repository; a further version of that level would collide with it, so the author should upload a new level). Any other failed delivery, for example when GitHub was unreachable, is fixed by redelivering it: the App's Advanced tab, Recent deliveries, Redeliver. A repeated delivery changes nothing that was already recorded.
@@ -124,7 +126,7 @@ Then add that level's `lvl_id` to `hidden.txt` in a pull request (the file `v<N>
 
 **First sign-in race.** Two first sign-ins of the same new account at the same time make one of them fail with 500. The app retries; nothing needs fixing.
 
-**Nonces.** A nonce is consumed as soon as it is checked, even if Google then rejects the sign-in, so after any failed `POST /session` the app must fetch a new nonce.
+**Nonces.** A nonce is consumed as soon as it is checked, by `POST /session` and also by `POST /scores` and `POST /submissions` (their integrity check), even if the request then fails. After any failed request of these three the app must fetch a new nonce.
 
 **Logs.** `npx wrangler tail` streams the Worker's logs; cron step failures appear as `cron: <step> failed`.
 

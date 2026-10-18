@@ -41,6 +41,23 @@ describe("nonce", () => {
   });
 });
 
+describe("auth rate limit", () => {
+  const limited: Env = { ...testEnv, AUTH_LIMITER: { limit: async () => ({ success: false }) } };
+
+  it("answers 429 on /nonce and /session when the limiter refuses", async () => {
+    expect((await call("/nonce", undefined, limited)).status).toBe(429);
+    expect((await post("/session", { authCode: "test:g-1:Ada", integrityToken: "ok:x", nonce: "x" }, limited)).status).toBe(429);
+  });
+
+  it("keys the limiter by client IP", async () => {
+    const keys: string[] = [];
+    const spy: Env = { ...testEnv, AUTH_LIMITER: { limit: async ({ key }) => (keys.push(key), { success: true }) } };
+    await call("/nonce", { headers: { "cf-connecting-ip": "203.0.113.7" } }, spy);
+    await call("/nonce", undefined, spy);
+    expect(keys).toEqual(["203.0.113.7", "unknown"]);
+  });
+});
+
 describe("POST /session", () => {
   it("signs a player in and returns a session token that requirePlayer accepts", async () => {
     const response = await signIn("g-100", "Ada");
