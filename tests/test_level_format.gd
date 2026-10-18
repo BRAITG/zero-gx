@@ -140,6 +140,15 @@ func test_official_files_round_trip_byte_for_byte() -> void:
 				check(FileAccess.get_file_as_string(path) == LevelFormat.to_json(LevelFormat.read(path)), "%s is not in the stable layout" % path)
 
 
+func test_a_small_change_to_an_orbit_angle_changes_the_hash() -> void:
+	var data := LevelDoc.blank()
+	data.bodies = [{"kind": "planet", "position": [0, 0]}]
+	data.asteroids = [{"position": [100, 0], "orbit": {"body": 0, "radius": 100, "speed": 1, "angle": 1.2345}}]
+	var other := data.duplicate(true)
+	other.asteroids[0].orbit.angle = 1.2355
+	check(LevelFormat.sha256(data) != LevelFormat.sha256(other), "angles 0.001 apart must hash differently")
+
+
 func test_hash_names_the_content() -> void:
 	var data := LevelDoc.blank()
 	var hash := LevelFormat.sha256(data)

@@ -77,8 +77,8 @@ static func sha256(data: Dictionary) -> String:
 
 
 static func _normalized(value: Variant) -> Variant:
-	if value is float:
-		return _num(value)
+	if value is float:  # only whole numbers change form, so the hash identifies the content exactly
+		return int(value) if value == roundf(value) else value
 	if value is Dictionary:
 		var out := {}
 		for key: Variant in value:
