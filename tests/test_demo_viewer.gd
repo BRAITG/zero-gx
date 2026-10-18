@@ -65,7 +65,7 @@ func test_seek_places_every_object() -> void:
 		var at := viewer.ship.global_position
 		check(at.distance_to(demo.ship_at(n).position) <= 0.2, "frame %d: viewer ship %s, demo %s" % [n, at, demo.ship_at(n).position])
 		for id in demo.asteroids_at(n):
-			var rock: Asteroid = viewer.level.get_children().filter(func(c: Node) -> bool: return c is Asteroid)[id]
+			var rock := viewer.rock(id)
 			check(rock.visible and rock.global_position.distance_to(demo.asteroids_at(n)[id].origin) <= 0.2, "frame %d: asteroid %d misplaced" % [n, id])
 	lvl.free()
 
@@ -92,3 +92,40 @@ func test_a_lost_run_plays_to_its_end() -> void:
 		await frames(1)
 	check(viewer.paused and viewer.cursor == demo.frame_count() - 1, "stopped at %s of %d" % [viewer.cursor, demo.frame_count() - 1])
 	check(viewer.ship.global_position.distance_to(demo.ship_at(demo.frame_count() - 1).position) <= 0.2, "the ship must end where the demo ends")
+
+
+func test_the_back_gesture_goes_to_the_viewers_back() -> void:
+	var ran := {"back": 0}
+	var viewer := DemoViewer.create(scripted_level(), scripted(5, -1, Demo.Event.GOAL_REACHED), func() -> void: ran.back += 1)
+	world.add_child(viewer)
+	var scene := tree.current_scene
+	tree.root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await frames(2)
+	check(ran.back == 1, "Back ran %d times" % ran.back)
+	check(tree.current_scene == scene, "the preview level must not change the scene itself")
+
+
+func test_the_back_gesture_in_the_editor_saves_and_lists_levels() -> void:
+	var editor := LevelEditor.create(MyLevels.new_id())
+	world.add_child(editor)
+	var scene := tree.current_scene
+	tree.root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await frames(2)
+	check(tree.current_scene is MyLevelsScreen, "the editor's Back must end on the level list, not the menu: %s" % [tree.current_scene])
+	if tree.current_scene != scene:
+		tree.current_scene.free()
+		tree.current_scene = null
+
+
+func test_a_demo_without_frames_is_no_demo() -> void:
+	var id := MyLevels.new_id()
+	var data := scripted_level()
+	MyLevels.save(id, data)
+	var empty := Demo.new()
+	empty.level_sha256 = LevelFormat.sha256(MyLevels.load_level(id))
+	MyLevels.save_demo(id, empty)
+	check(MyLevels.demo(id) == null, "a zero-frame draft demo must not be offered")
+	Progress.save_best_demo("level_01", empty)
+	check(Progress.best_demo("level_01") == null, "a zero-frame best demo must not be offered")
+	DirAccess.remove_absolute(Progress.demos_dir + "level_01.demo.gz")
+	MyLevels.delete(id)

@@ -101,7 +101,8 @@ func record_win(id: String, run_points: int, seconds: float) -> bool:
 
 ## The demo of the best score on official level `id`, or null.
 func best_demo(id: String) -> Demo:
-	return Demo.load_file(_demo_path(id))
+	var found := Demo.load_file(_demo_path(id))
+	return found if found and found.frame_count() > 0 else null
 
 
 ## Called when a run set a new best: the older demo no longer matches the score and goes first,

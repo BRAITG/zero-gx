@@ -98,7 +98,8 @@ func _end_tour() -> void:
 
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+	# A frozen level is a preview inside the editor or the demo viewer; its host handles Back.
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST and process_mode != PROCESS_MODE_DISABLED:
 		_to_menu()
 
 

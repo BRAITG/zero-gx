@@ -44,7 +44,7 @@ static func delete(id: String) -> void:
 ## The draft's last winning test flight, kept only while the draft is unchanged.
 static func demo(id: String) -> Demo:
 	var found := Demo.load_file(_demo_path(id))
-	return found if found and found.level_sha256 == LevelFormat.sha256(load_level(id)) else null
+	return found if found and found.frame_count() > 0 and found.level_sha256 == LevelFormat.sha256(load_level(id)) else null
 
 
 static func save_demo(id: String, run: Demo) -> void:

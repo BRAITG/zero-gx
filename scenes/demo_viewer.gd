@@ -11,7 +11,8 @@ var paused := false:
 		paused = value
 		if _play:
 			_play.text = "Play" if paused else "Pause"
-## The built level; its ship and asteroids are moved, its pickups and planets hidden by events.
+## The built level; its ship is moved, its asteroids replaced by ones made from the demo, and
+## its pickups and planets hidden by events.
 var level: Level
 ## The playback position in frames, fractional while playing.
 var cursor := 0.0
@@ -48,9 +49,10 @@ func _ready() -> void:
 		elif event[1] == Demo.Event.PLANET_SHATTERED:
 			_hidden_from[planets[event[2][0]]] = event[0]
 	ship = level.get_children().filter(func(n: Node) -> bool: return n is Ship)[0]
-	var first := level.get_children().filter(func(n: Node) -> bool: return n is Asteroid)
-	for id in first.size():
-		_rocks[id] = first[id]
+	# The demo's ids need not match the built level's asteroids (one may be gone before the first
+	# thrust), so every asteroid is made from the demo.
+	for rock in level.get_children().filter(func(n: Node) -> bool: return n is Asteroid):
+		rock.free()
 	_camera = Camera2D.new()
 	add_child(_camera)
 	_camera.make_current()  # the built ship carries a camera of its own
@@ -94,7 +96,7 @@ func _show(at: float) -> void:
 	var here := _demo.asteroids_at(f)
 	var ahead := _demo.asteroids_at(next)
 	for id in here:
-		var rock := _rock(id)
+		var rock := rock(id)
 		var xform: Transform2D = here[id]
 		var to: Transform2D = ahead.get(id, xform)
 		rock.visible = true
@@ -105,8 +107,8 @@ func _show(at: float) -> void:
 			_rocks[id].visible = false
 
 
-## The node for asteroid `id`; shards are made the first time they are needed.
-func _rock(id: int) -> Asteroid:
+## The node for asteroid `id`, made the first time it is needed.
+func rock(id: int) -> Asteroid:
 	if not _rocks.has(id):
 		_rocks[id] = LevelFormat.ASTEROID.instantiate()
 		level.add_child(_rocks[id])
