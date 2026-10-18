@@ -3,7 +3,7 @@
 
 const FORMAT = "zero-gx-level";
 const VERSION = 1;
-const UNLIMITED = "unlimited";
+export const UNLIMITED = "unlimited";
 const TAU = Math.PI * 2;
 
 const WALL_KINDS = ["blue", "orange", "red"];
@@ -40,12 +40,12 @@ const PRESETS: Record<string, Record<string, number>> = {
   black_hole: { radius: 64, strength: 16000, reach: 800 },
   star: { radius: 600, strength: 3000, reach: 3000 },
 };
-const SHIP_RADIUS = 16; // scenes/ship.gd
-const BARRIER_THICKNESS = 16; // scenes/barrier.gd
-const GOAL_RADIUS = 80; // scenes/goal.gd
+export const SHIP_RADIUS = 16; // scenes/ship.gd
+export const BARRIER_THICKNESS = 16; // scenes/barrier.gd
+export const GOAL_RADIUS = 80; // scenes/goal.gd
 
 type Range = [number, number];
-type Obj = Record<string, unknown>;
+export type Obj = Record<string, unknown>;
 
 const isObj = (v: unknown): v is Obj => typeof v === "object" && v !== null && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === "number";
@@ -181,7 +181,7 @@ export function validateLevel(data: unknown): string[] {
   return errors;
 }
 
-function bodyValue(body: Obj, key: string): number {
+export function bodyValue(body: Obj, key: string): number {
   return get(body, key, PRESETS[body.kind as string][key]) as number;
 }
 
@@ -195,12 +195,12 @@ function checkKindLimits(i: number, body: Obj, errors: string[]): void {
   }
 }
 
-type Vec = [number, number];
-const vec = (v: unknown): Vec => [(v as number[])[0], (v as number[])[1]];
-const dist = (a: Vec, b: Vec): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
+export type Vec = [number, number];
+export const vec = (v: unknown): Vec => [(v as number[])[0], (v as number[])[1]];
+export const dist = (a: Vec, b: Vec): number => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 // Geometry2D.get_closest_point_to_segment
-function closestOnSegment(s: Vec, a: Vec, b: Vec): Vec {
+export function closestOnSegment(s: Vec, a: Vec, b: Vec): Vec {
   const n: Vec = [b[0] - a[0], b[1] - a[1]];
   const l2 = n[0] * n[0] + n[1] * n[1];
   if (l2 < 1e-20) return a;
