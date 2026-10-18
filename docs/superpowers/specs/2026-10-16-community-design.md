@@ -18,7 +18,7 @@ Players publish the levels they build, download and play other players' levels, 
 | Level identity | Players see `lvl_` plus 10 random characters, assigned at a level's first submission, plus a version number (`lvl_k3x9q2m7ab/v3`), or an official level's name. Internally every level version is identified by the SHA-256 of its file's exact bytes: boards, demos and downloads use that hash. Approved versions are files that are never changed. |
 | Level files | Plain JSON in a stable layout (sorted keys, 2-space indent, trailing newline), both in the levels repository and for the official levels in this repository. Player drafts on the phone stay `.json.gz`. |
 | Proof of play | A *demo*: a recording of a run's state at 30 frames per second. A submission includes its author's finishing demo; every score includes its demo. |
-| Rankings | One board per official level revision and per community level version; a ranking of community levels by likes; a ranking of players by total community points. |
+| Rankings | One board per level hash (each official level revision and each community level version); a ranking of community levels by likes; a ranking of players by total community points. |
 | Cost | Free tiers: GitHub (public repository, Actions, jsDelivr CDN), Cloudflare Workers, D1 and R2. R2 charges nothing for downloads. |
 
 ## Sub-projects and order
