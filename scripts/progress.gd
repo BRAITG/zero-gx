@@ -10,6 +10,7 @@ const BASE_POINTS := 1000
 const MIN_POINTS := 100
 
 var path := "user://progress.cfg"
+var demos_dir := "user://demos/"
 ## Session-only debug switch from the Tune panel; never saved.
 var unlock_all := false:
 	set(value):
@@ -55,6 +56,9 @@ func build(id: String, testing := false) -> Level:
 	var level := LevelFormat.build(data, script)
 	level.level_id = id
 	level.testing = testing
+	if not id.begins_with("tutorial_"):
+		level.level_data = data
+		level.level_sha256 = LevelFormat.sha256(data)
 	return level
 
 
@@ -95,6 +99,22 @@ func record_win(id: String, run_points: int, seconds: float) -> bool:
 	return true
 
 
+## The demo of the best score on official level `id`, or null.
+func best_demo(id: String) -> Demo:
+	return Demo.load_file(_demo_path(id))
+
+
+## Called when a run set a new best: the older demo no longer matches the score and goes first,
+## so a demo too large to store leaves none rather than a stale one.
+func save_best_demo(id: String, run: Demo) -> void:
+	DirAccess.remove_absolute(_demo_path(id))
+	run.save(_demo_path(id))
+
+
+func _demo_path(id: String) -> String:
+	return demos_dir + id + ".demo.gz"
+
+
 ## Training and levels are separate tracks: each opens in its own order, from its first stage.
 func is_unlocked(id: String) -> bool:
 	var ids := _track(id)
@@ -119,6 +139,8 @@ func load_file() -> void:
 
 func reset() -> void:
 	_file = ConfigFile.new()
+	for file in DirAccess.get_files_at(demos_dir) if DirAccess.dir_exists_absolute(demos_dir) else PackedStringArray():
+		DirAccess.remove_absolute(demos_dir + file)
 	_save()
 
 

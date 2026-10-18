@@ -78,6 +78,22 @@ func seconds() -> float:
 	return frame_count() * STEP
 
 
+## Writes the demo to `path` unless it would not decode again (over MAX_BYTES).
+func save(path: String) -> void:
+	var bytes := encode()
+	if bytes.size() > MAX_BYTES:
+		return
+	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file:
+		file.store_buffer(bytes)
+
+
+## Null when the file is missing or malformed.
+static func load_file(path: String) -> Demo:
+	return decode(FileAccess.get_file_as_bytes(path))
+
+
 func ship_at(frame: int) -> Dictionary:
 	if frame < 0 or frame >= frame_count():
 		return {}

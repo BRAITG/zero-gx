@@ -21,6 +21,13 @@ var level_id := ""
 var testing := false
 ## The running first-flight tour, or null.
 var tour: Tour
+## Set by Progress.build for levels that record a demo (not tutorials): the level data this run
+## was built from and its hash.
+var level_data := {}
+var level_sha256 := ""
+## This run's demo; complete once `finished` is emitted. Null when the level records none.
+var demo: Demo
+var _recorder: DemoRecorder
 var _done := false
 
 
@@ -32,6 +39,10 @@ func _ready() -> void:
 	if level_id == "":
 		level_id = scene_file_path.get_file().get_basename()
 	add_child(Starfield.new())
+	if level_sha256 != "":
+		_recorder = DemoRecorder.new(self)
+		demo = _recorder.demo
+		add_child(_recorder)
 	hud = Hud.new()
 	hud.ship = ship
 	hud.menu_text = "Edit" if testing else "Menu"
@@ -106,13 +117,19 @@ func finish(won: bool) -> void:
 		return
 	_done = true
 	ship.thrusting = false
+	if _recorder:
+		_recorder.finish(won)
 	ship.set_deferred("freeze", true)
 	if won:
 		Sfx.play("goal")
 		if testing:
 			MyLevels.mark_completed(level_id)
+			if demo:
+				MyLevels.save_demo(level_id, demo)
 	var result := _score() if won else {"cause": ship.death_cause}
 	result.name = display_name()
+	if demo and result.get("new_best", false):
+		Progress.save_best_demo(level_id, demo)
 	hud.show_result(won, result)
 	finished.emit(won)
 

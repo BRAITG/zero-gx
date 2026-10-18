@@ -34,10 +34,25 @@ static func save(id: String, data: Dictionary) -> void:
 
 static func delete(id: String) -> void:
 	DirAccess.remove_absolute(dir + id + EXTENSION)
+	DirAccess.remove_absolute(_demo_path(id))
 	var index := _index()
 	if index.has_section(id):
 		index.erase_section(id)
 		index.save(dir + "index.cfg")
+
+
+## The draft's last winning test flight, kept only while the draft is unchanged.
+static func demo(id: String) -> Demo:
+	var found := Demo.load_file(_demo_path(id))
+	return found if found and found.level_sha256 == LevelFormat.sha256(load_level(id)) else null
+
+
+static func save_demo(id: String, run: Demo) -> void:
+	run.save(_demo_path(id))
+
+
+static func _demo_path(id: String) -> String:
+	return dir + id + ".demo.gz"
 
 
 static func is_completed(id: String) -> bool:

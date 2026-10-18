@@ -43,6 +43,7 @@ func _run() -> void:
 			root.get_node("Tuning").tours = false  # a tour pauses the game; tests that want one turn it on
 			var progress := root.get_node("Progress")
 			progress.path = "user://test_progress.cfg"  # never touch the player's real progress
+			progress.demos_dir = "user://test_demos/"
 			progress.unlock_all = false
 			progress.toured.clear()
 			progress.reset()
