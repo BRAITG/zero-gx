@@ -9,6 +9,7 @@ var _started := false
 var _tick := 0
 var _rocks := {}  # id -> Asteroid alive
 var _next_id := 0
+var _finished := false
 
 
 func _init(level: Level) -> void:
@@ -20,11 +21,13 @@ func _ready() -> void:
 	var pickups := _level.get_children().filter(func(n: Node) -> bool: return n is Pickup)
 	for i in pickups.size():
 		pickups[i].body_entered.connect(func(body: Node) -> void:
-			if body is Ship:
+			if body is Ship and not _finished:
 				demo.add_event(Demo.Event.PICKUP_TAKEN, [i]))
 	var planets := _level.get_children().filter(func(n: Node) -> bool: return n is GravityBody)
 	for i in planets.size():
-		planets[i].shattered.connect(func() -> void: demo.add_event(Demo.Event.PLANET_SHATTERED, [i]))
+		planets[i].shattered.connect(func() -> void:
+			if not _finished:
+				demo.add_event(Demo.Event.PLANET_SHATTERED, [i]))
 
 
 func _physics_process(_delta: float) -> void:
@@ -42,6 +45,7 @@ func finish(won: bool) -> void:
 	_start()
 	_record_frame()
 	demo.add_event(Demo.Event.GOAL_REACHED if won else Demo.Event.SHIP_LOST)
+	_finished = true  # the world runs on behind the result card; the demo must not change
 
 
 func _start() -> void:
@@ -52,7 +56,7 @@ func _start() -> void:
 		if child is Asteroid:
 			_track(child)
 	_level.child_entered_tree.connect(func(node: Node) -> void:
-		if node is Asteroid:
+		if node is Asteroid and not _finished:
 			demo.add_event(Demo.Event.ASTEROID_SPAWNED, [_track(node)]))
 
 
@@ -62,7 +66,8 @@ func _track(rock: Asteroid) -> int:
 	_rocks[id] = rock
 	rock.tree_exiting.connect(func() -> void:
 		_rocks.erase(id)
-		demo.add_event(Demo.Event.ASTEROID_REMOVED, [id]))
+		if not _finished:
+			demo.add_event(Demo.Event.ASTEROID_REMOVED, [id]))
 	return id
 
 

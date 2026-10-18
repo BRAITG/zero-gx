@@ -110,3 +110,22 @@ func test_draft_demo_is_kept_only_while_the_draft_is_unchanged() -> void:
 	data.title = "Changed"
 	MyLevels.save(id, data)
 	check(MyLevels.demo(id) == null, "an edited draft must drop the demo")
+
+
+func test_the_demo_is_frozen_when_the_run_ends() -> void:
+	var lvl := draft(blank_with({
+		"bodies": [{"kind": "planet", "position": [400, 0], "destructible": true, "health": 1}],
+		"asteroids": [{"position": [0, 0], "velocity": [400, 0]}],
+	}))
+	lvl.ship.start_boost()
+	await frames(10)
+	lvl.finish(true)
+	var demo := lvl.demo
+	var events := demo.events().duplicate(true)
+	var count := demo.frame_count()
+	await frames(300)  # the world runs on: the planet shatters and shards spawn
+	check(lvl.get_children().filter(func(n: Node) -> bool: return n is Asteroid).size() > 1, "the planet did not shatter, so the test proves nothing")
+	lvl.free()
+	check(demo.frame_count() == count, "frames changed after the run ended")
+	check(demo.events() == events, "events changed after the run ended: %s" % [demo.events().slice(events.size())])
+	check(events.back()[1] == Demo.Event.GOAL_REACHED, "the last event must stay GOAL_REACHED")
