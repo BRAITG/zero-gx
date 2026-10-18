@@ -1,0 +1,166 @@
+{
+  "bodies": [
+    {
+      "kind": "star",
+      "position": [
+        2500,
+        0
+      ],
+      "radius": 1000,
+      "reach": 3200,
+      "strength": 380
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      6500,
+      1200
+    ]
+  },
+  "hint": "Mind the star's pull where there is no room for error.",
+  "route": {
+    "cruise": 300,
+    "points": [
+      [
+        1200,
+        -1400
+      ],
+      [
+        2500,
+        -1600
+      ],
+      [
+        3600,
+        -1400
+      ],
+      [
+        3775,
+        -800
+      ],
+      [
+        3775,
+        -300
+      ],
+      [
+        3775,
+        650
+      ],
+      [
+        4300,
+        1300
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Corona",
+  "tour": [
+    {
+      "position": [
+        3775,
+        100
+      ],
+      "text": "A red channel right beside the star: no room for error, and the pull never lets up."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -500,
+          -2200
+        ],
+        [
+          7200,
+          -2200
+        ],
+        [
+          7200,
+          2000
+        ],
+        [
+          -500,
+          2000
+        ],
+        [
+          -500,
+          -2200
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          2500,
+          900
+        ],
+        [
+          2500,
+          2000
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          3200,
+          -900
+        ],
+        [
+          3650,
+          -500
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          3650,
+          -500
+        ],
+        [
+          3650,
+          700
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          3900,
+          -2200
+        ],
+        [
+          3900,
+          -500
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          3900,
+          -500
+        ],
+        [
+          3900,
+          700
+        ]
+      ]
+    }
+  ]
+}

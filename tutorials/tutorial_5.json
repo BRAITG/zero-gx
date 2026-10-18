@@ -1,0 +1,63 @@
+{
+  "bodies": [
+    {
+      "kind": "planet",
+      "position": [
+        1200,
+        300
+      ]
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      2900,
+      1100
+    ]
+  },
+  "route": {
+    "points": []
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ],
+    "velocity": [
+      350,
+      0
+    ]
+  },
+  "show_velocity": true,
+  "title": "Gravity",
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -700,
+          -900
+        ],
+        [
+          3600,
+          -900
+        ],
+        [
+          3600,
+          1800
+        ],
+        [
+          -700,
+          1800
+        ],
+        [
+          -700,
+          -900
+        ]
+      ]
+    }
+  ]
+}

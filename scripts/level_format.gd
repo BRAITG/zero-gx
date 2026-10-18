@@ -1,12 +1,12 @@
 class_name LevelFormat
 extends RefCounted
 ## The level file format shared by the game, the in-app editor and the community server:
-## versioned JSON, stored gzip-compressed. See docs/superpowers/specs/2026-10-16-level-format-design.md.
+## versioned JSON, plain in the repository and gzip-compressed (`.gz`) for player drafts. See docs/superpowers/specs/2026-10-16-level-format-design.md.
 
 const FORMAT := "zero-gx-level"
 const VERSION := 1
 const UNLIMITED := "unlimited"
-const EXTENSION := ".json.gz"
+const EXTENSION := ".json"
 
 const WALL_KINDS := ["blue", "orange", "red"]  # Barrier.Kind order
 const BODY_KINDS := ["planet", "black_hole", "star"]  # GravityBody.Preset order
@@ -47,20 +47,46 @@ static func is_unlimited(value: Variant) -> bool:
 	return value is String and value == UNLIMITED
 
 
+## Reads a level file: gzip when the path ends in `.gz`, plain text otherwise.
 static func read(path: String) -> Dictionary:
-	var file := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_GZIP)
+	var file := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_GZIP) if path.ends_with(".gz") else FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return {}
 	var data: Variant = JSON.parse_string(file.get_as_text())
 	return data if data is Dictionary else {}
 
 
+## Writes a level file: gzip when the path ends in `.gz`, otherwise in the stable `to_json` layout.
 static func write(path: String, data: Dictionary) -> Error:
-	var file := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_GZIP)
+	var gzip := path.ends_with(".gz")
+	var file := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_GZIP) if gzip else FileAccess.open(path, FileAccess.WRITE)
 	if file == null:
 		return FileAccess.get_open_error()
-	file.store_string(JSON.stringify(data))
+	file.store_string(JSON.stringify(data) if gzip else to_json(data))
 	return OK
+
+
+## The stable file layout: sorted keys, 2-space indent, whole numbers as integers, trailing newline.
+static func to_json(data: Dictionary) -> String:
+	return JSON.stringify(_normalized(data), "  ", true) + "\n"
+
+
+## The hash that identifies a level's content.
+static func sha256(data: Dictionary) -> String:
+	return to_json(data).sha256_text()
+
+
+static func _normalized(value: Variant) -> Variant:
+	if value is float:
+		return _num(value)
+	if value is Dictionary:
+		var out := {}
+		for key: Variant in value:
+			out[key] = _normalized(value[key])
+		return out
+	if value is Array:
+		return value.map(_normalized)
+	return value
 
 
 ## Every way `data` breaks the format's rules; empty when the level is valid.

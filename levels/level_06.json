@@ -1,0 +1,165 @@
+{
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      4450,
+      0
+    ]
+  },
+  "hint": "Red walls destroy your ship on contact. Slow down before the narrows.",
+  "route": {
+    "points": [
+      [
+        1300,
+        0
+      ],
+      [
+        1500,
+        0
+      ],
+      [
+        2300,
+        -300
+      ],
+      [
+        3100,
+        0
+      ],
+      [
+        3300,
+        0
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Edge",
+  "tour": [
+    {
+      "position": [
+        2300,
+        -300
+      ],
+      "text": "Red walls destroy your ship on contact. Slow down before the narrows."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -300
+        ],
+        [
+          -250,
+          300
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -300
+        ],
+        [
+          1500,
+          -300
+        ],
+        [
+          1454,
+          -122
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          300
+        ],
+        [
+          1500,
+          300
+        ],
+        [
+          1546,
+          122
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          1546,
+          122
+        ],
+        [
+          2300,
+          -161
+        ],
+        [
+          3054,
+          122
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          1454,
+          -122
+        ],
+        [
+          2300,
+          -439
+        ],
+        [
+          3146,
+          -122
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          3146,
+          -122
+        ],
+        [
+          3100,
+          -300
+        ],
+        [
+          4700,
+          -300
+        ],
+        [
+          4700,
+          300
+        ],
+        [
+          3100,
+          300
+        ],
+        [
+          3054,
+          122
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,170 @@
+{
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      4950,
+      -2400
+    ]
+  },
+  "hint": "Green pickups make your engine stronger for a while; violet ones make it weaker. Mind your speed going into the climb.",
+  "pickups": [
+    {
+      "kind": "thrust_up",
+      "position": [
+        700,
+        0
+      ]
+    },
+    {
+      "kind": "thrust_down",
+      "position": [
+        3400,
+        -300
+      ]
+    }
+  ],
+  "route": {
+    "points": [
+      [
+        3400,
+        0
+      ],
+      [
+        3400,
+        -2400
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Power",
+  "tour": [
+    {
+      "position": [
+        700,
+        0
+      ],
+      "text": "Green pickups make your engine stronger for a while."
+    },
+    {
+      "position": [
+        3400,
+        -300
+      ],
+      "text": "Violet pickups make it weaker. Mind your speed going into the climb."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          275
+        ],
+        [
+          -250,
+          -275
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          5200,
+          -2125
+        ],
+        [
+          5200,
+          -2675
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          275
+        ],
+        [
+          3675,
+          275
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          3675,
+          275
+        ],
+        [
+          3675,
+          -2125
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          3675,
+          -2125
+        ],
+        [
+          5200,
+          -2125
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -275
+        ],
+        [
+          3125,
+          -275
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          3125,
+          -275
+        ],
+        [
+          3125,
+          -2675
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          3125,
+          -2675
+        ],
+        [
+          5200,
+          -2675
+        ]
+      ]
+    }
+  ]
+}

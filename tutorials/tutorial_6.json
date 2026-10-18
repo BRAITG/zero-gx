@@ -1,0 +1,73 @@
+{
+  "bodies": [
+    {
+      "kind": "black_hole",
+      "position": [
+        900,
+        0
+      ]
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      2400,
+      100
+    ]
+  },
+  "route": {
+    "cruise": 300,
+    "points": [
+      [
+        900,
+        -1000
+      ],
+      [
+        1900,
+        -400
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ],
+    "velocity": [
+      150,
+      0
+    ]
+  },
+  "show_velocity": true,
+  "title": "Black holes",
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -900,
+          -1600
+        ],
+        [
+          3000,
+          -1600
+        ],
+        [
+          3000,
+          1000
+        ],
+        [
+          -900,
+          1000
+        ],
+        [
+          -900,
+          -1600
+        ]
+      ]
+    }
+  ]
+}

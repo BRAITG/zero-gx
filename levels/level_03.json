@@ -1,0 +1,142 @@
+{
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      3950,
+      0
+    ]
+  },
+  "hint": "Nothing slows you down. To brake, turn around and thrust the other way. Orange walls hurt.",
+  "route": {
+    "points": [
+      [
+        1400,
+        0
+      ],
+      [
+        1400,
+        -1400
+      ],
+      [
+        2800,
+        -1400
+      ],
+      [
+        2800,
+        0
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Brake",
+  "tour": [
+    {
+      "position": [
+        1400,
+        0
+      ],
+      "text": "Orange walls hurt. The faster you hit one, the more damage you take."
+    },
+    {
+      "position": [
+        0,
+        0
+      ],
+      "text": "Nothing slows you down for you. To brake, turn around and thrust the other way."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          225
+        ],
+        [
+          -250,
+          -225
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          4200,
+          225
+        ],
+        [
+          4200,
+          -225
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          -250,
+          225
+        ],
+        [
+          1625,
+          225
+        ],
+        [
+          1625,
+          -1175
+        ],
+        [
+          2575,
+          -1175
+        ],
+        [
+          2575,
+          225
+        ],
+        [
+          4200,
+          225
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          -250,
+          -225
+        ],
+        [
+          1175,
+          -225
+        ],
+        [
+          1175,
+          -1625
+        ],
+        [
+          3025,
+          -1625
+        ],
+        [
+          3025,
+          -225
+        ],
+        [
+          4200,
+          -225
+        ]
+      ]
+    }
+  ]
+}

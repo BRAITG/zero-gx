@@ -1,0 +1,173 @@
+{
+  "bodies": [
+    {
+      "kind": "star",
+      "position": [
+        2620,
+        -1500
+      ],
+      "radius": 2500,
+      "reach": 5000,
+      "strength": 213
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      -950,
+      -3200
+    ]
+  },
+  "hint": "Stars burn on touch, and their pull never lets up.",
+  "route": {
+    "cruise": 350,
+    "points": [
+      [
+        -60,
+        -800
+      ],
+      [
+        -60,
+        -2200
+      ],
+      [
+        0,
+        -3000
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ],
+    "rotation": -1.57
+  },
+  "title": "Sun",
+  "tour": [
+    {
+      "position": [
+        1400,
+        -1500
+      ],
+      "text": "A huge star. It burns on touch, and its pull reaches across the whole course."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          250,
+          300
+        ],
+        [
+          -250,
+          300
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -1200,
+          -3450
+        ],
+        [
+          -1200,
+          -2950
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          250,
+          300
+        ],
+        [
+          250,
+          -800
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          250,
+          -800
+        ],
+        [
+          250,
+          -2200
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          250,
+          -2200
+        ],
+        [
+          250,
+          -3450
+        ],
+        [
+          -1200,
+          -3450
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          300
+        ],
+        [
+          -250,
+          -800
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          -250,
+          -800
+        ],
+        [
+          -250,
+          -2200
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -2200
+        ],
+        [
+          -250,
+          -2950
+        ],
+        [
+          -1200,
+          -2950
+        ]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,393 @@
+{
+  "asteroids": [
+    {
+      "position": [
+        3006,
+        230
+      ],
+      "velocity": [
+        33,
+        30
+      ]
+    },
+    {
+      "position": [
+        2647,
+        -91
+      ],
+      "velocity": [
+        -57,
+        4
+      ]
+    },
+    {
+      "position": [
+        2501,
+        199
+      ],
+      "velocity": [
+        -38,
+        14
+      ]
+    },
+    {
+      "position": [
+        3087,
+        -302
+      ],
+      "velocity": [
+        65,
+        9
+      ]
+    },
+    {
+      "position": [
+        4375,
+        -90
+      ],
+      "velocity": [
+        -51,
+        27
+      ]
+    },
+    {
+      "position": [
+        2852,
+        200
+      ],
+      "velocity": [
+        -109,
+        -38
+      ]
+    },
+    {
+      "position": [
+        1754,
+        -214
+      ],
+      "velocity": [
+        -19,
+        74
+      ]
+    },
+    {
+      "position": [
+        2440,
+        316
+      ],
+      "velocity": [
+        92,
+        67
+      ]
+    },
+    {
+      "position": [
+        1347,
+        -127
+      ],
+      "velocity": [
+        -24,
+        -95
+      ]
+    },
+    {
+      "position": [
+        2779,
+        312
+      ],
+      "velocity": [
+        -12,
+        54
+      ]
+    },
+    {
+      "position": [
+        4031,
+        4
+      ],
+      "velocity": [
+        85,
+        19
+      ]
+    },
+    {
+      "position": [
+        3652,
+        -73
+      ],
+      "velocity": [
+        -63,
+        69
+      ]
+    },
+    {
+      "position": [
+        1220,
+        124
+      ],
+      "velocity": [
+        25,
+        42
+      ]
+    },
+    {
+      "position": [
+        2271,
+        177
+      ],
+      "velocity": [
+        -28,
+        72
+      ]
+    },
+    {
+      "position": [
+        3294,
+        -252
+      ],
+      "velocity": [
+        58,
+        4
+      ]
+    },
+    {
+      "position": [
+        2897,
+        274
+      ],
+      "velocity": [
+        -58,
+        -5
+      ]
+    },
+    {
+      "position": [
+        2599,
+        -175
+      ],
+      "velocity": [
+        81,
+        -22
+      ]
+    },
+    {
+      "position": [
+        2320,
+        271
+      ],
+      "velocity": [
+        108,
+        -44
+      ]
+    },
+    {
+      "position": [
+        2819,
+        47
+      ],
+      "velocity": [
+        70,
+        26
+      ]
+    },
+    {
+      "position": [
+        3009,
+        -228
+      ],
+      "velocity": [
+        -80,
+        8
+      ]
+    },
+    {
+      "position": [
+        2433,
+        -379
+      ],
+      "velocity": [
+        19,
+        -81
+      ]
+    },
+    {
+      "position": [
+        2595,
+        -359
+      ],
+      "velocity": [
+        26,
+        52
+      ]
+    },
+    {
+      "position": [
+        4086,
+        227
+      ],
+      "velocity": [
+        42,
+        -95
+      ]
+    },
+    {
+      "position": [
+        1020,
+        337
+      ],
+      "velocity": [
+        31,
+        -34
+      ]
+    },
+    {
+      "position": [
+        954,
+        194
+      ],
+      "velocity": [
+        46,
+        38
+      ]
+    },
+    {
+      "position": [
+        2174,
+        -327
+      ],
+      "velocity": [
+        -52,
+        -9
+      ]
+    },
+    {
+      "position": [
+        3330,
+        113
+      ],
+      "velocity": [
+        -19,
+        -61
+      ]
+    },
+    {
+      "position": [
+        2170,
+        225
+      ],
+      "velocity": [
+        -1,
+        61
+      ]
+    },
+    {
+      "position": [
+        4473,
+        -52
+      ],
+      "velocity": [
+        18,
+        117
+      ]
+    },
+    {
+      "position": [
+        1442,
+        166
+      ],
+      "velocity": [
+        -15,
+        -51
+      ]
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      4950,
+      0
+    ]
+  },
+  "hint": "Asteroids drift and bounce off the walls. Hitting one hurts, so pick your gap.",
+  "route": {
+    "points": [
+      [
+        4950,
+        0
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Rocks",
+  "tour": [
+    {
+      "position": [
+        1600,
+        0
+      ],
+      "text": "Asteroids drift and bounce off the walls. Hitting one hurts, so pick your gap."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          450
+        ],
+        [
+          -250,
+          -450
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          5200,
+          450
+        ],
+        [
+          5200,
+          -450
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          450
+        ],
+        [
+          5200,
+          450
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -450
+        ],
+        [
+          5200,
+          -450
+        ]
+      ]
+    }
+  ]
+}

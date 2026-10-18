@@ -1,0 +1,133 @@
+{
+  "bodies": [
+    {
+      "kind": "planet",
+      "position": [
+        2200,
+        200
+      ],
+      "reach": 800
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      2450,
+      2750
+    ]
+  },
+  "hint": "This tank is too small to brake and turn. Let the planet's pull swing you around the corner.",
+  "route": {
+    "coast": [
+      2,
+      3
+    ],
+    "cruise": 300,
+    "points": [
+      [
+        700,
+        -200
+      ],
+      [
+        1500,
+        -200
+      ],
+      [
+        2450,
+        1000
+      ],
+      [
+        2450,
+        1800
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 14,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Swing",
+  "tour": [
+    {
+      "position": [
+        2200,
+        200
+      ],
+      "text": "Use this planet: fly close past it and its pull swings you around the corner for free."
+    },
+    {
+      "position": [
+        0,
+        0
+      ],
+      "text": "Your tank is too small to brake and turn on your own."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -400,
+          -400
+        ],
+        [
+          2900,
+          -400
+        ],
+        [
+          2900,
+          3000
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -400,
+          400
+        ],
+        [
+          2000,
+          400
+        ],
+        [
+          2000,
+          3000
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -400,
+          -400
+        ],
+        [
+          -400,
+          400
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          2000,
+          3000
+        ],
+        [
+          2900,
+          3000
+        ]
+      ]
+    }
+  ]
+}

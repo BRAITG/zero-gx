@@ -125,3 +125,24 @@ func test_body_limits_keep_each_kind_in_its_role() -> void:
 	rejects(with("bodies", [{"kind": "star", "position": [9000, 0], "radius": 300, "strength": 30000}, {"kind": "black_hole", "position": [2000, 900], "strength": 20000}]), "a black hole weaker up close than a star in the level")
 	var fine := with("bodies", [{"kind": "planet", "position": [2000, 600]}, {"kind": "star", "position": [9000, 0]}, {"kind": "black_hole", "position": [2000, -900]}])
 	check(LevelFormat.validate(fine).is_empty(), "presets must pass: %s" % LevelFormat.validate(fine))
+
+
+func test_json_layout_is_stable() -> void:
+	var text := LevelFormat.to_json({"b": 2.0, "a": [1.5, 3.0], "c": {"z": true, "y": "x"}})
+	check(text == '{\n  "a": [\n    1.5,\n    3\n  ],\n  "b": 2,\n  "c": {\n    "y": "x",\n    "z": true\n  }\n}\n', "layout: %s" % text)
+
+
+func test_official_files_round_trip_byte_for_byte() -> void:
+	for dir in [Progress.LEVELS_DIR, Progress.TUTORIALS_DIR]:
+		for file in DirAccess.get_files_at(dir):
+			if file.ends_with(".json"):
+				var path: String = dir + file
+				check(FileAccess.get_file_as_string(path) == LevelFormat.to_json(LevelFormat.read(path)), "%s is not in the stable layout" % path)
+
+
+func test_hash_names_the_content() -> void:
+	var data := LevelDoc.blank()
+	var hash := LevelFormat.sha256(data)
+	check(hash.length() == 64 and hash == LevelFormat.to_json(data).sha256_text(), "hash: %s" % hash)
+	data.title = "Other"
+	check(LevelFormat.sha256(data) != hash, "a change must change the hash")

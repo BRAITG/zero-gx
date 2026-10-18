@@ -1,0 +1,281 @@
+{
+  "asteroids": [
+    {
+      "position": [
+        3935,
+        -869
+      ],
+      "velocity": [
+        35,
+        -113
+      ]
+    },
+    {
+      "position": [
+        3324,
+        -227
+      ],
+      "velocity": [
+        -64,
+        -33
+      ]
+    },
+    {
+      "position": [
+        4154,
+        -561
+      ],
+      "velocity": [
+        70,
+        70
+      ]
+    },
+    {
+      "position": [
+        1938,
+        -740
+      ],
+      "velocity": [
+        -40,
+        101
+      ]
+    },
+    {
+      "position": [
+        4313,
+        -576
+      ],
+      "velocity": [
+        60,
+        3
+      ]
+    },
+    {
+      "position": [
+        1568,
+        -874
+      ],
+      "velocity": [
+        -109,
+        27
+      ]
+    },
+    {
+      "position": [
+        1291,
+        -680
+      ],
+      "velocity": [
+        -26,
+        -50
+      ]
+    },
+    {
+      "position": [
+        4024,
+        -461
+      ],
+      "velocity": [
+        -89,
+        73
+      ]
+    },
+    {
+      "position": [
+        2933,
+        -282
+      ],
+      "velocity": [
+        -14,
+        71
+      ]
+    },
+    {
+      "position": [
+        1061,
+        -708
+      ],
+      "velocity": [
+        24,
+        -116
+      ]
+    },
+    {
+      "position": [
+        3716,
+        -800
+      ],
+      "velocity": [
+        -35,
+        33
+      ]
+    },
+    {
+      "position": [
+        4637,
+        57
+      ],
+      "velocity": [
+        9,
+        -82
+      ]
+    },
+    {
+      "position": [
+        885,
+        -1139
+      ],
+      "velocity": [
+        25,
+        44
+      ]
+    },
+    {
+      "position": [
+        1148,
+        -702
+      ],
+      "velocity": [
+        -3,
+        80
+      ]
+    }
+  ],
+  "bodies": [
+    {
+      "kind": "black_hole",
+      "position": [
+        2500,
+        -500
+      ]
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      4950,
+      0
+    ]
+  },
+  "hint": "Black holes pull far harder than planets. Get too close and nothing will get you out.",
+  "route": {
+    "cruise": 550,
+    "points": [
+      [
+        1800,
+        150
+      ],
+      [
+        2500,
+        -100
+      ],
+      [
+        3200,
+        150
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Abyss",
+  "tour": [
+    {
+      "position": [
+        2500,
+        -500
+      ],
+      "text": "A black hole: it pulls far harder than a planet. Get too close and nothing gets you out."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -1300
+        ],
+        [
+          5200,
+          -1300
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          400
+        ],
+        [
+          2350,
+          400
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          2350,
+          400
+        ],
+        [
+          2500,
+          0
+        ],
+        [
+          2650,
+          400
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          2650,
+          400
+        ],
+        [
+          5200,
+          400
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -1300
+        ],
+        [
+          -250,
+          400
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          5200,
+          -1300
+        ],
+        [
+          5200,
+          400
+        ]
+      ]
+    }
+  ]
+}

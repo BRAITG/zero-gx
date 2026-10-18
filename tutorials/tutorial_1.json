@@ -1,0 +1,50 @@
+{
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      2200,
+      -900
+    ]
+  },
+  "route": {
+    "points": []
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "show_velocity": true,
+  "title": "Coast",
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -900,
+          -1400
+        ],
+        [
+          3400,
+          -1400
+        ],
+        [
+          3400,
+          1400
+        ],
+        [
+          -900,
+          1400
+        ],
+        [
+          -900,
+          -1400
+        ]
+      ]
+    }
+  ]
+}

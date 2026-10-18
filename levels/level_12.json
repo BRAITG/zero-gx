@@ -1,0 +1,246 @@
+{
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      9250,
+      -1450
+    ]
+  },
+  "hint": "Orange pickups fire your engine at full power for 9 seconds, free, but barely steer. This one is in your way.",
+  "pickups": [
+    {
+      "kind": "boost",
+      "position": [
+        1500,
+        0
+      ]
+    }
+  ],
+  "route": {
+    "cruise": 450,
+    "points": [
+      [
+        1500,
+        0
+      ],
+      [
+        3000,
+        0
+      ],
+      [
+        4500,
+        -1500
+      ],
+      [
+        6500,
+        -1500
+      ],
+      [
+        8000,
+        0
+      ],
+      [
+        9250,
+        0
+      ],
+      [
+        9250,
+        -900
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 60,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Burn",
+  "tour": [
+    {
+      "position": [
+        1500,
+        0
+      ],
+      "text": "An orange pickup blocks the gate. It fires your engine at full power for 9 seconds and barely steers."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -300,
+          -250
+        ],
+        [
+          1200,
+          -250
+        ],
+        [
+          1500,
+          -50
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -300,
+          250
+        ],
+        [
+          1200,
+          250
+        ],
+        [
+          1500,
+          50
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -300,
+          -250
+        ],
+        [
+          -300,
+          250
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          1500,
+          -50
+        ],
+        [
+          2772,
+          -550
+        ],
+        [
+          4272,
+          -2050
+        ],
+        [
+          6728,
+          -2050
+        ],
+        [
+          8228,
+          -550
+        ],
+        [
+          9100,
+          -550
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          1500,
+          50
+        ],
+        [
+          3228,
+          550
+        ],
+        [
+          4728,
+          -950
+        ],
+        [
+          6272,
+          -950
+        ],
+        [
+          7772,
+          550
+        ],
+        [
+          9500,
+          550
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          9400,
+          -550
+        ],
+        [
+          9600,
+          -550
+        ],
+        [
+          9600,
+          550
+        ],
+        [
+          9500,
+          550
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          9100,
+          -550
+        ],
+        [
+          9100,
+          -1500
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          9400,
+          -550
+        ],
+        [
+          9400,
+          -1500
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          9100,
+          -1500
+        ],
+        [
+          9100,
+          -1700
+        ],
+        [
+          9400,
+          -1700
+        ],
+        [
+          9400,
+          -1500
+        ]
+      ]
+    }
+  ]
+}

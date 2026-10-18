@@ -1,0 +1,107 @@
+{
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      3400,
+      -1400
+    ]
+  },
+  "hint": "Space has no friction. Once moving, you keep moving. Your tank is small: coast.",
+  "route": {
+    "cruise": 400,
+    "points": [
+      [
+        2000,
+        0
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 14,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Drift",
+  "tour": [
+    {
+      "position": [
+        1000,
+        0
+      ],
+      "text": "Space has no friction. Once you are moving, you keep moving without using fuel."
+    },
+    {
+      "position": [
+        0,
+        0
+      ],
+      "text": "Your tank is small. Thrust briefly, then let go and coast."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -250
+        ],
+        [
+          -250,
+          250
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -250
+        ],
+        [
+          1896,
+          -250
+        ],
+        [
+          3435,
+          -1789
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          250
+        ],
+        [
+          2104,
+          250
+        ],
+        [
+          3789,
+          -1435
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          3435,
+          -1789
+        ],
+        [
+          3789,
+          -1435
+        ]
+      ]
+    }
+  ]
+}

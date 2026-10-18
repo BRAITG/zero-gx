@@ -4,6 +4,7 @@ extends RefCounted
 ## A level is completed when its author finished it in Test, and stays so only while it is
 ## unchanged: the index stores a hash of the level as it was when finished.
 
+const EXTENSION := ".json.gz"
 const PREFIX := "user_"
 
 static var dir := "user://levels/"
@@ -12,8 +13,8 @@ static var dir := "user://levels/"
 static func ids() -> PackedStringArray:
 	var found := PackedStringArray()
 	for file in DirAccess.get_files_at(dir) if DirAccess.dir_exists_absolute(dir) else PackedStringArray():
-		if file.begins_with(PREFIX) and file.ends_with(LevelFormat.EXTENSION):
-			found.append(file.trim_suffix(LevelFormat.EXTENSION))
+		if file.begins_with(PREFIX) and file.ends_with(EXTENSION):
+			found.append(file.trim_suffix(EXTENSION))
 	found.sort()
 	return found
 
@@ -23,16 +24,16 @@ static func new_id() -> String:
 
 
 static func load_level(id: String) -> Dictionary:
-	return LevelFormat.read(dir + id + LevelFormat.EXTENSION)
+	return LevelFormat.read(dir + id + EXTENSION)
 
 
 static func save(id: String, data: Dictionary) -> void:
 	DirAccess.make_dir_recursive_absolute(dir)
-	LevelFormat.write(dir + id + LevelFormat.EXTENSION, data)
+	LevelFormat.write(dir + id + EXTENSION, data)
 
 
 static func delete(id: String) -> void:
-	DirAccess.remove_absolute(dir + id + LevelFormat.EXTENSION)
+	DirAccess.remove_absolute(dir + id + EXTENSION)
 	var index := _index()
 	if index.has_section(id):
 		index.erase_section(id)

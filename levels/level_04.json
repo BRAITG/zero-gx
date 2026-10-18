@@ -1,0 +1,116 @@
+{
+  "bodies": [
+    {
+      "kind": "planet",
+      "position": [
+        2000,
+        150
+      ],
+      "reach": 900
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      3950,
+      0
+    ]
+  },
+  "hint": "Planets pull you in, harder the closer you get. Aim wide of them.",
+  "route": {
+    "points": [
+      [
+        1200,
+        -250
+      ],
+      [
+        2000,
+        -250
+      ],
+      [
+        2800,
+        -150
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Pull",
+  "tour": [
+    {
+      "position": [
+        2000,
+        150
+      ],
+      "text": "Planets pull you in, harder the closer you get. Crashing into one hurts."
+    },
+    {
+      "position": [
+        0,
+        0
+      ],
+      "text": "Aim wide of the planet: its pull will bend your path toward it."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          500
+        ],
+        [
+          -250,
+          -500
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          4200,
+          500
+        ],
+        [
+          4200,
+          -500
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          500
+        ],
+        [
+          4200,
+          500
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -500
+        ],
+        [
+          4200,
+          -500
+        ]
+      ]
+    }
+  ]
+}

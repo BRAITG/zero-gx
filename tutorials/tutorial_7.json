@@ -1,0 +1,76 @@
+{
+  "bodies": [
+    {
+      "kind": "star",
+      "position": [
+        450,
+        1700
+      ],
+      "radius": 1800,
+      "reach": 5000,
+      "strength": 200
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      2400,
+      -300
+    ]
+  },
+  "route": {
+    "cruise": 300,
+    "points": [
+      [
+        450,
+        -550
+      ],
+      [
+        1600,
+        -450
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      -300
+    ],
+    "velocity": [
+      220,
+      0
+    ]
+  },
+  "show_velocity": true,
+  "title": "Stars",
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -700,
+          -1000
+        ],
+        [
+          3000,
+          -1000
+        ],
+        [
+          3000,
+          1900
+        ],
+        [
+          -700,
+          1900
+        ],
+        [
+          -700,
+          -1000
+        ]
+      ]
+    }
+  ]
+}
