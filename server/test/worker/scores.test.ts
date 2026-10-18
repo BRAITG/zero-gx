@@ -131,13 +131,39 @@ describe("POST /scores", () => {
     expect(await env.DEMOS.head(old)).toBeNull();
   });
 
-  it("keeps a better stored score and deletes the new demo", async () => {
+  it("ranks a post that did not beat the stored score by the stored score, and deletes the new demo", async () => {
     const { token, player } = await signIn("s-6", "Flo");
+    await seedScore(SHA_01, "p_other0000000003", 9500);
     const old = await seedScore(SHA_01, player.id, 9000);
     const response = await post(token, DEMO_01, officialNetwork().fetchFn);
-    expect(await response.json()).toEqual({ points: POINTS_01, rank: 2, best: false }); // the stored 9000 still outranks it
-    expect((await scoreRows(SHA_01))[0]).toMatchObject({ points: 9000, demo: old });
+    expect(await response.json()).toEqual({ points: POINTS_01, rank: 2, best: false });
+    expect((await scoreRows(SHA_01)).find((r) => r.player === player.id)).toMatchObject({ points: 9000, demo: old });
     expect(await demoKeys(SHA_01, player.id)).toEqual([old]);
+  });
+
+  it("never leaves the row pointing at a deleted demo when a competing post lands between upload and write", async () => {
+    const { token, player } = await signIn("s-6b", "Fay");
+    const old = await seedScore(SHA_01, player.id, 100);
+    let rival: Response | undefined;
+    const hooked = {
+      get: (k: string) => env.DEMOS.get(k),
+      head: (k: string) => env.DEMOS.head(k),
+      delete: (k: string | string[]) => env.DEMOS.delete(k),
+      put: async (k: string, v: ArrayBuffer | Uint8Array) => {
+        const stored = await env.DEMOS.put(k, v);
+        if (k.startsWith("demos/") && !rival) rival = await post(token, DEMO_01, officialNetwork().fetchFn); // a whole second post runs here
+        return stored;
+      },
+    } as unknown as R2Bucket;
+    const n = await nonce();
+    const request = new Request("https://example.com/scores", { method: "POST", body: DEMO_01, headers: { Authorization: `Bearer ${token}`, "X-Integrity": `ok:${n}`, "X-Nonce": n } });
+    const response = await postScore(request, { ...testEnv, DEMOS: hooked }, {}, officialNetwork().fetchFn);
+    expect(response.status).toBe(200);
+    expect(rival!.status).toBe(200);
+    const [row] = await scoreRows(SHA_01);
+    expect(await env.DEMOS.head(row!.demo)).not.toBeNull();
+    expect(await demoKeys(SHA_01, player.id)).toEqual([row!.demo]);
+    expect(await env.DEMOS.head(old)).toBeNull();
   });
 
   it("ranks by points with ties sharing a rank", async () => {

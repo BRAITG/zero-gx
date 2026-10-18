@@ -28,8 +28,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: write  # gh release create
-    env:
-      ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}  # job level: a step's `if` cannot see its own env or secrets
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -119,15 +117,21 @@ jobs:
             --notes "Debug-signed prototype build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Install: open this page on the phone, download zero-gx.apk, allow installs from the browser, open the file. Later builds install over this one. zero-gx.aab is the signed bundle for Google Play."
 
       - name: Register official levels with the community server
-        # Needs the release tag above, so it runs with the publish step, and only where the server is configured.
-        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && env.ADMIN_TOKEN != '' && vars.COMMUNITY_API != '' }}
+        # Needs the release tag above, so it runs with the publish step. The token is scoped to this step only; a
+        # server outage or a missing secret must not fail the release build.
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && vars.COMMUNITY_API != '' }}
+        continue-on-error: true
         env:
+          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
           COMMUNITY_API: ${{ vars.COMMUNITY_API }}
         run: |
+          [ -n "$ADMIN_TOKEN" ] || { echo "No ADMIN_TOKEN; skipping."; exit 0; }
           levels=$(sha256sum levels/level_*.json | jq -R -s -c 'split("\n")[:-1] | map(split("  ") | {name: (.[1] | ltrimstr("levels/") | rtrimstr(".json")), sha256: .[0]})')
-          jq -n -c --arg release "prototype-r${GITHUB_RUN_NUMBER}" --argjson levels "$levels" '{release: $release, levels: $levels}' |
-            curl --fail-with-body -sS -X POST -H "Authorization: Bearer $ADMIN_TOKEN" -H "Content-Type: application/json" \
-              --data-binary @- "$COMMUNITY_API/admin/official"
+          jq -n -c --arg release "prototype-r${GITHUB_RUN_NUMBER}" --argjson levels "$levels" '{release: $release, levels: $levels}' > "$RUNNER_TEMP/official.json"
+          # The header comes from stdin so the token never appears in the process arguments.
+          printf 'Authorization: Bearer %s\n' "$ADMIN_TOKEN" |
+            curl --fail-with-body -sS -X POST -H @- -H "Content-Type: application/json" \
+              --data-binary @"$RUNNER_TEMP/official.json" "$COMMUNITY_API/admin/official"
 
   server:
     runs-on: ubuntu-24.04

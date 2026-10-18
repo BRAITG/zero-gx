@@ -78,9 +78,9 @@ export async function postScore(request: Request, env: Env, _params: Record<stri
   const score = scoreDemo(levelJson, demo);
 
   // Upload first so a stored row never points at a missing demo.
-  const prefix = `demos/${demo.levelSha256}/${player.id}/`;
-  const key = `${prefix}${randomId("", 24)}.demo.gz`;
+  const key = `demos/${demo.levelSha256}/${player.id}/${randomId("", 24)}.demo.gz`;
   await env.DEMOS.put(key, body);
+  const before = await env.DB.prepare("SELECT demo FROM scores WHERE sha256 = ? AND player = ?").bind(demo.levelSha256, player.id).first<{ demo: string }>();
   const written = await env.DB.prepare(
     `INSERT INTO scores (sha256, player, points, fuel, hull, seconds, demo, posted) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT (sha256, player) DO UPDATE SET points = excluded.points, fuel = excluded.fuel, hull = excluded.hull,
@@ -89,13 +89,18 @@ export async function postScore(request: Request, env: Env, _params: Record<stri
   )
     .bind(demo.levelSha256, player.id, score.points, score.fuel, score.hull, score.seconds, key, Math.floor(Date.now() / 1000))
     .first<{ demo: string }>();
-  // Whoever won, drop every demo the row no longer points at: racing posts leave exactly one.
-  const current = await env.DB.prepare("SELECT demo FROM scores WHERE sha256 = ? AND player = ?").bind(demo.levelSha256, player.id).first<{ demo: string }>();
-  const stale = (await env.DEMOS.list({ prefix })).objects.map((o) => o.key).filter((k) => k !== current?.demo);
-  if (stale.length > 0) await env.DEMOS.delete(stale);
+  // Delete by value: a row never returns to an old key, so it cannot point at a deleted demo.
+  // Orphans from racing or failed posts are possible and left to a sweep.
+  const beaten = written ? before?.demo : key;
+  if (beaten) await env.DEMOS.delete(beaten);
 
-  const better = await env.DB.prepare("SELECT COUNT(*) AS n FROM scores WHERE sha256 = ? AND points > ?").bind(demo.levelSha256, score.points).first<{ n: number }>();
-  return Response.json({ points: score.points, rank: 1 + better!.n, best: written !== null });
+  // Rank of the stored score, whether or not this post beat it.
+  const rank = await env.DB.prepare(
+    "SELECT COUNT(*) AS n FROM scores WHERE sha256 = ?1 AND points > (SELECT points FROM scores WHERE sha256 = ?1 AND player = ?2)",
+  )
+    .bind(demo.levelSha256, player.id)
+    .first<{ n: number }>();
+  return Response.json({ points: score.points, rank: 1 + rank!.n, best: written !== null });
 }
 
 const BOARD_ROW = `SELECT (SELECT COUNT(*) FROM scores o WHERE o.sha256 = s.sha256 AND o.points > s.points) + 1 AS rank,
