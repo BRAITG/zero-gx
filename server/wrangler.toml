@@ -1,0 +1,19 @@
+name = "zero-gx"
+main = "src/worker.ts"
+compatibility_date = "2026-10-18"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "zero-gx"
+database_id = "00000000-0000-0000-0000-000000000000" # placeholder: setup replaces it with the created database's id
+
+[[r2_buckets]]
+binding = "DEMOS"
+bucket_name = "zero-gx-demos"
+
+[triggers]
+crons = ["*/10 * * * *"]
+
+[vars]
+LEVELS_REPO = "BRAITG/zero-gx-levels"
+ALLOW_TEST_VERIFIER = "0"
