@@ -170,7 +170,7 @@ func test_a_frame_beside_a_red_wall_fails() -> void:
 ## defence and this one the second.
 func test_a_step_through_a_black_hole_fails() -> void:
 	var hole := {"bodies": [{"kind": "black_hole", "position": [150, 0], "radius": 40}]}
-	var through := flown(hole, [Vector2(100, 0), Vector2(200, 0)])
+	var through := flown(hole, [Vector2(80, 0), Vector2(220, 0)])  # 70 px from the centre; contact is under 54
 	check(has_error(DemoCheck.check(through[0], through[1]), "hit a black hole"), "a step through a black hole must fail")
-	var round := flown(hole, [Vector2(100, 100), Vector2(130, 100), Vector2(160, 100)])
-	check(not has_error(DemoCheck.check(round[0], round[1]), "hit a"), "a path 100 px past the hole must not count as a hit")
+	var past := flown(hole, [Vector2(100, 100), Vector2(130, 100), Vector2(160, 100)])
+	check(not has_error(DemoCheck.check(past[0], past[1]), "hit a"), "a path 100 px past the hole must not count as a hit")
