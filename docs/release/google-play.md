@@ -17,7 +17,7 @@ Status: the build side is ready; the Play Console account is being set up. The f
 | Feature graphic | `store/feature-graphic.png` (1024 × 500) |
 | Screenshots | `store/screenshots/` (four 1920 × 1080 landscape shots) |
 | Listing text | `store/listing.md` (draft) |
-| Privacy policy | `PRIVACY.md` (the game collects no data today). Public URL: `https://github.com/BRAITG/zero-gx/blob/master/PRIVACY.md` |
+| Privacy policy | `PRIVACY.md` (the game collects no data today), published at `https://braitg.dev/zero-gx/privacy/` from the `BRAITG/braitg.github.io` repository. Update both copies together. |
 | License | AGPL-3.0-or-later (`LICENSE`) with an additional permission under section 7 for Google Play's client libraries (`LICENSE-EXCEPTION`); third-party assets in `assets/LICENSES.md` |
 
 ## Building the bundle locally
