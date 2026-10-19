@@ -119,10 +119,10 @@ interface BoardRow {
   fuel: number;
   hull: number;
   seconds: number;
-  demo: string;
+  demo: string; // '' once expired (see expireDemos)
 }
 
-const boardEntry = ({ id, name, ...rest }: BoardRow) => ({ rank: rest.rank, player: { id, name }, points: rest.points, fuel: rest.fuel, hull: rest.hull, seconds: rest.seconds, demo: rest.demo });
+const boardEntry = ({ id, name, ...rest }: BoardRow) => ({ rank: rest.rank, player: { id, name }, points: rest.points, fuel: rest.fuel, hull: rest.hull, seconds: rest.seconds, demo: rest.demo || null });
 
 export async function getBoard(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
   const player = await requirePlayer(request, env);

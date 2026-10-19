@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getIndex, postReport, runCron, sweepDemos } from "../../src/community";
+import { expireDemos, getIndex, postReport, runCron, sweepDemos } from "../../src/community";
 import type { Env } from "../../src/env";
 import { signSession } from "../../src/session";
 import worker from "../../src/worker";
@@ -376,5 +376,70 @@ describe("cron", () => {
     await runCron(broken, gh.fetchFn);
     expect((await env.DEMOS.list()).objects).toEqual([]);
     expect(gh.calls.length).toBeGreaterThan(0);
+  });
+});
+
+describe("demo expiry", () => {
+  const DAY = 86400;
+  const seconds = () => Math.floor(Date.now() / 1000);
+  const demoOf = async (sha: string, player: string) => (await rows<{ demo: string }>("SELECT demo FROM scores WHERE sha256 = ? AND player = ?", sha, player))[0]!.demo;
+  async function run(sha: string, player: string, points: number, postedDaysAgo: number) {
+    const key = `demos/${sha}/${player}/k${points}${postedDaysAgo}.demo.gz`;
+    await env.DB.prepare("INSERT INTO scores VALUES (?, ?, ?, 1, 1, 1, ?, ?)").bind(sha, player, points, key, seconds() - postedDaysAgo * DAY).run();
+    await env.DEMOS.put(key, new Uint8Array([1]));
+    return key;
+  }
+
+  it("keeps each level's top 10 and expires the rest after 14 days", async () => {
+    const a = hash("a1");
+    const b = hash("b2");
+    const keys: Record<string, string> = {};
+    for (let i = 1; i <= 13; i++) {
+      await seedPlayer(`p_${String(i).padStart(16, "0")}`);
+    }
+    const p = (i: number) => `p_${String(i).padStart(16, "0")}`;
+    // Level a: ranks 1-9 at 2000-1200, two runs tied for 10th at 1000, then 900 and 800. All 20 days old except p13.
+    for (let i = 1; i <= 9; i++) keys[p(i)] = await run(a, p(i), 2100 - i * 100, 20);
+    keys[p(10)] = await run(a, p(10), 1000, 20);
+    keys[p(11)] = await run(a, p(11), 1000, 20);
+    keys[p(12)] = await run(a, p(12), 900, 20);
+    keys[p(13)] = await run(a, p(13), 800, 3);
+    // Level b: a separate board; p12 is first there and keeps that demo.
+    const bKey = await run(b, p(12), 500, 20);
+
+    expect(await expireDemos(env)).toBe(1);
+    for (let i = 1; i <= 11; i++) expect(await demoOf(a, p(i)), `rank ${i}`).toBe(keys[p(i)]);
+    expect(await demoOf(a, p(12))).toBe(""); // 12th place, 20 days old
+    expect(await env.DEMOS.head(keys[p(12)]!)).toBeNull();
+    expect(await demoOf(a, p(13))).toBe(keys[p(13)]); // 13th place but only 3 days old
+    expect(await demoOf(b, p(12))).toBe(bKey);
+
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 12 * DAY * 1000);
+    expect(await expireDemos(env)).toBe(1);
+    expect(await demoOf(a, p(13))).toBe("");
+    expect(await rows("SELECT * FROM scores WHERE sha256 = ?", a)).toHaveLength(13); // scores themselves stay
+  });
+
+  it("expires a banned player's old demo and ranks around banned players", async () => {
+    const sha = hash("c3");
+    await seedPlayer("p_banned0000000000", "Cheat", 1);
+    const banned = await run(sha, "p_banned0000000000", 99999, 20);
+    const honest: string[] = [];
+    for (let i = 1; i <= 10; i++) {
+      const id = `p_honest${String(i).padStart(10, "0")}`;
+      await seedPlayer(id);
+      honest.push(await run(sha, id, 1000 - i, 20));
+    }
+    expect(await expireDemos(env)).toBe(1);
+    expect(await env.DEMOS.head(banned)).toBeNull();
+    for (const key of honest) expect(await env.DEMOS.head(key)).not.toBeNull(); // the banned run does not push the 10th out
+  });
+
+  it("shows an expired demo as none on the board", async () => {
+    await seedPlayer("p_viewer0000000000");
+    await env.DB.prepare("INSERT INTO official_levels VALUES (?, 'level_01', 'r1')").bind(hash("d4")).run();
+    await env.DB.prepare("INSERT INTO scores VALUES (?, 'p_viewer0000000000', 5, 1, 1, 1, '', 1)").bind(hash("d4")).run();
+    const response = await call("p_viewer0000000000", "GET", `/boards/${hash("d4")}`);
+    expect(((await response.json()) as { rows: { demo: string | null }[] }).rows[0]!.demo).toBeNull();
   });
 });

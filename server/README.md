@@ -26,7 +26,7 @@ Auth, in the table below:
 | `POST /admin/official` | admin | Registers the SHA-256 hashes of a release's official levels. |
 | `POST /github` | webhook | Records pull request outcomes and `hidden.txt` changes. |
 
-A cron trigger runs every 10 minutes: it recomputes the player ranking, deletes expired nonces and old rate counters, sweeps orphaned demos from R2 and rebuilds `index.json`.
+A cron trigger runs every 10 minutes: it recomputes the player ranking, deletes expired nonces and old rate counters, expires score demos (each level keeps the demos of its top 10 runs, ties at the cut included; every other demo, and every banned player's, is deleted 14 days after it was posted, and the score stays without a demo), sweeps orphaned demos from R2 and rebuilds `index.json`.
 
 Known limit: the demo recorder samples every second physics tick, so a run whose only thrust is a single unsampled tick records a clock event with no firing frame and is rejected by the clock rule.
 

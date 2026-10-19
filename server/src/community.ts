@@ -13,6 +13,10 @@ const LEVEL_ID = /^lvl_[a-z0-9]{10}$/;
 /** Demos younger than this may belong to a post that has not stored its score row yet. */
 const ORPHAN_AGE_MS = 60 * 60 * 1000;
 const SWEEP_PAGE = 1000;
+/** Each level keeps the demos of its top KEEP_DEMOS runs (ties at the cut included); every other demo is deleted DEMO_DAYS after its post. */
+const KEEP_DEMOS = 10;
+const DEMO_DAYS = 14;
+const EXPIRE_BATCH = 500;
 // Each run reads at most this many pages and saves where it stopped.
 const SWEEP_PAGES = 5;
 /** Rate windows are kept this many windows past the current one. */
@@ -173,6 +177,28 @@ export async function sweepDemos(env: Env, pageSize = SWEEP_PAGE): Promise<void>
   await env.DB.prepare("INSERT INTO sweep (id, last_key) VALUES (1, ?1) ON CONFLICT (id) DO UPDATE SET last_key = ?1").bind(startAfter).run();
 }
 
+/**
+ * Deletes the demos of runs outside their level's top KEEP_DEMOS that were posted more than DEMO_DAYS ago, and of
+ * banned players' runs of that age. The score stays; its `demo` becomes '' (the column is NOT NULL), shown as no demo.
+ * Rank is the board's: 1 + the number of visible runs with more points, so ties at the cut keep their demos.
+ */
+export async function expireDemos(env: Env): Promise<number> {
+  const { results } = await env.DB.prepare(
+    `SELECT s.sha256, s.player, s.demo FROM scores s JOIN players p ON p.id = s.player
+     WHERE s.demo != '' AND s.posted < ?1 AND (p.banned = 1 OR (SELECT COUNT(*) FROM scores o
+       WHERE o.sha256 = s.sha256 AND o.points > s.points AND o.player NOT IN (SELECT id FROM players WHERE banned = 1)) >= ?2)
+     LIMIT ?3`,
+  )
+    .bind(now() - DEMO_DAYS * 86400, KEEP_DEMOS, EXPIRE_BATCH)
+    .all<{ sha256: string; player: string; demo: string }>();
+  if (results.length === 0) return 0;
+  // Guarded by the old key: a run improved since the SELECT keeps its new demo.
+  const updates = await env.DB.batch(results.map((row) => env.DB.prepare("UPDATE scores SET demo = '' WHERE sha256 = ? AND player = ? AND demo = ?").bind(row.sha256, row.player, row.demo)));
+  const expired = results.filter((_, i) => updates[i]!.meta.changes === 1).map((row) => row.demo);
+  if (expired.length > 0) await env.DEMOS.delete(expired);
+  return expired.length;
+}
+
 /** One cron step: a failure is logged and the other steps still run. */
 async function step(name: string, run: () => Promise<unknown>): Promise<void> {
   try {
@@ -193,6 +219,7 @@ export async function runCron(env: Env, fetchFn: typeof fetch = fetch): Promise<
       env.DB.prepare("DELETE FROM nonces WHERE expires < ?").bind(time),
     ]),
   );
+  await step("demo expiry", () => expireDemos(env));
   await step("demo sweep", () => sweepDemos(env));
   await step("index rebuild", () => rebuildIndex(env, fetchFn));
 }
