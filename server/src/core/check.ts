@@ -15,6 +15,7 @@ const POINTS_PER_SECOND = 2;
 
 const START_TOLERANCE = 2;
 const SPEED_MARGIN = 1.1;
+const STOCK_TOLERANCE = 0.1; // fuel and hull at frame 0, the recording's resolution
 const CLAIM_TOLERANCE = 0.5;
 const SECONDS_TOLERANCE = 2 * STEP;
 const POINTS_TOLERANCE = 2;
@@ -68,6 +69,11 @@ export function checkDemo(level: unknown, levelSha256: string, demo: Demo, claim
   if (dist(pos(shipAt(demo, 0)), vec(ship.position)) > START_TOLERANCE) {
     errors.push("frame 0: the ship does not start at the level's start");
   }
+  // A demo cannot start with more than the level gives: fuel and hull feed the score.
+  const fuelLimited = !isUnlimited(ship.fuel ?? MAX_FUEL);
+  const hullLimited = !isUnlimited(ship.hull ?? MAX_HEALTH);
+  if (fuelLimited && Math.abs(shipAt(demo, 0).fuel - Number(ship.fuel ?? MAX_FUEL)) > STOCK_TOLERANCE) errors.push("frame 0: the ship does not start with the level's fuel");
+  if (hullLimited && Math.abs(shipAt(demo, 0).hull - Number(ship.hull ?? MAX_HEALTH)) > STOCK_TOLERANCE) errors.push("frame 0: the ship does not start with the level's hull");
   const last = shipAt(demo, count - 1);
   if (dist(pos(last), goal) > GOAL_RADIUS + SHIP_RADIUS) errors.push(`frame ${count - 1}: the ship is not inside the goal`);
   const end = demo.eventFrames.length - 1;
@@ -78,7 +84,6 @@ export function checkDemo(level: unknown, levelSha256: string, demo: Demo, claim
   const maxStep = TUNNEL_LIMIT * SPEED_MARGIN * STEP;
   const walls = wallSegments(lv);
   const hazards = ((lv.bodies ?? []) as Obj[]).filter((b) => b.kind !== "planet");
-  const fuelLimited = !isUnlimited(ship.fuel ?? MAX_FUEL);
   const failed: Record<string, true> = {};
   let firstThrust = -1;
   for (let f = 0; f < count; f++) {
@@ -119,6 +124,10 @@ export function checkDemo(level: unknown, levelSha256: string, demo: Demo, claim
     if (fuelLimited && now.fuel > before.fuel && !failed.fuel) {
       failed.fuel = true;
       errors.push(`frame ${f}: fuel rose from ${before.fuel.toFixed(1)} to ${now.fuel.toFixed(1)}`);
+    }
+    if (hullLimited && now.hull > before.hull && !failed.hull) {
+      failed.hull = true;
+      errors.push(`frame ${f}: hull rose from ${before.hull.toFixed(1)} to ${now.hull.toFixed(1)}`);
     }
   }
   const clocks: number[] = []; // frames of the clock events

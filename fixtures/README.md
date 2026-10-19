@@ -5,4 +5,6 @@ Shared fixtures: levels, demos and `expected.json`. The Godot tests and the comm
 Score (server-side, from the demo alone, default weights, never the live tuning):
 `points = max(100, round(1000 + fuel*15 + hull*3 - seconds*2))`, with `seconds = (frame_count - clock_frame) * (1/30)` (0 when the demo has no clock event), `fuel` and `hull` taken from the last frame (stored in tenths), unlimited tanks (per the level) counted as 0, and `round` half away from zero (not JavaScript's `Math.round`, which rounds half up). Compute in this order: the sum, then the rounding, then the floor. A claim's seconds may differ from the demo's by up to 2 frames (2/30 s); fuel and hull by 0.5; points by 2.
 
+Tank rules: at frame 0 the fuel and the hull equal the level's (`ship.fuel` / `ship.hull`, default 100) within 0.1, and neither rises between frames; both are skipped for an unlimited tank (recorded as 0).
+
 Clock rule: exactly one clock event, within 1 frame of the first frame whose ship is firing; none is fine only when the ship never fires. The recorder samples every second physics tick, so thrust lasting a single unsampled tick leaves a clock event with no firing frame, which the rule rejects.

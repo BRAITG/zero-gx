@@ -41,6 +41,21 @@
       "level": "level_01.json",
       "points": 2522
     },
+    "level_01.forged_tank.demo.gz": {
+      "errors": [
+        "start with the level's fuel",
+        "start with the level's hull"
+      ],
+      "level": "level_01.json",
+      "points": null
+    },
+    "level_01.hull_rises.demo.gz": {
+      "errors": [
+        "hull rose"
+      ],
+      "level": "level_01.json",
+      "points": null
+    },
     "level_01.no_clock.demo.gz": {
       "errors": [
         "never started"

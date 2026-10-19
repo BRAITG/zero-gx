@@ -64,6 +64,8 @@ func _run() -> void:
 	_add_demo("level_01.no_clock.demo.gz", _rebuilt(demo, func(f, ship): pass, func(events): return events.filter(func(e): return e[1] != _demo_class.Event.CLOCK_STARTED)), "level_01.json", ["never started"])
 	_add_demo("level_01.two_clocks.demo.gz", _rebuilt(demo, func(f, ship): pass, func(events): return events + _shift_clock(events.filter(func(e): return e[1] == _demo_class.Event.CLOCK_STARTED), 1)), "level_01.json", ["clock events"])
 	_add_demo("level_01.phantom_clock.demo.gz", _rebuilt(demo, func(f, ship): ship.firing = false), "level_01.json", ["never fired"])
+	_add_demo("level_01.forged_tank.demo.gz", _rebuilt(demo, func(f, ship): ship.fuel = 6553.5; ship.hull = 6553.5), "level_01.json", ["start with the level's fuel", "start with the level's hull"])
+	_add_demo("level_01.hull_rises.demo.gz", _rebuilt(demo, func(f, ship): ship.hull += 10.0 if f == mid else 0.0), "level_01.json", ["hull rose"])
 	var truncated = _rebuilt(demo, func(f, ship): pass)
 	truncated.truncated = true
 	_add_demo("level_01.truncated.demo.gz", truncated, "level_01.json", ["truncated"])

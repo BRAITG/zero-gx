@@ -8,6 +8,7 @@ const CLAIM_TOLERANCE := 0.5  # fuel and hull
 const SECONDS_TOLERANCE := 2.0 * Demo.STEP
 const POINTS_TOLERANCE := 2
 const CLOCK_TOLERANCE := 1  # frames between the first thrust and the clock event
+const STOCK_TOLERANCE := 0.1  # fuel and hull at frame 0, the recording's resolution
 const CONTACT_MARGIN := 2.0  # px a ship may overlap a lethal surface before it counts as contact
 ## Where the ship's circle meets a barrier's collision slab.
 const RED_CONTACT := Barrier.THICKNESS / 2.0 + Ship.RADIUS - CONTACT_MARGIN
@@ -29,6 +30,13 @@ static func check(level: Dictionary, demo: Demo, claim: Dictionary = {}) -> Pack
 	var first: Vector2 = demo.ship_at(0).position
 	if first.distance_to(_vec(level.ship.position)) > START_TOLERANCE:
 		errors.append("frame 0: the ship does not start at the level's start")
+	# A demo cannot start with more than the level gives: fuel and hull feed the score.
+	var fuel_limited: bool = not LevelFormat.is_unlimited(level.ship.get("fuel", Ship.MAX_FUEL))
+	var hull_limited: bool = not LevelFormat.is_unlimited(level.ship.get("hull", Ship.MAX_HEALTH))
+	if fuel_limited and absf(demo.ship_at(0).fuel - float(level.ship.get("fuel", Ship.MAX_FUEL))) > STOCK_TOLERANCE:
+		errors.append("frame 0: the ship does not start with the level's fuel")
+	if hull_limited and absf(demo.ship_at(0).hull - float(level.ship.get("hull", Ship.MAX_HEALTH))) > STOCK_TOLERANCE:
+		errors.append("frame 0: the ship does not start with the level's hull")
 	var last: Dictionary = demo.ship_at(count - 1)
 	if last.position.distance_to(goal) > Goal.RADIUS + Ship.RADIUS:
 		errors.append("frame %d: the ship is not inside the goal" % (count - 1))
@@ -41,7 +49,6 @@ static func check(level: Dictionary, demo: Demo, claim: Dictionary = {}) -> Pack
 	var max_step := Ship.TUNNEL_LIMIT * SPEED_MARGIN * Demo.STEP
 	var walls := _wall_segments(level)
 	var hazards: Array = level.get("bodies", []).filter(func(b: Dictionary) -> bool: return b.kind != "planet")
-	var fuel_limited: bool = not LevelFormat.is_unlimited(level.ship.get("fuel", Ship.MAX_FUEL))
 	var failed := {}
 	var first_thrust := -1
 	for f in count:
@@ -76,6 +83,9 @@ static func check(level: Dictionary, demo: Demo, claim: Dictionary = {}) -> Pack
 		if fuel_limited and now.fuel > before.fuel and not failed.has("fuel"):
 			failed.fuel = true
 			errors.append("frame %d: fuel rose from %.1f to %.1f" % [f, before.fuel, now.fuel])
+		if hull_limited and now.hull > before.hull and not failed.has("hull"):
+			failed.hull = true
+			errors.append("frame %d: hull rose from %.1f to %.1f" % [f, before.hull, now.hull])
 	var clocks := events.filter(func(e: Array) -> bool: return e[1] == Demo.Event.CLOCK_STARTED)
 	if clocks.size() > 1:
 		errors.append("the demo has %d clock events" % clocks.size())
