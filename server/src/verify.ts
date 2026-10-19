@@ -1,10 +1,13 @@
 import type { Env } from "./env";
 import { base64url, fromBase64url } from "./util";
 
+/** The device verdict a request needs: "device" for sign-in and submissions, "strong" (hardware-backed) for scores. */
+export type DeviceLevel = "device" | "strong";
+
 export interface Verifier {
   player(authCode: string): Promise<{ providerId: string; name: string }>;
-  /** Resolves when the integrity token is acceptable and bound to `nonce`; rejects otherwise. */
-  integrity(token: string, nonce: string): Promise<void>;
+  /** Resolves when the integrity token is acceptable, meets `level` and is bound to `nonce`; rejects otherwise. */
+  integrity(token: string, nonce: string, level: DeviceLevel): Promise<void>;
 }
 
 /** The test verifier is only reachable when the deployment sets ALLOW_TEST_VERIFIER to "1". */
@@ -12,7 +15,7 @@ export function verifierFor(env: Env): Verifier {
   return env.ALLOW_TEST_VERIFIER === "1" ? new TestVerifier() : new GoogleVerifier(env);
 }
 
-/** Codes are `test:<id>:<name>`, integrity tokens `ok:<nonce>`. */
+/** Codes are `test:<id>:<name>`; integrity tokens are `ok:<nonce>` (device integrity) or `strong:<nonce>` (strong). */
 export class TestVerifier implements Verifier {
   async player(authCode: string) {
     const [prefix, providerId, ...name] = authCode.split(":");
@@ -20,8 +23,10 @@ export class TestVerifier implements Verifier {
     return { providerId, name: name.join(":") };
   }
 
-  async integrity(token: string, nonce: string) {
+  async integrity(token: string, nonce: string, level: DeviceLevel) {
+    if (token === `strong:${nonce}`) return;
     if (token !== `ok:${nonce}`) throw new Error("Integrity token is for another nonce.");
+    if (level === "strong") throw new Error("Device does not meet strong integrity.");
   }
 }
 
@@ -77,7 +82,7 @@ export class GoogleVerifier implements Verifier {
     return this.token({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${unsigned}.${base64url(new Uint8Array(signature))}` });
   }
 
-  async integrity(token: string, nonce: string) {
+  async integrity(token: string, nonce: string, level: DeviceLevel) {
     const accessToken = await this.serviceAccountToken();
     const decoded = await this.json(`https://playintegrity.googleapis.com/v1/${PACKAGE}:decodeIntegrityToken`, {
       method: "POST",
@@ -90,6 +95,7 @@ export class GoogleVerifier implements Verifier {
     if (request.nonce !== nonce) throw new Error("Token is for another nonce.");
     if (!(Math.abs(Date.now() - Number(request.timestampMillis)) <= MAX_AGE_MS)) throw new Error("Token is stale.");
     if (payload.appIntegrity?.appRecognitionVerdict !== "PLAY_RECOGNIZED") throw new Error("App is not recognized by Play.");
-    if (!payload.deviceIntegrity?.deviceRecognitionVerdict?.includes("MEETS_BASIC_INTEGRITY")) throw new Error("Device fails basic integrity.");
+    const required = level === "strong" ? "MEETS_STRONG_INTEGRITY" : "MEETS_DEVICE_INTEGRITY";
+    if (!payload.deviceIntegrity?.deviceRecognitionVerdict?.includes(required)) throw new Error(`Device does not meet ${level} integrity.`);
   }
 }

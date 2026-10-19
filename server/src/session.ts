@@ -1,7 +1,7 @@
 import type { Env } from "./env";
 import { HttpError, readJson } from "./http";
 import { base64url, fromBase64url, randomId } from "./util";
-import { type Verifier, verifierFor } from "./verify";
+import { type DeviceLevel, type Verifier, verifierFor } from "./verify";
 
 const NONCE_SECONDS = 5 * 60;
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
@@ -72,13 +72,33 @@ export async function requirePlayer(request: Request, env: Env): Promise<Player>
   return player;
 }
 
-/** Checks the fresh Play Integrity token of `X-Integrity`, bound to the one-time nonce of `X-Nonce`; 403 on any failure. */
-export async function requireIntegrity(request: Request, env: Env, verifier: Verifier = verifierFor(env)): Promise<void> {
+/**
+ * The nonce an app passes to Play Integrity for a request carrying `parts`: base64url (no padding) of
+ * SHA-256(server nonce as UTF-8 ‖ SHA-256(part 1) ‖ SHA-256(part 2) ‖ …). Google signs it, so the verdict
+ * vouches for these exact bytes and a changed or swapped body fails.
+ */
+export async function boundNonce(serverNonce: string, parts: Uint8Array<ArrayBuffer>[]): Promise<string> {
+  const pieces = [new TextEncoder().encode(serverNonce)];
+  for (const part of parts) pieces.push(new Uint8Array(await crypto.subtle.digest("SHA-256", part)));
+  const joined = new Uint8Array(pieces.reduce((sum, piece) => sum + piece.length, 0));
+  let at = 0;
+  for (const piece of pieces) {
+    joined.set(piece, at);
+    at += piece.length;
+  }
+  return base64url(new Uint8Array(await crypto.subtle.digest("SHA-256", joined)));
+}
+
+/**
+ * Checks the fresh Play Integrity token of `X-Integrity`: the one-time server nonce of `X-Nonce` must be
+ * unused, and the token must be bound to it and to `parts` (see boundNonce) and meet `level`. 403 on any failure.
+ */
+export async function requireIntegrity(request: Request, env: Env, parts: Uint8Array<ArrayBuffer>[], level: DeviceLevel, verifier: Verifier = verifierFor(env)): Promise<void> {
   const token = request.headers.get("X-Integrity");
   const nonce = request.headers.get("X-Nonce");
   const fail = new HttpError(403, "The integrity check failed.");
   if (!token || !nonce || !(await consumeNonce(env, nonce))) throw fail;
-  await verifier.integrity(token, nonce).catch(() => {
+  await verifier.integrity(token, await boundNonce(nonce, parts), level).catch(() => {
     throw fail;
   });
 }
@@ -91,7 +111,7 @@ export async function postSession(request: Request, env: Env): Promise<Response>
   }
   if (!(await consumeNonce(env, nonce))) throw new HttpError(401, "The nonce is unknown, expired or already used.");
   const verifier = verifierFor(env);
-  await verifier.integrity(integrityToken, nonce).catch(() => {
+  await verifier.integrity(integrityToken, nonce, "device").catch(() => {
     throw new HttpError(403, "The integrity check failed.");
   });
   const identity = await verifier.player(authCode).catch(() => {

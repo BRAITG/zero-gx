@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex } from "../../src/core/level";
 import type { Env } from "../../src/env";
+import { boundNonce } from "../../src/session";
 import { postScore } from "../../src/scores";
 import worker from "../../src/worker";
 
@@ -41,10 +42,11 @@ const officialNetwork = () => network({ [OFFICIAL_URL]: LEVEL_01 });
 
 async function post(token: string, body: BodyInit, fetchFn: typeof fetch, headers: Record<string, string> = {}) {
   const n = await nonce();
+  const sent = new Uint8Array(await new Response(body).arrayBuffer());
   const request = new Request("https://example.com/scores", {
     method: "POST",
-    body,
-    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream", "X-Integrity": `ok:${n}`, "X-Nonce": n, ...headers },
+    body: sent,
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/octet-stream", "X-Integrity": `strong:${await boundNonce(n, [sent])}`, "X-Nonce": n, ...headers },
   });
   return postScore(request, testEnv, {}, fetchFn).then(
     (r) => r,
@@ -156,7 +158,7 @@ describe("POST /scores", () => {
       },
     } as unknown as R2Bucket;
     const n = await nonce();
-    const request = new Request("https://example.com/scores", { method: "POST", body: DEMO_01, headers: { Authorization: `Bearer ${token}`, "X-Integrity": `ok:${n}`, "X-Nonce": n } });
+    const request = new Request("https://example.com/scores", { method: "POST", body: DEMO_01, headers: { Authorization: `Bearer ${token}`, "X-Integrity": `strong:${await boundNonce(n, [DEMO_01])}`, "X-Nonce": n } });
     const response = await postScore(request, { ...testEnv, DEMOS: hooked }, {}, officialNetwork().fetchFn);
     expect(response.status).toBe(200);
     expect(rival!.status).toBe(200);
@@ -240,6 +242,26 @@ describe("POST /scores", () => {
     const withSession = await call("/scores", { method: "POST", body: DEMO_01, headers: { Authorization: `Bearer ${token}` } });
     expect(withSession.status).toBe(403);
     expect((await call("/scores", { method: "POST", body: DEMO_01 })).status).toBe(401);
+  });
+
+  it("rejects a token signed for other demo bytes, and a device-only verdict, with 403", async () => {
+    const { token } = await signIn("s-15", "Oli");
+    const n = await nonce();
+    const forged = DEMO_01.slice();
+    forged[forged.length - 1] ^= 1;
+    const swapped = await call("/scores", {
+      method: "POST",
+      body: forged,
+      headers: { Authorization: `Bearer ${token}`, "X-Integrity": `strong:${await boundNonce(n, [DEMO_01])}`, "X-Nonce": n },
+    });
+    expect(swapped.status).toBe(403);
+    const m = await nonce();
+    const weak = await call("/scores", {
+      method: "POST",
+      body: DEMO_01,
+      headers: { Authorization: `Bearer ${token}`, "X-Integrity": `ok:${await boundNonce(m, [DEMO_01])}`, "X-Nonce": m },
+    });
+    expect(weak.status).toBe(403);
   });
 });
 

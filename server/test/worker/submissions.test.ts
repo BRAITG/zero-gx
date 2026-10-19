@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { beforeEach, describe, expect, it } from "vitest";
 import { sha256Hex } from "../../src/core/level";
 import type { Env } from "../../src/env";
+import { boundNonce } from "../../src/session";
 import { installationToken } from "../../src/github";
 import { getMySubmissions, postGithub, postSubmission } from "../../src/submissions";
 import worker from "../../src/worker";
@@ -131,7 +132,8 @@ async function submit(token: string, fields: Fields, gh: Github, submitEnv: Env 
   form.set("demo", new File([fields.demo ?? DEMO_01], "demo.gz"));
   if (fields.level_id) form.set("level_id", fields.level_id);
   if (fields.based_on) form.set("based_on", fields.based_on);
-  const request = new Request("https://example.com/submissions", { method: "POST", body: form, headers: { Authorization: `Bearer ${token}`, "X-Integrity": `ok:${n}`, "X-Nonce": n } });
+  const bound = await boundNonce(n, [fields.level ?? LEVEL_01, fields.demo ?? DEMO_01]);
+  const request = new Request("https://example.com/submissions", { method: "POST", body: form, headers: { Authorization: `Bearer ${token}`, "X-Integrity": `ok:${bound}`, "X-Nonce": n } });
   return postSubmission(request, submitEnv, {}, gh.fetchFn).catch(failed);
 }
 

@@ -54,7 +54,6 @@ function field(form: FormData, name: string): string | null {
 /** `fetchFn` is the injection point for tests. */
 export async function postSubmission(request: Request, env: Env, _params: Record<string, string>, fetchFn: typeof fetch = fetch): Promise<Response> {
   const player = await requirePlayer(request, env);
-  await requireIntegrity(request, env);
   const body = await readBytes(request, MAX_BODY_BYTES);
   const form = await new Request(request.url, { method: "POST", headers: { "Content-Type": request.headers.get("Content-Type") ?? "" }, body }).formData().catch(() => null);
   const levelFile = form?.get("level");
@@ -69,6 +68,8 @@ export async function postSubmission(request: Request, env: Env, _params: Record
 
   // Everything below up to the limits is validation: nothing reaches GitHub before it passes.
   const levelBytes = new Uint8Array(await levelFile.arrayBuffer());
+  const demoBytes = new Uint8Array(await demoFile.arrayBuffer());
+  await requireIntegrity(request, env, [levelBytes, demoBytes], "device");
   let levelText: string;
   let level: unknown;
   try {
@@ -81,7 +82,6 @@ export async function postSubmission(request: Request, env: Env, _params: Record
   const levelErrors = validateLevel(level);
   if (levelErrors.length > 0) throw new HttpError(400, levelErrors[0]!);
   const checked = level as { title: string }; // validateLevel guarantees the title
-  const demoBytes = new Uint8Array(await demoFile.arrayBuffer());
   const demo = await decodeDemo(demoBytes);
   if (!demo) throw new HttpError(400, "The demo could not be read.");
   const sha256 = await sha256Hex(levelBytes);

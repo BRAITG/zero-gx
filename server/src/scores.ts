@@ -65,9 +65,10 @@ async function limitRate(env: Env, player: string): Promise<void> {
 /** `fetchFn` is the injection point for tests. */
 export async function postScore(request: Request, env: Env, _params: Record<string, string>, fetchFn: typeof fetch = fetch): Promise<Response> {
   const player = await requirePlayer(request, env);
-  await requireIntegrity(request, env);
   await limitRate(env, player.id);
   const body = await readBytes(request, MAX_BYTES);
+  // Only a demo signed by a genuine app on a hardware-attested device can rank.
+  await requireIntegrity(request, env, [body], "strong");
   const demo = await decodeDemo(body);
   if (!demo) throw new HttpError(400, "The demo could not be read.");
   const level = await findLevel(env, demo.levelSha256);

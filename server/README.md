@@ -5,7 +5,7 @@ A Cloudflare Worker (TypeScript) with a D1 database and an R2 bucket. It signs p
 Auth, in the table below:
 
 - **session**: `Authorization: Bearer <session token>` from `POST /session`; banned players get 403.
-- **integrity**: a fresh Play Integrity token in `X-Integrity`, bound to a one-time nonce in `X-Nonce` (from `GET /nonce`).
+- **integrity**: a fresh Play Integrity token in `X-Integrity` and the one-time server nonce (from `GET /nonce`) in `X-Nonce`. The app requests the token with a nonce bound to the request's payload: base64url without padding of SHA-256(server nonce as UTF-8 ‖ SHA-256(part 1) ‖ SHA-256(part 2) ‖ …), where the parts are the demo bytes for `POST /scores`, and the level bytes then the demo bytes for `POST /submissions` (`boundNonce` in `src/session.ts`). Google signs that nonce, so a changed or swapped body fails. `POST /scores` requires the `MEETS_STRONG_INTEGRITY` device verdict (hardware-backed: rooted phones and emulators cannot rank); `POST /session` and `POST /submissions` require `MEETS_DEVICE_INTEGRITY`.
 - **admin**: `Authorization: Bearer <ADMIN_TOKEN>`.
 - **webhook**: GitHub's `X-Hub-Signature-256` HMAC over the body, keyed with `GITHUB_WEBHOOK_SECRET`.
 
@@ -57,7 +57,7 @@ All commands run in `server/`.
 Non-secret variables are in `wrangler.toml` under `[vars]`:
 
 - `LEVELS_REPO`: `BRAITG/zero-gx-levels`; the webhook ignores every other repository.
-- `ALLOW_TEST_VERIFIER`: keep `"0"`; never set it to `"1"` in production. With `"1"` the server accepts the codes `test:<id>:<name>` and tokens `ok:<nonce>` and anyone can sign in as anyone.
+- `ALLOW_TEST_VERIFIER`: keep `"0"`; never set it to `"1"` in production. With `"1"` the server accepts the codes `test:<id>:<name>` and tokens `ok:<nonce>` / `strong:<nonce>`, and anyone can sign in as anyone and post any score.
 
 ### Rate limiting
 
@@ -146,6 +146,6 @@ SESSION_KEY=any-long-random-string
 ADMIN_TOKEN=dev
 ```
 
-then `npx wrangler d1 migrations apply zero-gx --local` and `npx wrangler dev`. Sign in with the auth code `test:<id>:<name>` and the integrity token `ok:<nonce>`. Calls that need GitHub (submissions, reports, the index) additionally need real `GITHUB_*` values in `.dev.vars` and a test copy of the levels repository in `LEVELS_REPO`.
+then `npx wrangler d1 migrations apply zero-gx --local` and `npx wrangler dev`. Sign in with the auth code `test:<id>:<name>` and the integrity token `ok:<nonce>` (device integrity) or `strong:<nonce>` (strong integrity), where `<nonce>` is the server nonce for `/session` and the bound nonce for `/scores` and `/submissions`. Calls that need GitHub (submissions, reports, the index) additionally need real `GITHUB_*` values in `.dev.vars` and a test copy of the levels repository in `LEVELS_REPO`.
 
 `npm run cli -- check-pr <repo-root> <base-ref> <head-ref>` is the pull-request checker that the levels repository's workflow runs.

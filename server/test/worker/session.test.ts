@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import type { Env } from "../../src/env";
-import { requireIntegrity, requirePlayer, signSession } from "../../src/session";
+import { boundNonce, requireIntegrity, requirePlayer, signSession } from "../../src/session";
 import { GoogleVerifier, TestVerifier } from "../../src/verify";
 import worker from "../../src/worker";
 
@@ -155,16 +155,46 @@ describe("requirePlayer", () => {
 describe("requireIntegrity", () => {
   const withHeaders = (token: string, n: string) => new Request("https://example.com/x", { headers: { "X-Integrity": token, "X-Nonce": n } });
 
-  it("consumes the nonce and accepts a good token", async () => {
+  const body = new TextEncoder().encode("payload");
+  const check = (request: Request, level: "device" | "strong" = "device", parts = [body]) => requireIntegrity(request, testEnv, parts, level, new TestVerifier());
+
+  it("consumes the nonce and accepts a token bound to the nonce and the payload", async () => {
     const n = await nonce();
-    await expect(requireIntegrity(withHeaders(`ok:${n}`, n), testEnv, new TestVerifier())).resolves.toBeUndefined();
-    await expect(requireIntegrity(withHeaders(`ok:${n}`, n), testEnv, new TestVerifier())).rejects.toMatchObject({ status: 403 });
+    const bound = await boundNonce(n, [body]);
+    await expect(check(withHeaders(`ok:${bound}`, n))).resolves.toBeUndefined();
+    await expect(check(withHeaders(`ok:${bound}`, n))).rejects.toMatchObject({ status: 403 });
   });
 
   it("rejects missing headers and a token for another nonce with 403", async () => {
     const n = await nonce();
-    await expect(requireIntegrity(new Request("https://example.com/x"), testEnv, new TestVerifier())).rejects.toMatchObject({ status: 403 });
-    await expect(requireIntegrity(withHeaders("ok:other", n), testEnv, new TestVerifier())).rejects.toMatchObject({ status: 403 });
+    await expect(check(new Request("https://example.com/x"))).rejects.toMatchObject({ status: 403 });
+    await expect(check(withHeaders("ok:other", n))).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("rejects a token signed for other payload bytes", async () => {
+    const n = await nonce();
+    const forOther = await boundNonce(n, [new TextEncoder().encode("other payload")]);
+    await expect(check(withHeaders(`ok:${forOther}`, n))).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("rejects the unbound server nonce", async () => {
+    const n = await nonce();
+    await expect(check(withHeaders(`ok:${n}`, n))).rejects.toMatchObject({ status: 403 });
+  });
+
+  it("requires a strong verdict when asked", async () => {
+    const n = await nonce();
+    const bound = await boundNonce(n, [body]);
+    await expect(check(withHeaders(`ok:${bound}`, n), "strong")).rejects.toMatchObject({ status: 403 });
+    const m = await nonce();
+    await expect(check(withHeaders(`strong:${await boundNonce(m, [body])}`, m), "strong")).resolves.toBeUndefined();
+  });
+
+  it("binds every part in order", async () => {
+    const a = new TextEncoder().encode("a");
+    const b = new TextEncoder().encode("b");
+    expect(await boundNonce("n", [a, b])).not.toBe(await boundNonce("n", [b, a]));
+    expect(await boundNonce("n", [a, b])).toMatch(/^[A-Za-z0-9_-]{43}$/);
   });
 });
 
@@ -240,7 +270,7 @@ describe("GoogleVerifier", () => {
 
   it("accepts a good integrity verdict and sends a service-account assertion", async () => {
     const { v, calls } = await verifier(verdict());
-    await expect(v.integrity("itok", "n1")).resolves.toBeUndefined();
+    await expect(v.integrity("itok", "n1", "device")).resolves.toBeUndefined();
     const form = new URLSearchParams(String(calls[0]!.init!.body));
     expect(form.get("grant_type")).toBe("urn:ietf:params:oauth:grant-type:jwt-bearer");
     const [header, claims] = form.get("assertion")!.split(".").slice(0, 2).map((part) => JSON.parse(atob(part.replace(/-/g, "+").replace(/_/g, "/"))));
@@ -259,15 +289,23 @@ describe("GoogleVerifier", () => {
     ["a stale token", { requestDetails: { requestPackageName: PACKAGE, nonce: "n1", timestampMillis: String(Date.now() - 6 * 60_000) } }],
     ["an unrecognized app", { appIntegrity: { appRecognitionVerdict: "UNRECOGNIZED_VERSION" } }],
     ["a device failing basic integrity", { deviceIntegrity: { deviceRecognitionVerdict: [] } }],
+    ["a device with only basic integrity", { deviceIntegrity: { deviceRecognitionVerdict: ["MEETS_BASIC_INTEGRITY"] } }],
     ["a missing device verdict", { deviceIntegrity: {} }],
   ];
   it.each(bad)("rejects %s", async (_name, patch) => {
     const { v } = await verifier(verdict(patch));
-    await expect(v.integrity("itok", "n1")).rejects.toThrow();
+    await expect(v.integrity("itok", "n1", "device")).rejects.toThrow();
+  });
+
+  it("requires MEETS_STRONG_INTEGRITY for the strong level", async () => {
+    const { v } = await verifier(verdict());
+    await expect(v.integrity("itok", "n1", "strong")).rejects.toThrow();
+    const strong = await verifier(verdict({ deviceIntegrity: { deviceRecognitionVerdict: ["MEETS_BASIC_INTEGRITY", "MEETS_DEVICE_INTEGRITY", "MEETS_STRONG_INTEGRITY"] } }));
+    await expect(strong.v.integrity("itok", "n1", "strong")).resolves.toBeUndefined();
   });
 
   it("rejects a response without a payload", async () => {
     const { v } = await verifier({});
-    await expect(v.integrity("itok", "n1")).rejects.toThrow();
+    await expect(v.integrity("itok", "n1", "device")).rejects.toThrow();
   });
 });
