@@ -48,7 +48,7 @@ Repository secrets of `BRAITG/zero-gx` the job reads (GitHub forbids secret name
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PLAY_SERVICE_ACCOUNT` | same names |
 | `LEVELS_APP_ID`, `LEVELS_APP_KEY`, `LEVELS_APP_INSTALLATION_ID`, `LEVELS_WEBHOOK_SECRET` | `GITHUB_APP_ID`, `GITHUB_APP_KEY`, `GITHUB_INSTALLATION_ID`, `GITHUB_WEBHOOK_SECRET` |
 
-After the first deploy, set the repository variable `COMMUNITY_API` to the Worker's URL (no trailing slash) so releases register official level hashes.
+After the first deploy, set the repository variable `COMMUNITY_API` to `https://zerogx.braitg.dev` (no trailing slash) so releases register official level hashes. The API token also needs **Zone → Workers Routes → Edit** on `braitg.dev` (included in the "Edit Cloudflare Workers" template) for the custom domain.
 
 ### Manual deploy
 
@@ -58,7 +58,7 @@ All commands run in `server/`.
 2. `npx wrangler d1 create zero-gx`. Put the printed `database_id` into `wrangler.toml` (it holds a placeholder).
 3. `npx wrangler r2 bucket create zero-gx-demos`.
 4. `npx wrangler d1 migrations apply zero-gx --remote`.
-5. `npx wrangler deploy`. Deploy the Worker before the GitHub App, which needs its URL. Note the `https://zero-gx.<subdomain>.workers.dev` URL; the game and the GitHub App use it.
+5. `npx wrangler deploy`. Deploy the Worker before the GitHub App, which needs its URL. `wrangler.toml` serves it only at the custom domain `https://zerogx.braitg.dev` (`workers_dev = false`); Cloudflare creates the DNS record and certificate on the first deploy, which needs the `braitg.dev` zone in the same account.
 6. Set every secret with `npx wrangler secret put NAME`, which prompts for the value. For multi-line values (the PEM, the JSON key) read it from a file instead: `npx wrangler secret put GITHUB_APP_KEY < app-pkcs8.pem`.
 
 | Secret | Value |
@@ -81,7 +81,7 @@ Non-secret variables are in `wrangler.toml` under `[vars]`:
 
 `GET /nonce` is unauthenticated and writes to D1, and `POST /session` calls Google, so per-player limits cannot cover them. The Worker limits both per client IP with a Workers Rate Limiting binding, `AUTH_LIMITER` in `wrangler.toml` (30 requests per 60 seconds, answered with 429). `namespace_id` is any number that is unique in the Cloudflare account; change it only if another Worker already uses `1001`. When the binding is absent (tests, plain local runs) the check is skipped. The limiter is per Cloudflare location and approximate.
 
-Alternative: a Cloudflare WAF rate-limiting rule on `/nonce` and `/session` (for example 30 requests per minute per IP, action Block). WAF rules are zone-scoped and do not apply to `workers.dev`, so this needs the Worker on a custom domain of your zone; then set `workers_dev = false` in `wrangler.toml` so the unprotected `workers.dev` URL is switched off.
+Alternative: a Cloudflare WAF rate-limiting rule on `/nonce` and `/session` (for example 30 requests per minute per IP, action Block). The Worker already runs on the `braitg.dev` zone with `workers_dev = false`, so such a rule covers every request.
 
 ### Google setup
 

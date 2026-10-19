@@ -1,6 +1,9 @@
 name = "zero-gx"
 main = "src/worker.ts"
 compatibility_date = "2026-10-18"
+# Served only at the custom domain (Cloudflare creates its DNS record and certificate); no workers.dev URL.
+routes = [{ pattern = "zerogx.braitg.dev", custom_domain = true }]
+workers_dev = false
 
 [[d1_databases]]
 binding = "DB"
