@@ -88,7 +88,7 @@ Alternative: a Cloudflare WAF rate-limiting rule on `/nonce` and `/session` (for
 
 To complete when the Play Console account exists.
 
-1. In Play Console, create the app `com.braitg.zerogx` and enable Play Games Services; link the Google Cloud project that Play Games creates.
+1. In Play Console, create the app `dev.braitg.zerogx` and enable Play Games Services; link the Google Cloud project that Play Games creates.
 2. In that project, create an OAuth client of type **Web application**. Its client id and secret are `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. The game asks Play Games for a server auth code for this client.
 3. Enable the Play Integrity API in the same project and link the project to the app in Play Console (App integrity).
 4. Create a service account, download its JSON key and store it as `PLAY_SERVICE_ACCOUNT`. The server uses it to decode integrity tokens.

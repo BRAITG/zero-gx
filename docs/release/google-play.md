@@ -6,7 +6,7 @@ Status: the build side is ready; the Play Console account is being set up. The f
 
 | Item | State |
 |---|---|
-| Package name | `com.braitg.zerogx` (permanent once uploaded to Play) |
+| Package name | `dev.braitg.zerogx` (permanent once uploaded to Play) |
 | Target API | 36 (Android 16), from Godot 4.7.2. Meets the rule that new apps target API 36 from 31 August 2026. Min API 24. |
 | Permissions | `VIBRATE` only |
 | App bundle | The `Android Play` export preset builds `build/zero-gx.aab` with Gradle. CI builds it on every push to `master` and attaches it to the prerelease next to the sideload APK. |

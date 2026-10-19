@@ -30,7 +30,7 @@ export class TestVerifier implements Verifier {
   }
 }
 
-const PACKAGE = "com.braitg.zerogx";
+const PACKAGE = "dev.braitg.zerogx";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const MAX_AGE_MS = 5 * 60 * 1000;
 

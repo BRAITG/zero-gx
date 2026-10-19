@@ -246,7 +246,7 @@ describe("requireIntegrity", () => {
 });
 
 describe("GoogleVerifier", () => {
-  const PACKAGE = "com.braitg.zerogx";
+  const PACKAGE = "dev.braitg.zerogx";
   let privateKeyPem: string;
 
   async function serviceAccount(): Promise<string> {
