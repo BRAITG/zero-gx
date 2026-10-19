@@ -96,16 +96,19 @@ export async function postScore(request: Request, env: Env, _params: Record<stri
 
   // Rank of the stored score, whether or not this post beat it.
   const rank = await env.DB.prepare(
-    "SELECT COUNT(*) AS n FROM scores WHERE sha256 = ?1 AND points > (SELECT points FROM scores WHERE sha256 = ?1 AND player = ?2)",
+    `SELECT COUNT(*) AS n FROM scores WHERE sha256 = ?1 AND player NOT IN (SELECT id FROM players WHERE banned = 1)
+     AND points > (SELECT points FROM scores WHERE sha256 = ?1 AND player = ?2)`,
   )
     .bind(demo.levelSha256, player.id)
     .first<{ n: number }>();
   return Response.json({ points: score.points, rank: 1 + rank!.n, best: written !== null });
 }
 
-const BOARD_ROW = `SELECT (SELECT COUNT(*) FROM scores o WHERE o.sha256 = s.sha256 AND o.points > s.points) + 1 AS rank,
+// Banned players are neither listed nor counted in a rank.
+const BOARD_ROW = `SELECT (SELECT COUNT(*) FROM scores o
+    WHERE o.sha256 = s.sha256 AND o.player NOT IN (SELECT id FROM players WHERE banned = 1) AND o.points > s.points) + 1 AS rank,
   s.player AS id, p.name, s.points, s.fuel, s.hull, s.seconds, s.demo
-  FROM scores s JOIN players p ON p.id = s.player WHERE s.sha256 = ?`;
+  FROM scores s JOIN players p ON p.id = s.player WHERE s.sha256 = ? AND p.banned = 0`;
 
 interface BoardRow {
   rank: number;

@@ -97,7 +97,7 @@ Run these in `server/`.
 npx wrangler d1 execute zero-gx --remote --command "UPDATE players SET banned = 1 WHERE id = 'p_xxxxxxxxxxxxxxxx'"
 ```
 
-Set it back to `0` to unban. Player ids are not in `GET /levels`; find them in board responses, in `levels/<lvl_id>/meta.json` (the author), in report issues (`Reporter:`) or as `levels.owner` in D1. Names are not unique. A banned player's rows stay on level boards (the boards have no banned filter); the player ranking hides them at once and recomputes at the next cron run.
+Set it back to `0` to unban. Player ids are not in `GET /levels`; find them in board responses, in `levels/<lvl_id>/meta.json` (the author), in report issues (`Reporter:`) or as `levels.owner` in D1. Names are not unique. A banned player disappears from level boards, and stops counting in their ranks, at once; the player ranking hides them at once too and recomputes at the next cron run.
 
 **Hide a level.** Open a pull request in the levels repository that adds its `lvl_id` to `hidden.txt` and changes nothing else. When it is merged the webhook (a `push` touching `hidden.txt`) refreshes D1 and rebuilds the index. Hiding hides the whole level: its earlier approved versions also disappear from the index, the boards and the player ranking, and the boards stop accepting scores.
 

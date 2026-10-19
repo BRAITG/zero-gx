@@ -275,6 +275,18 @@ describe("GET /boards/<sha256>", () => {
     expect(body.you).toMatchObject({ rank: 106, points: 1, player: { id: player.id, name: "Ola" } });
   });
 
+  it("hides a banned player and does not count them in anyone's rank", async () => {
+    const { token, player } = await signIn("b-4", "Rae");
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO players (id, name, banned, created) VALUES ('p_banned', 'Cheat', 1, 1)"),
+      env.DB.prepare("INSERT INTO scores VALUES (?, 'p_banned', 9000, 1, 1, 1, 'demos/x', 1)").bind(SHA_01),
+      env.DB.prepare("INSERT INTO scores VALUES (?, ?, 100, 1, 1, 1, 'demos/y', 1)").bind(SHA_01, player.id),
+    ]);
+    const body = (await (await board(token)).json()) as { rows: { player: { id: string }; rank: number }[]; you: { rank: number } };
+    expect(body.rows.map((r) => r.player.id)).toEqual([player.id]);
+    expect(body.you.rank).toBe(1);
+  });
+
   it("names a community level <id>/v<N> and returns null for you with no score", async () => {
     await env.DB.batch([
       env.DB.prepare("INSERT INTO levels (id, owner, latest, created) VALUES ('lvl_cccccccccc', 'p_x', 1, 1)"),
