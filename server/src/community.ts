@@ -1,7 +1,7 @@
 import type { Env } from "./env";
 import { getHeadCommit, openIssue } from "./github";
 import { HttpError, readJson } from "./http";
-import { requirePlayer } from "./session";
+import { DELETED_AUTHOR, requirePlayer } from "./session";
 import { rebuildIndex } from "./submissions";
 
 const PAGE_SIZE = 50;
@@ -60,10 +60,10 @@ export async function getLevels(request: Request, env: Env): Promise<Response> {
   if (!/^\d{1,6}$/.test(page)) throw new HttpError(400, "page must be a non-negative integer.");
   const order = sort === "top" ? "likes DESC, players DESC, l.id" : "v.approved DESC, l.id";
   const { results } = await env.DB.prepare(
-    `SELECT l.id AS level_id, l.title, p.name AS author, l.latest, v.sha256,
+    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256,
        (SELECT COUNT(*) FROM likes k WHERE k.level = l.id) AS likes,
        (SELECT COUNT(DISTINCT s.player) FROM scores s JOIN versions w ON w.sha256 = s.sha256 WHERE w.level = l.id) AS players
-     FROM levels l JOIN players p ON p.id = l.owner JOIN versions v ON v.level = l.id AND v.version = l.latest
+     FROM levels l LEFT JOIN players p ON p.id = l.owner JOIN versions v ON v.level = l.id AND v.version = l.latest
      WHERE ${VISIBLE} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ?`,
   )
     .bind(Number(page) * PAGE_SIZE)

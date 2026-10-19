@@ -25,7 +25,7 @@ Leaderboards, the player ranking, shared levels, likes and reports are online fe
 | Your Google Play Games player ID | To recognise you when you sign in again. |
 | Your Google Play Games display name | To show who you are on leaderboards, the player ranking and the levels you share. It is updated each time you sign in. |
 | A random Zero-GX player ID (it starts with `p_`) | To link your scores, levels, likes and reports to you without using your Google identity. |
-| Your scores: points, fuel and hull left, time, and a recording of the run | To build the leaderboards, and to check that each score was really flown in the game. We keep only your best run on each level. |
+| Your scores: points, fuel and hull left, time, and a recording of the run | To build the leaderboards, and to check that each score was really flown in the game. We keep only your best score on each level. |
 | Levels you submit: the level with its title and hint, and a recording of you finishing it | To review the level and share it with other players. |
 | Your likes and reports, including the reason you write in a report | To rank community levels and to moderate them. |
 
@@ -40,7 +40,7 @@ We do not collect your email address, contacts, location, advertising ID or any 
 
 Other signed-in players can see:
 
-- leaderboards, with your display name, your Zero-GX player ID, your score details and the recording of your best run;
+- leaderboards, with your display name, your Zero-GX player ID, your score details and, while we keep it, the recording of your best run;
 - the player ranking, with your display name and total points;
 - the list of community levels, with the author's display name.
 
@@ -63,13 +63,15 @@ We share your data with no one else.
 
 ### How long we keep it
 
-We keep your community data for as long as you have a Zero-GX community account, or until you ask us to delete it. A run recording is deleted as soon as you post a better score on the same level. A sign-in session lasts 7 days. Abuse-prevention counters are deleted within 2 days.
+We keep your community data for as long as you have a Zero-GX community account, or until you delete it. A run recording is deleted as soon as you post a better score on the same level. Recordings of runs in a level's top 10 are kept; every other recording is deleted 14 days after you post it, and the score stays without it. A sign-in session lasts 7 days. Abuse-prevention counters are deleted within 2 days.
 
 ## Deleting your data
 
-You can ask us to delete your community data at any time. Email [support@braitg.dev](mailto:support@braitg.dev) with the subject "Delete my Zero-GX data", and give the display name you use in the game. We will reply within 30 days. To delete everything stored only on your device, uninstall the game.
+You can delete your community account at any time in the game, from the community screen. It takes effect at once. If you can no longer sign in, email [support@braitg.dev](mailto:support@braitg.dev) with the subject "Delete my Zero-GX data" and the display name you use in the game, and we will delete it within 30 days. To delete everything stored only on your device, uninstall the game.
 
-When we delete your community account, we remove your Google Play Games player ID, your display name, your scores and run recordings, and your likes. We also remove your Zero-GX player ID from your reports and submissions. If you ask, we also remove the levels you submitted from the public repository and its history. Copies that other people made under the level licence, and copies kept by third-party archives, are outside our control.
+Deleting your community account removes your Google Play Games player ID, your display name, your scores and run recordings, your likes and your reports from our servers. Run recordings are removed from storage within a day.
+
+The levels you submitted stay in the game and in the public repository, shown as by "Deleted player". The random Zero-GX player ID stays on them and on the reports you filed, but nothing links it to you any more. Your display name stays in the history of the public level list until we rewrite that history. If you ask, we rewrite it, and we also remove your levels from the repository and its history. Copies that other people made under the level licence, and copies kept by third-party archives, are outside our control.
 
 ## Your rights
 

@@ -95,6 +95,7 @@ Pull requests, including rejected ones, are public. Rejected proof demos are not
 - **Hide:** a moderator removes a level from `index.json` with a commit. Its files remain in history; the app no longer lists it and its boards stop accepting scores.
 - **Ban:** a flag on the player in D1. The Worker refuses their submissions, scores and likes.
 - **Deletion requests:** level titles and hints are player-written text. A legal removal request is handled by rewriting the repository history and asking GitHub to purge cached views; the procedure is documented in the levels repository's README.
+- **Account deletion:** a player deletes their account in the app (`DELETE /me`), or by email when they can no longer sign in. The Worker erases the Play Games link, name, scores, demos, likes, reports and ranking. Their levels stay under the bare player id with "Deleted player" as the author. This covers GDPR erasure and Google Play's account-deletion requirement; the app's community screen needs the button.
 
 ## Scores and rankings
 

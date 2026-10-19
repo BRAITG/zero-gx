@@ -62,15 +62,39 @@ async function verifySession(env: Env, token: string): Promise<string | null> {
   }
 }
 
-/** The signed-in player from `Authorization: Bearer <token>`; 401 when missing, invalid or expired, 403 when banned. */
-export async function requirePlayer(request: Request, env: Env): Promise<Player> {
+/** The signed-in player from `Authorization: Bearer <token>`; 401 when missing, invalid or expired, 403 when banned unless `allowBanned`. */
+export async function requirePlayer(request: Request, env: Env, allowBanned = false): Promise<Player> {
   const token = request.headers.get("Authorization")?.match(/^Bearer (\S+)$/)?.[1];
   const id = token ? await verifySession(env, token) : null;
   const player = id ? await env.DB.prepare("SELECT * FROM players WHERE id = ?").bind(id).first<Player>() : null;
   if (!player) throw new HttpError(401, "Sign in again.");
-  if (player.banned) throw new HttpError(403, "This player is banned.");
+  if (player.banned && !allowBanned) throw new HttpError(403, "This player is banned.");
   return player;
 }
+
+/**
+ * Erases the signed-in player (banned ones too: erasure is a right): the Play Games link, name, scores, likes, reports,
+ * rate counters and ranking. The cron's demo sweep then deletes the orphaned R2 demos. Levels and submissions stay
+ * under the bare `p_` id, which nothing links to a person any more; their author shows as DELETED_AUTHOR.
+ */
+export async function deleteMe(request: Request, env: Env): Promise<Response> {
+  const { id } = await requirePlayer(request, env, true);
+  await env.DB.batch(
+    [
+      "DELETE FROM scores WHERE player = ?",
+      "DELETE FROM likes WHERE player = ?",
+      "DELETE FROM reports WHERE player = ?",
+      "DELETE FROM rate WHERE player = ?",
+      "DELETE FROM player_ranking WHERE player = ?",
+      "DELETE FROM accounts WHERE player = ?",
+      "DELETE FROM players WHERE id = ?",
+    ].map((sql) => env.DB.prepare(sql).bind(id)),
+  );
+  return new Response(null, { status: 204 });
+}
+
+/** The author name of a level whose player was deleted. */
+export const DELETED_AUTHOR = "Deleted player";
 
 /**
  * The nonce an app passes to Play Integrity for a request carrying `parts`: base64url (no padding) of

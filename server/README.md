@@ -4,7 +4,7 @@ A Cloudflare Worker (TypeScript) with a D1 database and an R2 bucket. It signs p
 
 Auth, in the table below:
 
-- **session**: `Authorization: Bearer <session token>` from `POST /session`; banned players get 403.
+- **session**: `Authorization: Bearer <session token>` from `POST /session`; banned players get 403, except on `DELETE /me`.
 - **integrity**: a fresh Play Integrity token in `X-Integrity` and the one-time server nonce (from `GET /nonce`) in `X-Nonce`. The app requests the token with a nonce bound to the request's payload: base64url without padding of SHA-256(server nonce as UTF-8 ‖ SHA-256(part 1) ‖ SHA-256(part 2) ‖ …), where the parts are the demo bytes for `POST /scores`, and the level bytes then the demo bytes for `POST /submissions` (`boundNonce` in `src/session.ts`). Google signs that nonce, so a changed or swapped body fails. `POST /scores` requires the `MEETS_STRONG_INTEGRITY` device verdict (hardware-backed: rooted phones and emulators cannot rank); `POST /session` and `POST /submissions` require `MEETS_DEVICE_INTEGRITY`.
 - **admin**: `Authorization: Bearer <ADMIN_TOKEN>`.
 - **webhook**: GitHub's `X-Hub-Signature-256` HMAC over the body, keyed with `GITHUB_WEBHOOK_SECRET`.
@@ -14,6 +14,7 @@ Auth, in the table below:
 | `GET /nonce` | none | A one-time nonce, valid 5 minutes. |
 | `POST /session` | none (nonce, auth code, integrity token in the body) | Signs a player in with a Play Games auth code; returns a 7-day session token. |
 | `POST /scores` | session + integrity | Re-checks the posted demo against its level, scores it, keeps the player's best. |
+| `DELETE /me` | session | Erases the caller: Play Games link, name, scores, likes, reports, rate counters and ranking row. The demo sweep deletes the orphaned demos. Their levels and submissions stay under the bare player id, with the author shown as "Deleted player". |
 | `GET /boards/:sha256` | session | The top 100 for one level hash plus the caller's own row. |
 | `GET /demos/:sha256/:player/:file` | session | A stored score demo. |
 | `POST /submissions` | session + integrity | Validates a level and its demo, opens or updates the pull request. |
@@ -116,6 +117,13 @@ npx wrangler d1 execute zero-gx --remote --command "UPDATE players SET banned = 
 ```
 
 Set it back to `0` to unban. Player ids are not in `GET /levels`; find them in board responses, in `levels/<lvl_id>/meta.json` (the author), in report issues (`Reporter:`) or as `levels.owner` in D1. Names are not unique. A banned player disappears from level boards, and stops counting in their ranks, at once; the player ranking hides them at once too and recomputes at the next cron run.
+
+**Erase a player on request.** For deletion requests by email, from players who can no longer sign in. Find the player id as for a ban, run the same deletes as `DELETE /me` (`deleteMe` in `src/session.ts`), and answer within 30 days. The next cron runs sweep their demos from R2 and rebuild `index.json` with "Deleted player" as the author. The old display name stays in the git history of `index.json` until the history is rewritten, as for a level deletion (levels repository README, "Deletion requests").
+
+```sh
+P=p_xxxxxxxxxxxxxxxx
+npx wrangler d1 execute zero-gx --remote --command "DELETE FROM scores WHERE player = '$P'; DELETE FROM likes WHERE player = '$P'; DELETE FROM reports WHERE player = '$P'; DELETE FROM rate WHERE player = '$P'; DELETE FROM player_ranking WHERE player = '$P'; DELETE FROM accounts WHERE player = '$P'; DELETE FROM players WHERE id = '$P'"
+```
 
 **Hide a level.** Open a pull request in the levels repository that adds its `lvl_id` to `hidden.txt` and changes nothing else. When it is merged the webhook (a `push` touching `hidden.txt`) refreshes D1 and rebuilds the index. Hiding hides the whole level: its earlier approved versions also disappear from the index, the boards and the player ranking, and the boards stop accepting scores.
 

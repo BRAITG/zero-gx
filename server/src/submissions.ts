@@ -4,7 +4,7 @@ import { MAX_LEVEL_BYTES, sha256Hex, validateLevel } from "./core/level";
 import type { Env } from "./env";
 import { commitIndex, getFile, lastComment, openOrUpdatePullRequest, pullRequestState } from "./github";
 import { HttpError, readBytes } from "./http";
-import { requireIntegrity, requirePlayer } from "./session";
+import { DELETED_AUTHOR, requireIntegrity, requirePlayer } from "./session";
 import { randomId } from "./util";
 
 const MAX_BODY_BYTES = 600_000;
@@ -211,7 +211,7 @@ export async function getMySubmissions(request: Request, env: Env): Promise<Resp
 async function buildIndex(env: Env): Promise<string> {
   const [levels, versions] = await env.DB.batch<{ id: string; title: string; author: string; latest: number; level: string; version: number; sha256: string }>([
     env.DB.prepare(
-      `SELECT l.id, l.title, p.name AS author, l.latest FROM levels l JOIN players p ON p.id = l.owner
+      `SELECT l.id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest FROM levels l LEFT JOIN players p ON p.id = l.owner
        WHERE l.hidden = 0 AND l.id NOT IN (SELECT level FROM hidden_levels) AND l.latest > 0 ORDER BY l.id`,
     ),
     env.DB.prepare("SELECT level, version, sha256 FROM versions ORDER BY level, version"),

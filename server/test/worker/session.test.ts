@@ -152,6 +152,53 @@ describe("requirePlayer", () => {
   });
 });
 
+describe("DELETE /me", () => {
+  const remaining = (id: string) =>
+    env.DB.prepare(
+      `SELECT (SELECT COUNT(*) FROM players WHERE id = ?1) + (SELECT COUNT(*) FROM accounts WHERE player = ?1)
+        + (SELECT COUNT(*) FROM scores WHERE player = ?1) + (SELECT COUNT(*) FROM likes WHERE player = ?1)
+        + (SELECT COUNT(*) FROM reports WHERE player = ?1) + (SELECT COUNT(*) FROM rate WHERE player = ?1)
+        + (SELECT COUNT(*) FROM player_ranking WHERE player = ?1) AS n`,
+    )
+      .bind(id)
+      .first<{ n: number }>();
+
+  it("erases a banned player's data, ends their session, keeps their level as a deleted author's, and lets them start over", async () => {
+    const { token, player } = (await (await signIn("g-120", "Gone")).json()) as { token: string; player: { id: string } };
+    const other = (await (await signIn("g-121", "Stays")).json()) as { token: string; player: { id: string } };
+    const sha = "a".repeat(64);
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO levels (id, owner, latest, created, title) VALUES ('lvl_del0000001', ?, 1, 0, 'Mine')").bind(player.id),
+      env.DB.prepare("INSERT INTO versions (level, version, sha256, approved) VALUES ('lvl_del0000001', 1, ?, 1)").bind(sha),
+      ...[player.id, other.player.id].map((id) =>
+        env.DB.prepare("INSERT INTO scores VALUES (?, ?, 1000, 1, 1, 1, ?, 0)").bind(sha, id, `demos/${sha}/${id}/x.demo.gz`),
+      ),
+      env.DB.prepare("INSERT INTO likes VALUES (?, 'lvl_del0000001')").bind(player.id),
+      env.DB.prepare("INSERT INTO reports VALUES (?, 'lvl_del0000001')").bind(player.id),
+      env.DB.prepare("INSERT INTO rate VALUES (?, 'score', 0, 1)").bind(player.id),
+      env.DB.prepare("INSERT INTO player_ranking VALUES (?, 1000, 1, 0)").bind(player.id),
+      env.DB.prepare("UPDATE players SET banned = 1 WHERE id = ?").bind(player.id),
+    ]);
+
+    const response = await call("/me", { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(204);
+    expect((await remaining(player.id))!.n).toBe(0);
+    expect((await remaining(other.player.id))!.n).toBeGreaterThan(0);
+    await expect(requirePlayer(bearer(token), testEnv)).rejects.toMatchObject({ status: 401 });
+
+    const levels = await call("/levels?sort=new", { headers: { Authorization: `Bearer ${other.token}` } });
+    const items = (await levels.json()) as { level_id: string; author: string }[];
+    expect(items.find((l) => l.level_id === "lvl_del0000001")?.author).toBe("Deleted player");
+
+    const again = (await (await signIn("g-120", "Back")).json()) as { player: { id: string } };
+    expect(again.player.id).not.toBe(player.id);
+  });
+
+  it("rejects a request without a valid session with 401", async () => {
+    expect((await call("/me", { method: "DELETE" })).status).toBe(401);
+  });
+});
+
 describe("requireIntegrity", () => {
   const withHeaders = (token: string, n: string) => new Request("https://example.com/x", { headers: { "X-Integrity": token, "X-Nonce": n } });
 

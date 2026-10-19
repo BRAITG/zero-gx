@@ -2,13 +2,14 @@ import type { Env } from "./env";
 import { type Handler, HttpError } from "./http";
 import { getIndex, getLevels, getPlayers, postReport, putLike, runCron } from "./community";
 import { getBoard, getDemo, postOfficial, postScore } from "./scores";
-import { getNonce, postSession } from "./session";
+import { deleteMe, getNonce, postSession } from "./session";
 import { getMySubmissions, postGithub, postSubmission } from "./submissions";
 
 /** Method + path pattern -> handler. `:name` segments are captured into the handler's params. */
 const routes: [method: string, pattern: string, handler: Handler][] = [
   ["GET", "/nonce", getNonce],
   ["POST", "/session", postSession],
+  ["DELETE", "/me", deleteMe],
   ["POST", "/scores", postScore],
   ["GET", "/boards/:sha256", getBoard],
   ["GET", "/demos/:sha256/:player/:file", getDemo],
