@@ -34,6 +34,24 @@ Known limit: the demo recorder samples every second physics tick, so a run whose
 
 You need a Cloudflare account with a payment method and the Workers **Paid** plan (US$5/month). The Free plan allows 10 ms of CPU per request, and also limits cron triggers to 10 ms of CPU. Checking a 10-minute demo is estimated at 40 to 100 ms (about 1 to 2 ms per 300 to 600 frames, measured in Node, not on Workers), so score posts and submissions would fail on Free. For deploys from CI, create a Cloudflare API token (template "Edit Cloudflare Workers", plus D1 and R2 edit) and give it to `wrangler` as `CLOUDFLARE_API_TOKEN`.
 
+### Automated deploy (the normal way)
+
+The `deploy-server` job in `.github/workflows/build.yml` runs `scripts/deploy.sh` after the server tests pass on every push to `master`. The script is idempotent: it creates the D1 database `zero-gx` and the R2 bucket `zero-gx-demos` if they are missing, writes the database id into `wrangler.toml` on the runner, applies migrations, deploys, and uploads every secret that is set (one new version). The job does nothing until the repository has the secret `CLOUDFLARE_API_TOKEN`.
+
+Repository secrets of `BRAITG/zero-gx` the job reads (GitHub forbids secret names starting with `GITHUB_`, hence the `LEVELS_` names):
+
+| Repository secret | Worker secret |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | — (the deploy credential; template "Edit Cloudflare Workers" plus Account → D1 Edit and Workers R2 Storage Edit) |
+| `CLOUDFLARE_ACCOUNT_ID` | — (only needed when the token can reach several accounts) |
+| `SESSION_KEY`, `ADMIN_TOKEN` | same names |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PLAY_SERVICE_ACCOUNT` | same names |
+| `LEVELS_APP_ID`, `LEVELS_APP_KEY`, `LEVELS_APP_INSTALLATION_ID`, `LEVELS_WEBHOOK_SECRET` | `GITHUB_APP_ID`, `GITHUB_APP_KEY`, `GITHUB_INSTALLATION_ID`, `GITHUB_WEBHOOK_SECRET` |
+
+After the first deploy, set the repository variable `COMMUNITY_API` to the Worker's URL (no trailing slash) so releases register official level hashes.
+
+### Manual deploy
+
 All commands run in `server/`.
 
 1. `npm ci`, then `npx wrangler login`.
