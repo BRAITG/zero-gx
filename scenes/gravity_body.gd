@@ -120,7 +120,8 @@ func _sync_ripples() -> void:
 	material.set_shader_parameter("reference_pull", FIELD_REFERENCE_PULL)
 	material.set_shader_parameter("max_alpha", FIELD_MAX_ALPHA)
 	material.set_shader_parameter("period", ripple_period(pull))
-	material.set_shader_parameter("rings", 8.0 if preset == Preset.BLACK_HOLE else 6.0)
+	material.set_shader_parameter("phase", fposmod(position.x * 0.013 + position.y * 0.0071, 1.0))
+	material.set_shader_parameter("rings", 7.0 if preset == Preset.BLACK_HOLE else 6.0)
 	material.set_shader_parameter("tint", RIPPLE_TINT_BLACK_HOLE if preset == Preset.BLACK_HOLE else RIPPLE_TINT)
 
 
