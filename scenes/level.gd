@@ -39,7 +39,9 @@ func _ready() -> void:
 	assert(ship != null and goal != null, "%s needs one Ship and one Goal child" % name)
 	if level_id == "":
 		level_id = scene_file_path.get_file().get_basename()
-	add_child(Starfield.new())
+	var stars := Starfield.new()
+	stars.ship = ship
+	add_child(stars)
 	if level_sha256 != "":
 		_recorder = DemoRecorder.new(self)
 		demo = _recorder.demo
