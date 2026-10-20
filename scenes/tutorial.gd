@@ -71,6 +71,7 @@ func say(text: String) -> void:
 	ship.freeze = true
 	_card_label.text = text
 	_card.show()
+	Style.focus_first(_card)
 	_ok_pressed = false
 	while not _ok_pressed:
 		await get_tree().physics_frame

@@ -144,6 +144,7 @@ func _build_ui() -> void:
 	_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_slider.value_changed.connect(func(value: float) -> void: seek(int(value)))
 	bottom.add_child(_slider)
+	Style.focus_first.call_deferred(ui)  # after layout
 
 
 func _button(parent: Control, text: String, action: Callable) -> Button:
@@ -159,4 +160,10 @@ func _button(parent: Control, text: String, action: Callable) -> Button:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_back.call()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"ui_cancel"):
+		get_viewport().set_input_as_handled()
 		_back.call()

@@ -23,6 +23,14 @@ func _ready() -> void:
 	add_child(_bloom())
 
 
+## Gives keyboard and gamepad focus to the first enabled button under `root`, if any.
+func focus_first(root: Node) -> void:
+	for button: Button in root.find_children("*", "Button", true, false):
+		if button.is_visible_in_tree() and not button.disabled and button.focus_mode == Control.FOCUS_ALL:
+			button.grab_focus()
+			return
+
+
 ## Bright things (lasers, flames, the ship) glow. Only the game world blooms: HUD and menus sit
 ## on canvas layers above `background_canvas_max_layer` and stay crisp.
 func _bloom() -> WorldEnvironment:

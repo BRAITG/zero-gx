@@ -326,3 +326,125 @@ func test_result_card_takes_focus() -> void:
 	await frames(2)
 	var focus := lvl.hud.get_viewport().gui_get_focus_owner()
 	check(focus is Button and focus.text == "Retry", "the result card's first button must hold focus, not %s" % focus)
+
+
+func menu(show_training: bool) -> Control:
+	return load("res://scenes/main.gd").menu(show_training)
+
+
+## An action sent through Input, as a gamepad button or a mapped key would.
+func send_action(action: StringName, pressed := true) -> void:
+	var event := InputEventAction.new()
+	event.action = action
+	event.pressed = pressed
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()
+
+
+func focused() -> Control:
+	return tree.root.gui_get_focus_owner()
+
+
+func test_menu_opens_with_focus() -> void:
+	var main := menu(false)
+	world.add_child(main)
+	var focus := focused()
+	check(focus is Button and focus.text.begins_with("Level 01"), "the main menu must focus the first level, not %s" % focus)
+	main.free()
+	var training := menu(true)
+	world.add_child(training)
+	focus = focused()
+	check(focus is Button and focus.text.begins_with("Training 1"), "the training list must focus the first stage, not %s" % focus)
+
+
+func test_overlay_closes_on_cancel_and_restores_focus() -> void:
+	var main := menu(false)
+	world.add_child(main)
+	var settings: Button = main.find_children("*", "Button", true, false).filter(func(b: Button): return b.text == "Settings")[0]
+	settings.grab_focus()
+	settings.pressed.emit()
+	var focus := focused()
+	check(focus is Button and focus.text == "Close", "an overlay must focus Close, not %s" % focus)
+	send_action(&"ui_cancel")
+	await frames(2)
+	check(main.find_children("*", "Overlay", true, false).is_empty(), "ui_cancel must close the overlay")
+	check(focused() == settings, "focus must return to the Settings button, not %s" % focused())
+
+
+func test_overlay_keeps_focus_inside() -> void:
+	var main := menu(false)
+	world.add_child(main)
+	var overlay := Overlay.open(main, "Test")
+	for i in 8:
+		send_action(&"ui_down")
+		send_action(&"ui_down", false)
+	check(overlay.is_ancestor_of(focused()), "focus left the overlay for %s" % focused())
+
+
+func test_cancel_on_training_list_returns_to_menu() -> void:
+	var main := menu(true)
+	world.add_child(main)
+	send_action(&"ui_cancel")
+	await frames(2)
+	var scene := tree.current_scene
+	check(scene != null and scene.scene_file_path == "res://scenes/main.tscn" and not scene.training, "ui_cancel on the training list must open the main menu: %s" % scene)
+	if scene:
+		scene.free()
+		tree.current_scene = null
+
+
+func test_tutorial_ok_takes_focus() -> void:
+	var lvl := Progress.build("tutorial_1")
+	world.add_child(lvl)
+	await frames(5)
+	var focus := focused()
+	check(focus is Button and focus.text == "OK", "the caption's OK must hold focus, not %s" % focus)
+	check(lvl._card.visible, "control: the caption card must be showing")
+	send_action(&"ui_accept")
+	send_action(&"ui_accept", false)
+	await frames(2)
+	check(not lvl._card.visible, "ui_accept must press OK")
+
+
+## An Esc key press as the keyboard sends it: keycode and physical keycode both set.
+func escape() -> void:
+	for down in [true, false]:
+		var event := InputEventKey.new()
+		event.keycode = KEY_ESCAPE
+		event.physical_keycode = KEY_ESCAPE
+		event.pressed = down
+		Input.parse_input_event(event)
+		Input.flush_buffered_events()
+
+
+func test_cancel_closes_the_tuning_panel_only() -> void:
+	var lvl := level(Vector2(3000, 0))
+	await frames(2)
+	TuningPanel.open(lvl.hud)
+	check(tree.paused, "control: the panel pauses the tree")
+	escape()
+	await frames(2)
+	check(lvl.hud.find_children("*", "TuningPanel", true, false).is_empty(), "Esc must close the panel")
+	check(not tree.paused and not lvl.hud._pause.visible, "the same Esc must not open the pause card (paused %s)" % tree.paused)
+
+
+func test_held_fire_does_not_press_the_result_card() -> void:
+	var lvl := scored_level(Vector2(300, 0), {"linear_velocity": Vector2(300, 0)})
+	var space := InputEventKey.new()
+	space.keycode = KEY_SPACE
+	space.physical_keycode = KEY_SPACE
+	space.pressed = true
+	Input.parse_input_event(space)
+	Input.flush_buffered_events()
+	for i in 150:  # held through the finish: the OS repeats the key
+		var echo := space.duplicate()
+		echo.echo = true
+		Input.parse_input_event(echo)
+		Input.flush_buffered_events()
+		await frames(1)
+	check(lvl.hud._result.visible, "control: the level must have ended")
+	space.pressed = false
+	Input.parse_input_event(space)
+	Input.flush_buffered_events()
+	await frames(3)
+	check(is_instance_valid(lvl) and not lvl.is_queued_for_deletion() and lvl.hud._result.visible, "a held fire key pressed a result-card button")

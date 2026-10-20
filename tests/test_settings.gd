@@ -113,3 +113,18 @@ func test_wheel_never_binds_during_capture() -> void:
 	await frames(2)
 	check(InputMap.action_get_events(&"fire").any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_X), "capture must still be active after the wheel")
 	Settings.reset_controls()
+
+
+func test_escape_cancelling_capture_keeps_the_overlay() -> void:
+	var overlay := ControlsScreen.open(world)
+	var screen: ControlsScreen = overlay.find_child("ControlsScreen", true, false)
+	screen.capture(&"fire", true)
+	var event := key(KEY_ESCAPE)
+	event.physical_keycode = KEY_ESCAPE
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()
+	await frames(2)
+	check(is_instance_valid(overlay) and not overlay.is_queued_for_deletion(), "the Esc that cancelled the capture also closed the overlay")
+	var close: Button = overlay.find_children("*", "Button", true, false).filter(func(b): return b.text == "Close")[0]
+	check(close.is_visible_in_tree(), "control: the overlay must still show")
+	overlay.close()

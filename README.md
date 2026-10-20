@@ -61,6 +61,8 @@ The last device you use drives the ship. Every binding can be changed in **Setti
 
 Keys and sticks point the ship in the direction you press, and it holds that heading when you let go. With the mouse, the nose follows the cursor and a button fires; turn off **Mouse cursor aims** to aim and fire with a click instead.
 
+Menus work with the keyboard and a gamepad: the D-pad, left stick or arrow keys move the focus, Enter or A selects, and Esc or B closes an overlay or goes back (the main menu and the level editor ignore it). In a level, Esc or Start opens the pause card.
+
 On a touchscreen, **Controls** offers three layouts, with a diagram of the one you choose:
 
 - **One finger** (default): touch and hold to turn toward your finger and thrust.

@@ -99,6 +99,8 @@ func _list_levels() -> void:
 		_levels.add_child(button)
 	_column.reset_size()
 	_column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	if get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
+		Style.focus_first(_levels)
 
 
 func _button(text: String) -> Button:
@@ -122,6 +124,17 @@ static func menu(show_training: bool) -> Control:
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		if training:
-			get_tree().change_scene_to_node(menu(false))
+			_to_menu()
 		else:
 			get_tree().quit()
+
+
+## Esc and B go back from the training list; on the menu they do nothing (Esc must not quit).
+func _unhandled_input(event: InputEvent) -> void:
+	if training and event.is_action_pressed(&"ui_cancel"):
+		get_viewport().set_input_as_handled()
+		_to_menu()
+
+
+func _to_menu() -> void:
+	get_tree().change_scene_to_node(menu(false))
