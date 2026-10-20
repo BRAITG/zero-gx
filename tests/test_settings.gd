@@ -108,6 +108,40 @@ func test_keys_reach_reset_on_the_controls_screen() -> void:
 	overlay.close()
 
 
+func controls_screen(touch: bool) -> ControlsScreen:
+	var screen := ControlsScreen.new()
+	screen.touch_available = touch
+	world.add_child(screen)
+	return screen
+
+
+func texts(screen: Node, type: String) -> Array:
+	return screen.find_children("*", type, true, false).map(func(node): return node.text)
+
+
+func test_controls_screen_hides_touch_options_without_a_touchscreen() -> void:
+	check(ControlsScreen.new().touch_available == DisplayServer.is_touchscreen_available(), "the screen must ask the display for a touchscreen")
+	var screen := controls_screen(false)
+	var buttons := texts(screen, "Button")
+	for touch_only in ["One finger", "Stick + button", "Finger + button", "Left side", "Right side", "Fire on the left", "Fire on the right"]:
+		check(not touch_only in buttons, "'%s' is a touch option and must not show without a touchscreen" % touch_only)
+	var labels := texts(screen, "Label")
+	check(not "Touch" in labels and not "On-screen fire button" in labels and not "Fire button" in labels, "the touch rows' labels showed: %s" % [labels])
+	check("Left stick + A" in buttons and screen._mouse != null, "the other controls must stay")
+
+
+func test_controls_screen_offers_the_touch_options_with_a_touchscreen() -> void:
+	var screen := controls_screen(true)
+	var buttons := texts(screen, "Button")
+	for wanted in ["One finger", "Stick + button", "Finger + button", "Left side", "Right side"]:
+		check(wanted in buttons, "'%s' must show with a touchscreen: %s" % [wanted, buttons])
+	check(not "Fire on the right" in buttons and not "Fire on the left" in buttons, "the fire button's sides are now 'Left side' and 'Right side'")
+	check("On-screen fire button" in texts(screen, "Label"), "the fire button row needs its new label")
+	var left: Button = screen.find_children("*", "Button", true, false).filter(func(b): return b.text == "Left side")[0]
+	left.pressed.emit()
+	check(Settings.fire_side == "left", "'Left side' must set fire_side, got %s" % Settings.fire_side)
+
+
 func open_controls() -> ControlsScreen:
 	return ControlsScreen.open(world).find_child("ControlsScreen", true, false)
 

@@ -91,7 +91,7 @@ These fields are saved in `settings.cfg` under `[input]`. `ConfigFile` stores `I
 
 The Settings overlay in `main.gd` gains a **Controls** button. It opens an `Overlay` with:
 
-1. touch scheme (three options) and fire side (left/right), with a small diagram of the chosen layout;
+1. touch scheme (three options) and the on-screen fire button's side ("Left side"/"Right side"), with a small diagram of the chosen layout; both rows show only when `DisplayServer.is_touchscreen_available()`;
 2. the mouse mode toggle;
 3. gamepad preset A/B;
 4. one row per action listing its current events, with **Change** (the next key, mouse button or gamepad button replaces the binding of that device type; Esc cancels) and **Add** (appends one);
