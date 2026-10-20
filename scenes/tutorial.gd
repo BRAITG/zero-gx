@@ -6,7 +6,7 @@ extends Level
 ##                                         (sticks, keys, mouse: fire aimed within 90° of it holds it)
 ##   await until(done, text)               a caption until `done` is true
 ##   reveal_goal()                         show the goal and hand the controls back
-## Losing the ship mid-lesson beams it back to where the current step began.
+## Losing the ship ends the stage like a level, and Retry restarts it. Only Training 6's scripted close call rescues.
 
 const RING_DISTANCE := 300.0  # px on screen from the ship
 const RING_RADIUS := 56.0
@@ -23,10 +23,7 @@ const BITS := 48  # pixels the ship breaks into for the rescue
 const BIT_SIZE := 4.0
 const SCATTER := 0.35  # s the pixels burst apart before they travel
 const TRAVEL := 1.2  # s for the pixels to stream back to the start
-const WRECK_SECONDS := 1.0  # the explosion plays this long before a rescue starts
 
-## How many times the ship has been put back after dying or running dry.
-var retries := 0
 ## Seconds the current ring has been held; see `held()`.
 var held_time := 0.0
 var _caption: PanelContainer
@@ -36,7 +33,6 @@ var _card_label: Label
 var _ok_pressed := false
 var _ring: _Ring
 var _ring_direction: Variant = null  # Vector2 or Callable -> Vector2
-var _checkpoint := []  # [position, velocity, fuel] at the start of the current step
 var _goal_shown := false
 var _paused_velocity: Variant = null  # Vector2 while a `wait` ring holds the ship, for a touch on the ring
 var _step_waits := false  # the current ring pauses the ship until it is touched
@@ -68,7 +64,6 @@ func _run() -> void:
 
 
 func say(text: String) -> void:
-	_mark()
 	var velocity := ship.linear_velocity
 	ship.freeze = true
 	_card_label.text = text
@@ -89,7 +84,6 @@ func press_ok() -> void:
 
 ## `wait`: the ship holds still until the ring is first touched, so there is time to react.
 func touch_target(direction: Variant, done: Callable, text := "", wait := false) -> void:
-	_mark()
 	held_time = 0.0
 	_ring_direction = direction
 	_ring.show()
@@ -123,8 +117,6 @@ func _hold_still() -> void:
 
 
 func until(done: Callable, text := "") -> void:
-	if _checkpoint.is_empty():
-		_mark()
 	_caption_label.text = text
 	_caption.visible = text != ""
 	while not done.call():
@@ -208,31 +200,6 @@ func _physics_process(delta: float) -> void:
 ## Whether an aim direction points within RING_ASSIST_DEGREES of the way to the ring.
 static func aims_at(aim: Vector2, to_ring: Vector2) -> bool:
 	return aim != Vector2.ZERO and absf(aim.angle_to(to_ring)) <= deg_to_rad(RING_ASSIST_DEGREES)
-
-
-func _ship_lost() -> void:
-	_retry()
-
-
-func _ship_stranded() -> void:
-	_retry()
-
-
-func _retry() -> void:
-	await get_tree().create_timer(WRECK_SECONDS, false, true).timeout
-	await beam_to(_checkpoint[0])
-	ship.respawn(_checkpoint[0], _checkpoint[1], _checkpoint[2])
-	Sfx.play("power_up")
-	held_time = 0.0
-	retries += 1
-	if _step_waits:
-		for i in 2:
-			await get_tree().physics_frame  # the respawn lands on the next physics step
-		_hold_still()
-
-
-func _mark() -> void:
-	_checkpoint = [ship.global_position, ship.linear_velocity, ship.fuel]
 
 
 func _build_ui() -> void:

@@ -72,7 +72,7 @@ func _ready() -> void:
 	ship.stranded.connect(_ship_stranded)
 
 
-## Losing the ship ends the level; tutorials override these to retry the current step instead.
+## Losing the ship ends the stage, whether a level or a training.
 func _ship_lost() -> void:
 	finish(false)
 
