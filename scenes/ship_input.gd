@@ -37,10 +37,11 @@ func _ready() -> void:
 	touch.visible = scheme in TWO_HANDED
 
 
-## Releases during a pause are never seen (nor are presses), so a pause lets go of everything held;
-## the next physics tick then writes the release to the ship.
+## Releases during a pause are never seen (nor are presses), and focus loss lets go of actions
+## without sending events, so both let go of everything held; the next physics tick then writes
+## the release to the ship.
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_PAUSED:
+	if what == NOTIFICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_fire = false
 		_pointer = null
 		if touch:
@@ -83,7 +84,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event is InputEventMouseMotion:
 			_pointer = event.position
 	elif event is InputEventKey:
-		_use("keys")
+		if scheme != "mouse_aim" or _steers(event):
+			_use("keys")  # a fire key keeps the cursor aiming
 	elif event is InputEventJoypadButton or (event is InputEventJoypadMotion and absf(event.axis_value) > 0.5):
 		_use("pad")  # small stick drift must not take over from the keyboard
 	# Tracked from events, not polled: Input counts a click a GUI control consumed as pressed.
@@ -92,8 +94,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_released(&"fire"):
 		_fire = false
 	elif event.is_action_pressed(&"pause"):
-		var hud: Node = get_parent().get("hud")
-		if hud and hud.has_method("toggle_pause"):
+		var hud: Hud = get_parent().get("hud")
+		if hud:
 			hud.toggle_pause()
 			get_viewport().set_input_as_handled()  # the pause card, next in line, would resume at once
 
@@ -121,6 +123,10 @@ func _use(new_scheme: String) -> void:
 		scheme = new_scheme
 		_pointer = null
 		touch.visible = scheme in TWO_HANDED
+
+
+func _steers(event: InputEvent) -> bool:
+	return [&"steer_left", &"steer_right", &"steer_up", &"steer_down"].any(func(action: StringName) -> bool: return event.is_action(action))
 
 
 func _mouse_scheme() -> String:

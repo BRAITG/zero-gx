@@ -146,6 +146,49 @@ func test_mouse_aims_without_click() -> void:
 	check(ship.steering and not ship.thrusting, "a moving mouse must steer without firing (steering %s, thrusting %s)" % [ship.steering, ship.thrusting])
 
 
+func test_key_fire_keeps_mouse_aim() -> void:
+	var input := controlled()
+	var ship := input.ship
+	await frames(2)
+	var move := InputEventMouseMotion.new()
+	move.position = screen_centre() + Vector2(300, 0)
+	tree.root.push_input(move, true)
+	key(KEY_SPACE, true)
+	await frames(2)
+	check(input.scheme == "mouse_aim", "scheme %s after Space with the mouse aiming, expected mouse_aim" % input.scheme)
+	check(ship.steering and ship.thrusting, "the cursor must aim while Space fires (steering %s, thrusting %s)" % [ship.steering, ship.thrusting])
+	key(KEY_SPACE, false)
+
+
+## Godot lets go of held actions on focus loss without sending a release event.
+func test_focus_loss_lets_go_of_fire() -> void:
+	var input := controlled()
+	await frames(1)
+	key(KEY_SPACE, true)
+	await frames(2)
+	check(input.ship.thrusting, "control: Space must thrust")
+	Input.action_release(&"fire")  # what Input.release_pressed_events() does, unexposed to scripts
+	input.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	await frames(3)
+	check(not input.fire_held() and not input.ship.thrusting, "fire stuck after focus loss (fire %s, thrusting %s)" % [input.fire_held(), input.ship.thrusting])
+	key(KEY_SPACE, false)
+
+
+## Android sends each touch twice, as a touch and an emulated mouse press; the press is not one.
+func test_emulated_mouse_neither_aims_nor_fires_in_two_handed() -> void:
+	for touch_scheme in ["stick", "finger_button"]:
+		var input := two_handed(touch_scheme)
+		await frames(1)
+		var at := screen_centre() + Vector2(300, 0)
+		click(at, true, InputEvent.DEVICE_ID_EMULATION)
+		await frames(2)
+		check(not input.fire_held() and not input.ship.thrusting and not input.ship.steering, "%s: an emulated mouse press aimed or fired (fire %s, thrusting %s, steering %s)" % [touch_scheme, input.fire_held(), input.ship.thrusting, input.ship.steering])
+		click(at, false, InputEvent.DEVICE_ID_EMULATION)
+		input.ship.queue_free()
+		input.queue_free()
+		await frames(1)
+
+
 func test_click_on_hud_button_does_not_fire() -> void:
 	var input := controlled()
 	var hud := Hud.new()
