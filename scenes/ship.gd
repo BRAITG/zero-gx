@@ -88,8 +88,11 @@ var touch_screen: Variant = null
 var _effect_left := 0.0  # s of power effect or boost remaining
 var _wobble_phase := 0.0
 var _spin := 0.0  # rad/s left from the last glancing hit; decays with Tuning.spin_decay
-## False while a tutorial step owns the controls: ShipInput leaves the ship alone.
+## False while a tutorial's rings own a one-finger ship: ShipInput leaves it alone. The schemes
+## that aim freely (keys, pad, mouse, sticks) steer and fire regardless.
 var accept_input := true
+## Where a tutorial's `wait` ring holds the ship: motionless there, still free to turn; null lets it fly.
+var anchor: Variant = null
 var _respawn: Variant = null  # [position, velocity] to apply on the next physics step
 var _lookahead := Vector2.ZERO
 var _trauma := 0.0
@@ -178,6 +181,9 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		_respawn = null
 		return
 	var step := state.step
+	if anchor != null:  # held in place: no drift, whatever gravity does, but the turn below still runs
+		state.transform = Transform2D(state.transform.get_rotation(), anchor as Vector2)
+		state.linear_velocity = Vector2.ZERO
 	if touch_screen != null:
 		aim_point = get_canvas_transform().affine_inverse() * (touch_screen as Vector2)
 	var to_aim := aim_point - state.transform.origin
@@ -342,6 +348,7 @@ func respawn(at: Vector2, velocity: Vector2, with_fuel: float) -> void:
 	fuel = with_fuel
 	death_cause = ""
 	thrusting = false
+	anchor = null
 	_stranded_sent = false
 	_empty_time = 0.0
 	_spin = 0.0

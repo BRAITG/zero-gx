@@ -9,6 +9,6 @@ func lesson() -> void:
 	await say("Orange walls hurt. The faster you hit one, the more damage you take.")
 	await touch_target(Vector2.RIGHT, held(0.8), "Hold the ring to get moving.")
 	await until(func() -> bool: return ship.global_position.x > CORNER_WALL_X - BRAKE_DISTANCE, "Coast toward the corner.")
-	await touch_target(func() -> Vector2: return -ship.linear_velocity, func() -> bool: return not waiting() and ship.linear_velocity.length() < 150.0, "The wall is close. Brake: push against your motion.", true)
+	await touch_target(func() -> Vector2: return -motion(), func() -> bool: return not waiting() and ship.linear_velocity.length() < 150.0, "The wall is close. Brake: push against your motion.", true)
 	await say("Slow down before each corner and the walls cannot hurt you much. Watch your fuel on the way.")
 	await say("Above the corner there is a red gate. Red walls destroy your ship on contact: fly through the middle.")

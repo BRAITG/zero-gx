@@ -27,7 +27,7 @@ Today the ship has one control scheme: a finger (or a mouse click) sets where th
 | Sides | The player chooses which side holds the fire button; the other control takes the other side. |
 | Default touch mode | One finger, as today. |
 | Menus | Fully usable with a gamepad or keyboard: focus navigation, A/Enter selects, B/Esc goes back. |
-| Training rings | In any scheme other than one-finger touch, a ring counts as held while the steering points within 30° of it and fire is held. |
+| Training rings | In any scheme other than one-finger touch, a ring counts as held while fire is held and the aim (the steering, else the nose) points within 90° of it; the aim is then pulled in to the ring. Steering and firing work on their own before the goal shows. |
 | Demos and server | Unchanged. Demos record ship state, not input, so recordings and server checks do not depend on the control scheme. |
 
 ## Ship
@@ -107,11 +107,12 @@ Every screen grabs focus on its first button when it opens: the main menu, train
 
 `Tutorial` asks `ShipInput` for the active scheme. In one-finger touch, rings work as today. In every other scheme:
 
-- the ring counts as held while the steering direction is within 30° of the direction from the ship to the ring centre, and `fire` is held;
-- while held, `aim_point` is set to the ring as now, so the ship flies toward it;
+- steering and fire work on their own, also before the goal is revealed; only one-finger touch stays locked to the rings;
+- the ring counts as held while `fire` is held and the aim (the steering direction, else the ship's nose) is within 90° of the direction from the ship to the ring centre; farther off, fire just thrusts along the nose and the ring does not count;
+- while held, `aim_point` is set to the ring and the ship steers into it, over the stick, keys or cursor. `ShipInput` writes the ship's controls first each tick and `Tutorial` (physics priority 1) overrides the aim after it;
 - captions that say "touch" use scheme-specific wording, for example "Point at the ring and hold fire" instead of "Touch and hold the ring".
 
-A `wait` ring still freezes the ship until it is first held.
+A `wait` ring still holds the ship in place (`Ship.anchor`: no velocity, no drift) until it is first held, but the ship can turn meanwhile to face the ring; the stored velocity comes back on release.
 
 ## Testing
 

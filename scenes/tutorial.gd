@@ -3,6 +3,7 @@ extends Level
 ## A guided stage. Subclasses override `lesson()`, a coroutine of steps:
 ##   await say(text)                       caption + OK; the ship holds still while it shows
 ##   await touch_target(direction, done)   a ring the player must touch; holding it thrusts toward it
+##                                         (sticks, keys, mouse: fire aimed within 90° of it holds it)
 ##   await until(done, text)               a caption until `done` is true
 ##   reveal_goal()                         show the goal and hand the controls back
 ## Losing the ship mid-lesson beams it back to where the current step began.
@@ -10,7 +11,7 @@ extends Level
 const RING_DISTANCE := 300.0  # px on screen from the ship
 const RING_RADIUS := 56.0
 const SCREEN_MARGIN := 90.0
-const RING_AIM_DEGREES := 30.0  # how near the ring a stick, key or cursor must point to hold it
+const RING_ASSIST_DEGREES := 90.0  # a stick, key or cursor this near the ring, with fire held, counts as holding it
 ## Ring captions for sticks, keys and the mouse, applied in order.
 const RING_WORDS := {
 	"Touch and hold the ring": "Point at the ring and hold fire",
@@ -37,7 +38,7 @@ var _ring: _Ring
 var _ring_direction: Variant = null  # Vector2 or Callable -> Vector2
 var _checkpoint := []  # [position, velocity, fuel] at the start of the current step
 var _goal_shown := false
-var _paused_velocity: Variant = null  # Vector2 while the ship waits, frozen, for a touch on the ring
+var _paused_velocity: Variant = null  # Vector2 while a `wait` ring holds the ship, for a touch on the ring
 var _step_waits := false  # the current ring pauses the ship until it is touched
 
 
@@ -48,6 +49,7 @@ func lesson() -> void:
 
 func _ready() -> void:
 	super._ready()
+	process_physics_priority = 1  # after ShipInput, so a ring's assist overrides what it just wrote
 	goal.hide()
 	goal.set_deferred("monitoring", false)
 	ship.accept_input = false
@@ -110,9 +112,14 @@ func waiting() -> bool:
 	return _paused_velocity != null
 
 
+## What the ship moves at: while a `wait` ring holds it still, the velocity it gets back when released.
+func motion() -> Vector2:
+	return ship.linear_velocity if _paused_velocity == null else _paused_velocity
+
+
 func _hold_still() -> void:
 	_paused_velocity = ship.linear_velocity
-	ship.freeze = true
+	ship.anchor = ship.global_position
 
 
 func until(done: Callable, text := "") -> void:
@@ -176,22 +183,31 @@ func _physics_process(delta: float) -> void:
 	var top := _caption.get_global_rect().end.y + RING_RADIUS if _caption.visible else SCREEN_MARGIN  # never under the caption
 	var centre := (at + direction.normalized() * RING_DISTANCE).clamp(Vector2(SCREEN_MARGIN, top), screen - Vector2.ONE * SCREEN_MARGIN)
 	_ring.position = centre - _ring.size / 2.0
-	var holding := _ring.held
-	if not (holding or input.touches_rings()):
-		holding = aims_at(input.steer_direction(), get_viewport().canvas_transform.affine_inverse() * centre - ship.global_position) and input.fire_held()
-	ship.thrusting = holding
+	var ring_world: Vector2 = get_viewport().canvas_transform.affine_inverse() * centre
+	var assisted := false
+	if not (_ring.held or input.touches_rings()) and input.fire_held():
+		var aim := input.steer_direction()
+		if aim == Vector2.ZERO:
+			aim = Vector2.from_angle(ship.global_rotation)  # not steering: the nose is the aim
+		assisted = aims_at(aim, ring_world - ship.global_position)
+	var holding := _ring.held or assisted
+	if holding or waiting() or input.touches_rings():  # otherwise ShipInput's fire stands
+		ship.thrusting = holding
 	if holding and waiting():  # the first touch lets the ship go on
-		ship.freeze = false
+		ship.anchor = null
 		ship.linear_velocity = _paused_velocity
 		_paused_velocity = null
 	if holding:
 		held_time += delta
-		ship.aim_point = get_viewport().canvas_transform.affine_inverse() * centre
+		ship.aim_point = ring_world
+	if assisted:  # pull the aim in over the stick, keys or cursor ShipInput just set
+		ship.steering = true
+		ship.touch_screen = null
 
 
-## Whether a steering direction points within RING_AIM_DEGREES of the way to the ring.
-static func aims_at(steer: Vector2, to_ring: Vector2) -> bool:
-	return steer != Vector2.ZERO and absf(steer.angle_to(to_ring)) <= deg_to_rad(RING_AIM_DEGREES)
+## Whether an aim direction points within RING_ASSIST_DEGREES of the way to the ring.
+static func aims_at(aim: Vector2, to_ring: Vector2) -> bool:
+	return aim != Vector2.ZERO and absf(aim.angle_to(to_ring)) <= deg_to_rad(RING_ASSIST_DEGREES)
 
 
 func _ship_lost() -> void:
