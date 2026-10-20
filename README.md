@@ -91,7 +91,7 @@ Players share levels and compete on boards through a Cloudflare Worker with a D1
 
 ## Tutorials
 
-Seven guided stages (`tutorials/`, under **Training** in the main menu) teach one idea each: no friction, walls, fuel, orange and red walls, gravity, black holes, and stars. Each is a script of steps built on `scenes/tutorial.gd`. A white arrow from the ship shows its velocity in the tutorials; players can turn it on for levels in **Settings** (`scripts/settings.gd`, saved in `user://settings.cfg`). Distances and speeds are shown in metres: 10 px is 1 m.
+Seven guided stages (`tutorials/`, under **Training** in the main menu) teach one idea each: no friction, walls, fuel, orange and red walls, gravity, black holes, and stars. Each is a script of steps built on `scenes/tutorial.gd`. A white arrow from the ship shows its velocity in the tutorials; players can turn it on for levels in **Settings** (`scripts/settings.gd`, saved in `user://settings.cfg`). The faint discs that show how far each planet, black hole and star pulls can be turned off in **Settings** too. Distances and speeds are shown in metres: 10 px is 1 m.
 
 ## Level files
 

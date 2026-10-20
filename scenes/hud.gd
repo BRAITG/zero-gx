@@ -235,7 +235,7 @@ func _process(_delta: float) -> void:
 		_fuel.modulate.a = 0.25 if low and not lit else 1.0
 		_health.value = ship.health
 		_effect.text = ship.effect_text()
-		_speed.visible = Tuning.show_overlays
+		_speed.visible = Tuning.show_speedometer
 		_speed.text = speed_text(ship.linear_velocity.length())  # world frame: relative to the background
 		var left := ship.empty_seconds_left()
 		_show_countdown(left)

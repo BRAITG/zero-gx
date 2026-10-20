@@ -233,6 +233,15 @@ func test_velocity_arrow_setting() -> void:
 	check(lvl.ship.show_velocity, "the setting must turn the arrow on in levels")
 
 
+func test_gravity_field_setting() -> void:
+	check(Settings.show_gravity, "gravity fields must show by default")
+	Settings.show_gravity = false
+	var saved := ConfigFile.new()
+	saved.load(Settings.path)
+	check(not saved.get_value("display", "show_gravity", true), "the gravity setting must save")
+	Settings.show_gravity = true
+
+
 ## A training stage built without its lesson script, so no lesson coroutine outlives the test.
 func training_stage(id: String) -> Level:
 	var lvl := LevelFormat.build(LevelFormat.read(Progress.TUTORIALS_DIR + id + LevelFormat.EXTENSION))

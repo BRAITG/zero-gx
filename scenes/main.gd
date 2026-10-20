@@ -63,6 +63,14 @@ func _open_settings() -> void:
 	arrow.toggled.connect(func(_on: bool): Sfx.play("tap"))
 	o.body.add_child(arrow)
 	o.paragraph("The arrow points where your ship is going; its length shows how fast. The training stages always show it.", 20, Style.INK_DIM)
+	var fields := CheckButton.new()
+	fields.text = "Show gravity fields"
+	fields.add_theme_font_size_override("font_size", 26)
+	fields.button_pressed = Settings.show_gravity
+	fields.toggled.connect(func(on: bool): Settings.show_gravity = on)
+	fields.toggled.connect(func(_on: bool): Sfx.play("tap"))
+	o.body.add_child(fields)
+	o.paragraph("Faint discs show how far each planet, black hole and star pulls.", 20, Style.INK_DIM)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	o.body.add_child(row)

@@ -12,6 +12,11 @@ var show_velocity := false:
 	set(value):
 		show_velocity = value
 		_save()
+## Draw the gravity field discs around planets, black holes and stars.
+var show_gravity := true:
+	set(value):
+		show_gravity = value
+		_save()
 ## Sound volume, 0 (silent) to 1, applied to the master bus.
 var volume := 0.8:
 	set(value):
@@ -50,6 +55,7 @@ func load_file() -> void:
 	file.load(path)  # a missing or unreadable file keeps the defaults
 	_loading = true
 	show_velocity = _value(file, "display", "show_velocity", false)
+	show_gravity = _value(file, "display", "show_gravity", true)
 	volume = _value(file, "audio", "volume", 0.8)
 	touch_scheme = _value(file, "input", "touch_scheme", "finger", ["finger", "stick", "finger_button"])
 	fire_side = _value(file, "input", "fire_side", "right", ["left", "right"])
@@ -143,6 +149,7 @@ func _save() -> void:
 		return
 	var file := ConfigFile.new()
 	file.set_value("display", "show_velocity", show_velocity)
+	file.set_value("display", "show_gravity", show_gravity)
 	file.set_value("audio", "volume", volume)
 	file.set_value("input", "touch_scheme", touch_scheme)
 	file.set_value("input", "fire_side", fire_side)
