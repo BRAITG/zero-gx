@@ -11,7 +11,7 @@ Give Android players the first working community loop on the live server (`https
 | Play Games sign-in | The `godot-play-game-services` plugin (MIT, `godot-sdk-integrations/godot-play-game-services`), vendored into `addons/`. It signs the player in and returns a server auth code for the OAuth web client. |
 | Client | A GDScript autoload, `Community`, owns every server call, the session token and the download cache. Screens call it; it never touches UI. |
 | Play Integrity | Our own small Android plugin, `addons/zero_gx_integrity/`: one call that takes a nonce and returns a Play Integrity token from a classic request, because the server checks `requestDetails.nonce` (`server/src/verify.ts`). No Godot plugin for Play Integrity exists. |
-| Platforms | Community features show only on Android (`OS.has_feature("android")`). Desktop builds hide the Community button and Submit. |
+| Platforms | Windows, macOS and Linux stay fully supported for everything except online features: the campaign, training, My levels, the editor, test flights, local demos and file import/export. Community, Submit, boards, scores, likes and Play Games exist only on Android (`OS.has_feature("android")` plus the plugin singletons being present); desktop builds hide those buttons, never load the plugins (they are Android-only AARs), and never contact the server. This rule also binds every later community slice. |
 | In this slice | Sign-in, the Community screen (Top and New), downloading, caching and playing a community level, Submit from My levels, and submission status. |
 | Not in this slice | Scores and boards, likes, reports, the player ranking, Edit a copy, the offline score queue and the demo viewer for community runs. They follow in the next slice. |
 
