@@ -291,3 +291,18 @@ func test_erasing_a_point_of_a_closed_triangle_acts_at_once() -> void:
 	check(e.find_children("*", "Overlay", true, false).is_empty(), "a closed triangle opens no sheet")
 	var wall: Dictionary = e.doc.data.walls[0]
 	check(not wall.has("closed") and wall.points == [[1000, 1000], [0, 0]], "the triangle opens at once: %s" % [wall])
+
+
+func test_select_moves_a_ship_beside_a_planet_not_the_planet() -> void:
+	var e := editor()
+	await frames(1)
+	e.doc.place("planet", Vector2(1200, 0))
+	var radius := LevelFormat.body_value(e.doc.data.bodies[0], "radius")
+	var spot := Vector2(1200 - radius - 20, 0)  # just outside the surface, inside radius + slop
+	e.doc.move({"type": "ship", "index": 0}, spot)
+	e.select_tool("select")
+	e.press(spot)
+	e.drag(spot + Vector2(0, 500))
+	e.release(spot + Vector2(0, 500), true)
+	check(LevelDoc._v(e.doc.data.ship.position).distance_to(spot) > 400, "the ship must move: %s" % [e.doc.data.ship])
+	check(LevelDoc._v(e.doc.data.bodies[0].position) == Vector2(1200, 0), "the planet must stay: %s" % [e.doc.data.bodies])

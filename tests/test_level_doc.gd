@@ -55,6 +55,16 @@ func test_hit_move_and_undo() -> void:
 	check(doc.hit(Vector2(0, 0)).type == "ship" and doc.hit(Vector2(2050, 0)).type == "goal", "start and goal must be pickable")
 
 
+func test_ship_next_to_a_planet_is_picked_before_the_planet() -> void:
+	var doc := LevelDoc.new()
+	doc.place("planet", Vector2(1200, 0))
+	var radius := LevelFormat.body_value(doc.data.bodies[0], "radius")
+	var spot := Vector2(1200 - radius - 20, 0)  # just outside the surface, inside radius + slop
+	doc.move({"type": "ship", "index": 0}, spot)
+	check(doc.hit(spot, 40.0) == {"type": "ship", "index": 0}, "the ship beside a planet is picked: %s" % doc.hit(spot, 40.0))
+	check(doc.hit(Vector2(1200, 0), 40.0) == {"type": "body", "index": 0}, "the planet's centre is still the planet: %s" % doc.hit(Vector2(1200, 0), 40.0))
+
+
 func test_settings_and_validity() -> void:
 	var doc := LevelDoc.new()
 	check(doc.errors().is_empty(), "a new level must be valid: %s" % doc.errors())
