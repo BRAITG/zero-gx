@@ -48,4 +48,30 @@ func test_things_go_where_they_are_put_and_walls_snap() -> void:
 	e.select_tool("wall")
 	e.press(Vector2(3049, 951))
 	e.release(Vector2(3049, 951), false)
-	check(LevelDoc._v(e.doc.data.walls[1].points[0]) == Vector2(3000, 1000), "wall points snap: %s" % [e.doc.data.walls[1].points])
+	check(LevelDoc._v(e.doc.data.walls[1].points[0]) == Vector2(3050, 950), "wall points snap to 1 m: %s" % [e.doc.data.walls[1].points])
+
+
+func test_ten_metre_toggle_restores_the_coarse_snap() -> void:
+	var e := editor()
+	await frames(1)
+	e.fine_snap = false
+	e.select_tool("wall")
+	e.press(Vector2(3049, 951))
+	e.release(Vector2(3049, 951), false)
+	check(LevelDoc._v(e.doc.data.walls[0].points[0]) == Vector2(3000, 1000), "10 m snap: %s" % [e.doc.data.walls[0].points])
+
+
+func test_zoomed_out_press_near_a_wall_point_moves_only_the_point() -> void:
+	var e := editor()
+	await frames(1)
+	e.doc.add_wall_point(Vector2(5000, 3000))
+	e.doc.add_wall_point(Vector2(6000, 3000))
+	e.doc.finish_wall()
+	e._camera.zoom = Vector2.ONE * 0.2
+	e.select_tool("select")
+	e.press(Vector2(5150, 3000))  # 30 screen px from the point at zoom 0.2
+	e.drag(Vector2(5200, 3500))
+	e.release(Vector2(5200, 3500), true)
+	var points: Array = e.doc.data.walls[0].points
+	check(LevelDoc._v(points[1]) == Vector2(6000, 3000), "the other point stays: %s" % [points])
+	check(LevelDoc._v(points[0]) != Vector2(5000, 3000), "the grabbed point moves: %s" % [points])

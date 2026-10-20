@@ -12,6 +12,7 @@ const DRIFT_PER_PX := 1.0  # px/s of asteroid drift per px dragged
 const MAX_DRIFT := 400.0  # px/s
 const DRAG_START := 12.0  # screen px a finger must move before a press becomes a drag
 const GRID_COLOR := Color(1, 1, 1, 0.06)
+const FINE_GRID_COLOR := Color(1, 1, 1, 0.025)
 
 ## The editor left for a test flight: {id, doc, view}. Only one test flight runs at a time.
 static var _kept := {}
@@ -21,7 +22,7 @@ var doc: LevelDoc
 var tool := "select"
 var wall_kind := "blue"
 var pickup_kind := "thrust_up"
-var fine_snap := false
+var fine_snap := true
 
 var _camera: Camera2D
 var _preview: Node2D
@@ -86,7 +87,7 @@ func press(world: Vector2) -> void:
 	var at := _place_at(world, tool)
 	_held = {}
 	_moving = false
-	var under := doc.hit(world)
+	var under := doc.hit(world, LevelDoc.HIT_SLOP / _camera.zoom.x)
 	if tool in PLACING and not under.is_empty() and not under.type in ["wall", "wall_point"]:
 		# Something is already here: grab it instead of stacking another on top. Walls are long
 		# and thin, so things may still be placed right beside them.
@@ -97,7 +98,7 @@ func press(world: Vector2) -> void:
 		return
 	match tool:
 		"select":
-			_held = doc.hit(world)
+			_held = doc.hit(world, LevelDoc.HIT_SLOP / _camera.zoom.x)
 			if not _held.is_empty():
 				doc.begin_move()
 		"planet", "black_hole", "star":
@@ -130,7 +131,7 @@ func release(world: Vector2, was_drag: bool) -> void:
 			if not was_drag:
 				doc.add_wall_point(LevelDoc.snap(world, fine_snap), wall_kind)
 		"erase":
-			var ref := doc.hit(world)
+			var ref := doc.hit(world, LevelDoc.HIT_SLOP / _camera.zoom.x)
 			if not ref.is_empty():
 				doc.erase(ref)
 		"select":
@@ -209,21 +210,31 @@ func _refresh() -> void:
 	_marks.queue_redraw()
 
 
-func _draw_marks() -> void:
+## Grid lines `step` px apart, their corner snapped to `snap_size`, over the visible area.
+func _draw_grid(snap_size: float, step: float, color: Color) -> void:
 	var view := get_viewport_rect().size / _camera.zoom
-	var corner := (_camera.position - view / 2.0).snapped(Vector2.ONE * LevelDoc.COARSE_SNAP)
-	var step := LevelDoc.COARSE_SNAP * (1 if _camera.zoom.x >= 0.3 else 10)
+	var corner := (_camera.position - view / 2.0).snapped(Vector2.ONE * snap_size)
 	var lines := ceili(maxf(view.x, view.y) / step) + 2
 	for i in lines:
 		var x := corner.x + i * step
 		var y := corner.y + i * step
-		_marks.draw_line(Vector2(x, corner.y - step), Vector2(x, corner.y + view.y + step), GRID_COLOR, 1.0 / _camera.zoom.x)
-		_marks.draw_line(Vector2(corner.x - step, y), Vector2(corner.x + view.x + step, y), GRID_COLOR, 1.0 / _camera.zoom.x)
+		_marks.draw_line(Vector2(x, corner.y - step), Vector2(x, corner.y + view.y + step), color, 1.0 / _camera.zoom.x)
+		_marks.draw_line(Vector2(corner.x - step, y), Vector2(corner.x + view.x + step, y), color, 1.0 / _camera.zoom.x)
+
+
+func _draw_marks() -> void:
+	if LevelDoc.FINE_SNAP * _camera.zoom.x >= 10.0:
+		_draw_grid(LevelDoc.FINE_SNAP, LevelDoc.FINE_SNAP, FINE_GRID_COLOR)
+	_draw_grid(LevelDoc.COARSE_SNAP, LevelDoc.COARSE_SNAP * (1 if _camera.zoom.x >= 0.3 else 10), GRID_COLOR)
 	var width := 2.0 / _camera.zoom.x
 	for rock in doc.data.get("asteroids", []):  # drift arrows
 		if rock.has("velocity") and not rock.has("orbit"):
 			var from := LevelDoc._v(rock.position)
 			_marks.draw_line(from, from + LevelDoc._v(rock.velocity), Color(1, 1, 1, 0.6), width)
+	if tool == "select":  # rings show the wall points you can grab
+		for wall in doc.data.get("walls", []):
+			for p in wall.points:
+				_marks.draw_arc(LevelDoc._v(p), 8.0 / _camera.zoom.x, 0.0, TAU, 16, Style.ACCENT, width)
 	if doc.drawing >= 0:
 		var points: Array = doc.data.walls[doc.drawing].points
 		_marks.draw_circle(LevelDoc._v(points[0]), LevelDoc.CLOSE_DISTANCE, Color(1, 1, 1, 0.15))
@@ -246,8 +257,8 @@ func _build_ui() -> void:
 		_refresh())
 	_button(top, "Settings", _open_settings)
 	var fine := CheckButton.new()
-	fine.text = "1 m grid"
-	fine.toggled.connect(func(on: bool) -> void: fine_snap = on)
+	fine.text = "10 m grid"
+	fine.toggled.connect(func(on: bool) -> void: fine_snap = not on)
 	top.add_child(fine)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
