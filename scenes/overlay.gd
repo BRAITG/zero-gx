@@ -32,7 +32,7 @@ func close() -> void:
 	get_parent().queue_free()
 
 
-## Esc and B close it. `_unhandled_input`, so an Esc that cancels a key capture is not also this.
+## Esc and B close it. `_unhandled_input`: events a control already used (a key capture) never get here.
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed(&"ui_cancel"):
 		get_viewport().set_input_as_handled()

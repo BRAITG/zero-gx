@@ -430,6 +430,11 @@ func test_cancel_closes_the_tuning_panel_only() -> void:
 
 func test_held_fire_does_not_press_the_result_card() -> void:
 	var lvl := scored_level(Vector2(300, 0), {"linear_velocity": Vector2(300, 0)})
+	var pressed := []
+	lvl.hud.retry_requested.connect(func(): pressed.append("retry"))
+	lvl.hud.next_requested.connect(func(): pressed.append("next"))
+	lvl.hud.replay_requested.connect(func(): pressed.append("replay"))
+	lvl.hud.menu_requested.connect(func(): pressed.append("menu"))
 	var space := InputEventKey.new()
 	space.keycode = KEY_SPACE
 	space.physical_keycode = KEY_SPACE
@@ -447,4 +452,9 @@ func test_held_fire_does_not_press_the_result_card() -> void:
 	Input.parse_input_event(space)
 	Input.flush_buffered_events()
 	await frames(3)
-	check(is_instance_valid(lvl) and not lvl.is_queued_for_deletion() and lvl.hud._result.visible, "a held fire key pressed a result-card button")
+	check(pressed.is_empty(), "a held fire key pressed a result-card button: %s" % [pressed])
+
+
+func test_focused_button_is_visible() -> void:
+	var box := ThemeDB.get_default_theme().get_stylebox("focus", "Button")
+	check(box is StyleBoxFlat and box.get_border_width(SIDE_LEFT) > 0 and not box.draw_center, "a focused button must draw an outline, not %s" % box)
