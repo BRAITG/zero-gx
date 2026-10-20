@@ -100,9 +100,11 @@ var _heat_phase := 0.0  # radians of the heat pulse
 var _burn: AudioStreamPlayer
 var _trail: Line2D
 var _exhaust: CPUParticles2D
+var _tick_rotation := [0.0, 0.0]  # `rotation` at the last two physics ticks
 
 
 func _ready() -> void:
+	_tick_rotation = [rotation, rotation]
 	mass = 1.0
 	z_index = 2  # above stars, which draw over walls
 	health = hull
@@ -422,6 +424,22 @@ func velocity_arrow_length() -> float:
 	return minf(linear_velocity.length() * VELOCITY_ARROW_SCALE, VELOCITY_ARROW_MAX)
 
 
+## Where the velocity arrow ends, in the ship's own drawing space: the world direction of travel,
+## undone by the rotation the ship is drawn with.
+func velocity_arrow_tip() -> Vector2:
+	return linear_velocity.normalized().rotated(-_drawn_rotation()) * velocity_arrow_length()
+
+
+## Physics interpolation draws the ship at a rotation between its last two physics ticks; the
+## physics `rotation` is only right at a tick, and turning fast it differs from the drawn one.
+func _drawn_rotation() -> float:
+	return lerp_angle(_tick_rotation[0], _tick_rotation[1], Engine.get_physics_interpolation_fraction())
+
+
+func _physics_process(_delta: float) -> void:
+	_tick_rotation = [_tick_rotation[1], rotation]
+
+
 func _draw() -> void:
 	var nose := Vector2(RADIUS * 1.4, 0)
 	var hull := PackedVector2Array([nose, Vector2(-RADIUS, RADIUS * 0.8), Vector2(-RADIUS * 0.5, 0), Vector2(-RADIUS, -RADIUS * 0.8), nose])
@@ -437,7 +455,7 @@ func _draw() -> void:
 	draw_circle(Vector2(RADIUS * 0.35, 0), RADIUS * 0.18, Color("#3aa0ff"))
 	if show_velocity and linear_velocity.length() > 1.0:
 		# World direction: undo the ship's own rotation.
-		var tip := linear_velocity.normalized().rotated(-rotation) * velocity_arrow_length()
+		var tip := velocity_arrow_tip()
 		var arrow := Color(1, 1, 1, 0.45)
 		draw_line(Vector2.ZERO, tip, arrow, 3.0, true)
 		var back := -tip.normalized() * 14.0
