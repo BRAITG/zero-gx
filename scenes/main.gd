@@ -81,6 +81,9 @@ func _open_settings() -> void:
 	slider.value_changed.connect(show)
 	slider.value_changed.connect(func(v: float): Settings.volume = v)
 	slider.drag_ended.connect(func(_changed: bool): Sfx.play("tap"))
+	var controls := _button("Controls")
+	controls.pressed.connect(func(): ControlsScreen.open(self))
+	o.body.add_child(controls)
 
 
 func _list_levels() -> void:

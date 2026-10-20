@@ -45,3 +45,49 @@ func test_corrupt_input_section_keeps_defaults() -> void:
 	check(Settings.touch_scheme == "stick", "valid keys still load")
 	check(InputMap.action_get_events(&"fire").size() == 3, "a corrupt binding must fall back to the defaults")
 	Settings.reset_controls()
+
+
+func open_controls() -> ControlsScreen:
+	return ControlsScreen.open(world).find_child("ControlsScreen", true, false)
+
+
+func key(code: Key) -> InputEventKey:
+	var event := InputEventKey.new()
+	event.keycode = code
+	event.pressed = true
+	return event
+
+
+func test_capture_replaces_only_the_same_device_type() -> void:
+	var screen := open_controls()
+	screen.capture(&"fire", true)
+	var pad := InputEventJoypadButton.new()
+	pad.button_index = JOY_BUTTON_X
+	pad.pressed = true
+	Input.parse_input_event(pad)
+	await frames(2)
+	var fire := InputMap.action_get_events(&"fire")
+	check(fire.size() == 3, "fire events: %s" % [fire])
+	check(fire.any(func(e): return e is InputEventKey and e.physical_keycode == KEY_SPACE), "keyboard fire lost")
+	check(fire.any(func(e): return e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT), "mouse fire lost")
+	check(fire.any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_X), "X must fire")
+	check(not fire.any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A), "A must be replaced")
+	Settings.reset_controls()
+
+
+func test_capture_escape_cancels() -> void:
+	var screen := open_controls()
+	screen.capture(&"fire", true)
+	Input.parse_input_event(key(KEY_ESCAPE))
+	await frames(2)
+	var fire := InputMap.action_get_events(&"fire")
+	check(fire.size() == 3 and fire.any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A), "Esc must leave fire unchanged: %s" % [fire])
+
+
+func test_reset_restores_defaults() -> void:
+	var screen := open_controls()
+	Settings.apply_pad_preset("b")
+	var reset: Button = screen.find_children("*", "Button", true, false).filter(func(b): return b.text == "Reset to defaults")[0]
+	reset.pressed.emit()
+	check(Settings.pad_preset == "a", "preset after reset: %s" % Settings.pad_preset)
+	check(InputMap.action_get_events(&"fire").size() == 3, "fire must be back to its 3 defaults")
