@@ -1,5 +1,10 @@
 name: Build
 
+# pull_request: CI runs on every pull request. For pull requests from people without write access
+# (forks), GitHub's fork PR approval policy (Settings → Actions → General → "Require approval for all
+# external contributors") holds the run until a maintainer clicks "Approve and run" on the PR. Fork
+# runs never receive secrets: the debug APK uses a throwaway key and the Play bundle is skipped.
+
 on:
   push:
     branches: [master]
