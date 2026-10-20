@@ -26,6 +26,8 @@ jobs:
   apk:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      PLAY_UPLOAD: ${{ secrets.PLAY_SERVICE_ACCOUNT != '' }}  # step conditions cannot read secrets
     permissions:
       contents: write  # gh release create
     steps:
@@ -115,6 +117,17 @@ jobs:
           gh release create "$tag" build/zero-gx.apk build/zero-gx.aab --target "$GITHUB_SHA" --prerelease \
             --title "Zero-GX prototype r${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
             --notes "Debug-signed prototype build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Install: open this page on the phone, download zero-gx.apk, allow installs from the browser, open the file. Later builds install over this one. zero-gx.aab is the signed bundle for Google Play."
+
+      - name: Upload to Google Play internal testing
+        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && env.PLAY_UPLOAD == 'true' }}
+        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT }}
+          packageName: dev.braitg.zerogx
+          releaseFiles: build/zero-gx.aab
+          releaseName: r${{ github.run_number }}
+          track: internal
+          status: completed
 
       - name: Register official levels with the community server
         # Needs the release tag above, so it runs with the publish step. The token is scoped to this step only; a

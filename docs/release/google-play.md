@@ -42,6 +42,15 @@ The export installs the Gradle template in `android/` (ignored by git). It needs
 5. **Store listing:** text from `store/listing.md`, icon, feature graphic and screenshots from `store/`.
 6. **Closed testing:** a personal account created after 13 November 2023 must run a closed test with **at least 12 testers opted in for 14 consecutive days** before it can apply for production. Start it as soon as the forms pass review.
 
+## Automatic uploads
+
+When the repository secret `PLAY_SERVICE_ACCOUNT` holds a service-account JSON key, every published build uploads `zero-gx.aab` to the internal testing track and rolls it out (step "Upload to Google Play internal testing" in `.github/workflows/build.yml`). Without the secret the step is skipped. The same key later lets the community server call the Play Integrity API.
+
+1. In the Google Cloud console, pick or create a project and enable the **Google Play Android Developer API**.
+2. Create a service account in that project (no roles needed), then add a JSON key and download it.
+3. In the Play Console, open **Users and permissions → Invite new users**, enter the service account's email, give it the Zero-GX app with **Release to testing tracks**, and send the invitation.
+4. Store the key as the secret: `gh secret set PLAY_SERVICE_ACCOUNT -R BRAITG/zero-gx < key.json`, then delete `key.json`.
+
 ## Later
 
 - Revisit the data safety form, privacy policy and content rating (user-generated content) before community levels and rankings ship.
