@@ -112,6 +112,27 @@ func test_engine_stays_on_while_dragging() -> void:
 	check(not ship.firing, "a new press must not fire before the nose catches up")
 
 
+
+func test_steering_turns_without_firing() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO, {"steering": true, "aim_point": Vector2(0, 1000)})
+	await frames(30)
+	check(abs(wrapf(ship.rotation - PI / 2, -PI, PI)) < 0.05, "rotation %f, expected PI/2" % ship.rotation)
+	check(not ship.firing and ship.fuel == Ship.MAX_FUEL, "steering alone must not fire")
+
+
+func test_ungated_engine_fires_while_turning() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO, {"thrusting": true, "steering": true, "align_gate": false, "aim_point": Vector2(-1000, 0)})
+	await frames(2)
+	check(ship.firing, "a fire button must fire before the nose is aligned")
+
+
+func test_ungated_thrust_without_steering_holds_heading() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO, {"thrusting": true, "align_gate": false, "aim_point": Vector2(0, 1000)})
+	await frames(30)
+	check(abs(wrapf(ship.rotation, -PI, PI)) < 0.01, "fire alone turned the ship to %f" % ship.rotation)
+	check(ship.linear_velocity.x > 0, "fire alone must push along the current heading")
+
+
 func test_shake_kicks_then_settles() -> void:
 	var ship = spawn(SHIP, Vector2.ZERO)
 	var camera: Camera2D = ship.find_children("*", "Camera2D", true, false)[0]

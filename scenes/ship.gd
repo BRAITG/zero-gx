@@ -41,6 +41,10 @@ const VELOCITY_ARROW_SCALE := 0.25  # px of arrow per px/s
 const VELOCITY_ARROW_MAX := 200.0  # px
 
 var thrusting := false
+## Turn toward aim_point without thrust (a ship that steers while its engine is on a separate button).
+var steering := false
+## Engine waits until the nose has pointed within Tuning.align_degrees of the finger.
+var align_gate := true
 var aim_point := Vector2.ZERO
 ## Starting fuel; a level can give less than a full tank.
 @export var fuel := MAX_FUEL
@@ -176,7 +180,7 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		aim_point = get_canvas_transform().affine_inverse() * (_touch_screen as Vector2)
 	var to_aim := aim_point - state.transform.origin
 	var aligned := true
-	if thrusting and to_aim.length() > 1.0:  # finger up: hold heading and coast
+	if (steering or (thrusting and align_gate)) and to_aim.length() > 1.0:  # finger up: hold heading and coast
 		var turn := wrapf(to_aim.angle() - state.transform.get_rotation(), -PI, PI)
 		var rate := Tuning.boost_turn_rate if boosting else Tuning.turn_rate
 		state.angular_velocity = clampf(turn / step, -rate, rate)
@@ -187,7 +191,7 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		_spin *= exp(-step / Tuning.spin_decay)
 	var forward := Vector2.RIGHT.rotated(state.transform.get_rotation())
 	_press_aligned = thrusting and (_press_aligned or aligned)
-	firing = boosting or (thrusting and _press_aligned and fuel > 0.0)
+	firing = boosting or (thrusting and fuel > 0.0 and (_press_aligned or not align_gate))
 	if boosting:
 		state.angular_velocity += _wobble()
 		state.apply_central_force(forward * Tuning.thrust)
