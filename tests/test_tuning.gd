@@ -48,11 +48,14 @@ func test_panel_blocks_touch() -> void:
 	await frames(2)
 	var centre := tree.root.get_visible_rect().size / 2.0
 	press(centre, true)
+	await frames(1)  # ShipInput applies on the physics step
 	check(ship.thrusting, "control: a touch without the panel should thrust")
 	press(centre, false)
+	await frames(1)
 	var panel := TuningPanel.open(world)
 	check(tree.paused, "opening the panel must pause the game")
 	press(centre, true)
+	await frames(1)
 	check(not ship.thrusting, "a touch on the panel reached the ship")
 	press(centre, false)
 	panel.close()
@@ -64,6 +67,7 @@ func press(at: Vector2, down: bool) -> void:
 	event.button_index = MOUSE_BUTTON_LEFT
 	event.pressed = down
 	event.position = at
+	event.device = InputEvent.DEVICE_ID_EMULATION  # a touch, as Godot emulates it
 	tree.root.push_input(event)
 
 

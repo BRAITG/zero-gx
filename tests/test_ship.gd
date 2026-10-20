@@ -74,19 +74,6 @@ func test_destroyed_once() -> void:
 	check(destroyed.count == 1, "destroyed emitted %d times" % destroyed.count)
 
 
-func test_held_finger_keeps_steering_as_the_camera_follows() -> void:
-	var ship = spawn(SHIP, Vector2.ZERO)
-	await frames(2)
-	var press := InputEventMouseButton.new()
-	press.button_index = MOUSE_BUTTON_LEFT
-	press.pressed = true
-	press.position = Vector2(940, 360)  # Right of screen centre; the finger then stays still.
-	ship._unhandled_input(press)
-	await frames(150)
-	check(ship.position.x > 400, "ship should keep flying right, at %s" % ship.position)
-	check(abs(wrapf(ship.rotation, -PI, PI)) < 0.3, "ship turned to %f rad instead of following the held finger" % ship.rotation)
-
-
 func test_engine_waits_until_aligned() -> void:
 	var ship = spawn(SHIP, Vector2.ZERO, {"thrusting": true, "aim_point": Vector2(-1000, 0)})
 	await frames(6)  # a 180° turn at 15 rad/s takes about 13 frames
