@@ -91,3 +91,25 @@ func test_reset_restores_defaults() -> void:
 	reset.pressed.emit()
 	check(Settings.pad_preset == "a", "preset after reset: %s" % Settings.pad_preset)
 	check(InputMap.action_get_events(&"fire").size() == 3, "fire must be back to its 3 defaults")
+	var fire := InputMap.action_get_events(&"fire")
+	check(fire.any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_A), "A must fire again")
+	check(not fire.any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_DPAD_UP), "D-pad up must be gone")
+
+
+func test_wheel_never_binds_during_capture() -> void:
+	var screen := open_controls()
+	screen.capture(&"fire", true)
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+	wheel.pressed = true
+	Input.parse_input_event(wheel)
+	await frames(2)
+	var fire := InputMap.action_get_events(&"fire")
+	check(fire.size() == 3 and fire.any(func(e): return e is InputEventMouseButton and e.button_index == MOUSE_BUTTON_LEFT), "the wheel must not replace left click: %s" % [fire])
+	var pad := InputEventJoypadButton.new()
+	pad.button_index = JOY_BUTTON_X
+	pad.pressed = true
+	Input.parse_input_event(pad)
+	await frames(2)
+	check(InputMap.action_get_events(&"fire").any(func(e): return e is InputEventJoypadButton and e.button_index == JOY_BUTTON_X), "capture must still be active after the wheel")
+	Settings.reset_controls()

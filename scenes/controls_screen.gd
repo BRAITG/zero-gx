@@ -67,6 +67,8 @@ func capture(action: StringName, replace: bool) -> void:
 func _input(event: InputEvent) -> void:
 	if _capturing == &"" or not (event is InputEventKey or event is InputEventMouseButton or event is InputEventJoypadButton) or not event.is_pressed() or event.is_echo():
 		return
+	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN, MOUSE_BUTTON_WHEEL_LEFT, MOUSE_BUTTON_WHEEL_RIGHT]:
+		return  # the wheel scrolls the list; it never binds
 	get_viewport().set_input_as_handled()
 	var action := _capturing
 	_capturing = &""
