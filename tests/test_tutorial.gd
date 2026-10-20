@@ -2,6 +2,7 @@ extends "res://tests/test_case.gd"
 
 const SHIP := "res://scenes/ship.tscn"
 const GOAL := "res://scenes/goal.tscn"
+const TRAINING_4 := preload("res://tutorials/tutorial_4.gd")
 
 
 func probe(script := "res://tests/support/tutorial_probe.gd", velocity := Vector2.ZERO) -> Level:
@@ -266,6 +267,108 @@ func test_ring_assist_overrides_the_cursor_aim() -> void:
 	key(KEY_SPACE, false)
 	check(lvl.held_time > 0.2, "fire with the cursor 60 degrees off the ring counted only %f s" % lvl.held_time)
 	check(absf(wrapf(lvl.ship.rotation - to_ring, -PI, PI)) < 0.1, "the ship followed the cursor to %f rad, the ring is at %f" % [lvl.ship.rotation, to_ring])
+
+
+## Keys, the nose 80° off the ring, fire held: the engine stays off until the nose is exactly on the
+## ring, and the ship then flies straight at it.
+func test_keyboard_fire_waits_until_the_nose_is_exactly_on_the_ring() -> void:
+	var lvl := await keys_training()
+	var to_ring := ring_angle(lvl)
+	lvl.ship.rotation = to_ring + deg_to_rad(80)
+	key(KEY_SPACE, true)
+	var fired := false
+	var early := false
+	for i in 120:
+		await frames(1)
+		var err := absf(wrapf(ring_angle(lvl) - lvl.ship.rotation, -PI, PI))  # read with the engine's check
+		if lvl.ship.firing:
+			fired = true
+			early = early or err > deg_to_rad(0.5)
+		if not lvl.ring_active():
+			break
+	key(KEY_SPACE, false)
+	check(fired, "the engine never fired")
+	check(not early, "the engine fired before the nose was on the ring")
+	var velocity := lvl.ship.linear_velocity
+	check(velocity.length() > 20.0 and absf(wrapf(velocity.angle() - to_ring, -PI, PI)) < deg_to_rad(2.0), "the ship veered: velocity %s, ring at %f rad" % [velocity, to_ring])
+
+
+## A click on the ring is the gated touch scheme: it keeps the tuned gate and never the exact one.
+func test_ring_click_keeps_the_tuned_gate() -> void:
+	Settings.mouse_aims = false  # a click is a one-finger touch, as in test_touch_target_ignores_off_ring
+	var lvl = probe()
+	await frames(3)
+	lvl.ship.rotation = ring_angle(lvl) + deg_to_rad(45)
+	press(lvl.ring_centre(), true)
+	var first := -1.0  # the nose's error on the first tick the engine fires
+	var exact := false
+	for i in 30:
+		await frames(1)
+		exact = exact or lvl.ship.align_exact
+		if lvl.ship.firing:
+			first = absf(wrapf(ring_angle(lvl) - lvl.ship.rotation, -PI, PI))
+			break
+	press(lvl.ring_centre(), false)
+	check(not exact, "a click must not use the exact gate")
+	check(first >= 0.0, "the engine never fired at the ring")
+	check(first <= deg_to_rad(10.0), "a click fired at %f° off, outside the 10° gate" % rad_to_deg(first))
+
+## Training 4 played by a keyboard or a finger: the first ring is held to the right, the brake ring to the
+## left. Returns the state the moment the brake step completes: its rings, speed, and the seconds the ship
+## has left before the orange corner wall at that speed. "keys" holds D or A with Space; any other scheme
+## holds the ring as a finger would.
+func training_4_brake(scheme: String) -> Dictionary:
+	var lvl: Tutorial = Progress.build("tutorial_4")
+	world.add_child(lvl)
+	await frames(5)
+	lvl.press_ok()
+	await frames(3)
+	lvl.input.scheme = scheme
+	var outcome := {"won": null}
+	lvl.finished.connect(func(won: bool): outcome.won = won)
+	var rings := 0
+	var showing := false
+	var result := {"rings": 0, "speed": -1.0, "seconds": -1.0, "lost": false}
+	for i in 3000:
+		await frames(1)
+		if lvl.card_waiting():
+			lvl.press_ok()
+		var active := lvl.ring_active()
+		if scheme == "keys":
+			if active and not showing:
+				rings += 1
+				key(KEY_SPACE, true)
+				key(KEY_D if rings == 1 else KEY_A, true)
+			elif showing and not active:
+				key(KEY_SPACE, false)
+				key(KEY_D, false)
+				key(KEY_A, false)
+		else:
+			lvl.hold_ring(active)
+			if active and not showing:
+				rings += 1
+		if rings == 2 and showing and not active:
+			result.speed = lvl.ship.linear_velocity.length()
+			result.seconds = (TRAINING_4.CORNER_WALL_X - lvl.ship.global_position.x) / result.speed
+			break
+		showing = active
+	result.rings = rings
+	result.lost = outcome.won == false
+	return result
+
+
+func test_training_4_brake_leaves_two_seconds_to_the_corner_on_the_keyboard() -> void:
+	var r: Dictionary = await training_4_brake("keys")
+	check(r.rings == 2 and r.speed >= 0.0, "the brake ring must show and complete (rings %d)" % r.rings)
+	check(r.seconds >= 2.0, "the brake left %f s to the corner wall at %f px/s, expected 2 s or more" % [r.seconds, r.speed])
+	check(not r.lost, "the stage was lost")
+
+
+func test_training_4_brake_leaves_two_seconds_to_the_corner_by_touch() -> void:
+	var r: Dictionary = await training_4_brake("finger")
+	check(r.rings == 2 and r.speed >= 0.0, "the brake ring must show and complete by touch (rings %d)" % r.rings)
+	check(r.seconds >= 2.0, "the touch brake left %f s to the corner wall at %f px/s, expected 2 s or more" % [r.seconds, r.speed])
+	check(not r.lost, "the stage was lost")
 
 
 func test_wait_ring_lets_the_player_turn_then_fire_releases_the_ship() -> void:

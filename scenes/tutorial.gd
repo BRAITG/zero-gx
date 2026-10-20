@@ -167,6 +167,7 @@ func goal_revealed() -> bool:
 
 
 func _physics_process(delta: float) -> void:
+	ship.align_exact = false  # set again below only on a tick the assist applies
 	if _ring_direction == null:
 		return
 	var screen := get_viewport_rect().size
@@ -195,6 +196,8 @@ func _physics_process(delta: float) -> void:
 	if assisted:  # pull the aim in over the stick, keys or cursor ShipInput just set
 		ship.steering = true
 		ship.touch_screen = null
+		ship.align_gate = true  # turn onto the ring first, then fire once exactly on it
+		ship.align_exact = true
 
 
 ## Whether an aim direction points within RING_ASSIST_DEGREES of the way to the ring.
