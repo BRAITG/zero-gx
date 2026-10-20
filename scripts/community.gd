@@ -1,0 +1,244 @@
+extends Node
+## The community client: every call to the community server, the session token and the download cache. Autoloaded as `Community`. Screens call it and show what it returns; it never touches UI. Failures come back as one sentence.
+
+const NO_CONNECTION := "No connection"
+const BAD_ANSWER := "The server's answer could not be read."
+const NOT_SUBMITTABLE := "This level cannot be submitted."
+const SESSION_SECONDS := 6 * 24 * 60 * 60  # the server's sessions last 7 days; sign in again a day early
+const LEVEL_URL := "https://cdn.jsdelivr.net/gh/BRAITG/zero-gx-levels@%s/levels/%s/v%d.json"
+
+var transport: CommunityTransport
+var platform: CommunityPlatform
+## Downloaded levels (`<sha256>.json`) and the last fetched list pages.
+var dir := "user://community/"
+## The session token with its expiry, and the last known submission statuses.
+var session_path := "user://community.cfg"
+var api_url: String = ProjectSettings.get_setting("community/api_url", "https://zerogx.braitg.dev")
+
+var _http: CommunityTransport
+
+
+func _ready() -> void:
+	_http = CommunityTransport.new()
+	add_child(_http)
+	use_defaults()
+
+
+## The real transport and this device's platform; what tests restore after swapping in fakes.
+func use_defaults() -> void:
+	transport = _http
+	platform = CommunityPlatform.new()
+
+
+## Whether this device can use community at all (Android with Play Games).
+func available() -> bool:
+	return platform.available()
+
+
+func signed_in() -> bool:
+	return _token() != ""
+
+
+## Coroutine: `""` once signed in, else why not.
+func sign_in() -> String:
+	var auth: Dictionary = await platform.sign_in()
+	if auth.has("error"):
+		return auth.error
+	var nonce := await _nonce()
+	if nonce.has("error"):
+		return nonce.error
+	var proof: Dictionary = await platform.integrity(nonce.nonce)
+	if proof.has("error"):
+		return proof.error
+	var body := JSON.stringify({"authCode": auth.auth_code, "integrityToken": proof.token, "nonce": nonce.nonce}).to_utf8_buffer()
+	var reply := await _call("POST", api_url + "/session", PackedStringArray(["Content-Type: application/json"]), body)
+	if reply.has("error"):
+		return reply.error
+	if not reply.data.get("token") is String:
+		return BAD_ANSWER
+	var file := _session()  # keeps the last known statuses
+	file.set_value("session", "token", reply.data.token)
+	file.set_value("session", "expires", int(Time.get_unix_time_from_system()) + SESSION_SECONDS)
+	file.save(session_path)
+	return ""
+
+
+## Coroutine: one page of `sort` ("top" or "new"): `{"rows": Array}`, or on failure `{"error", "rows": the cached page or [], "offline": bool}`.
+func list(sort: String, page: int) -> Dictionary:
+	var cache := dir + "list_%s_%d.json" % [sort, page]
+	var reply := await _authed("GET", "/levels?sort=%s&page=%d" % [sort, page], TYPE_ARRAY)
+	if reply.has("error"):
+		var cached: Variant = _parse(FileAccess.get_file_as_bytes(cache))
+		return {"error": reply.error, "rows": cached if cached is Array else [], "offline": reply.error == NO_CONNECTION}
+	_store(cache, JSON.stringify(reply.data).to_utf8_buffer())
+	return {"rows": reply.data}
+
+
+## Where the level with this hash is (or will be) cached.
+func level_path(sha256: String) -> String:
+	return dir + sha256 + ".json"
+
+
+## Coroutine: makes sure the level of a `list` row is cached; `""` when it is there and verified, else why not. A file whose hash differs from the row's is rejected and kept nowhere.
+func download(row: Dictionary) -> String:
+	var path := level_path(row.sha256)
+	if FileAccess.file_exists(path) and CommunityWire.sha256_hex(FileAccess.get_file_as_bytes(path)) == row.sha256:
+		return ""
+	var index := await _authed("GET", "/index")
+	if index.has("error"):
+		return index.error
+	if not index.data.get("commit") is String:
+		return BAD_ANSWER
+	var file := await _call("GET", LEVEL_URL % [index.data.commit, row.level_id, row.latest], PackedStringArray(), PackedByteArray(), TYPE_PACKED_BYTE_ARRAY)
+	if file.has("error"):
+		return file.error
+	if CommunityWire.sha256_hex(file.data) != row.sha256:
+		return "The downloaded file did not match the level list."
+	return "" if _store(path, file.data) else "The level could not be saved."
+
+
+## Whether the draft `id` can go to the server: a platform with Play Games, and a finishing demo that still matches the draft.
+func can_submit(id: String) -> bool:
+	return available() and MyLevels.has_demo(id)
+
+
+## Coroutine: sends draft `id` with its demo; `""` once the server took it, else its sentence. The returned level id is kept for the draft, so a later submission becomes the next version of the same level.
+func submit(id: String) -> String:
+	if not can_submit(id):
+		return NOT_SUBMITTABLE
+	var level := LevelFormat.to_json(MyLevels.load_level(id)).to_utf8_buffer()
+	var demo := FileAccess.get_file_as_bytes(MyLevels.demo_path(id))
+	var reply := await _authed("POST", "/submissions", TYPE_DICTIONARY, _submission.bind(level, demo, level_id_of(id)))
+	if reply.has("error"):
+		return reply.error
+	if reply.data.get("level_id") is String:
+		MyLevels.set_level_id(id, reply.data.level_id)
+	return ""
+
+
+## The community level id of draft `id`, "" when it was never submitted.
+func level_id_of(id: String) -> String:
+	return MyLevels.level_id(id)
+
+
+## Coroutine: level id → `{status, version, comment}` of the player's newest submission of it. Refreshed while signed in (never signs in just for this); otherwise, or when the refresh fails, the last known ones.
+func statuses() -> Dictionary:
+	var known: Variant = _session().get_value("statuses", "last", {})
+	if not signed_in():
+		return known if known is Dictionary else {}
+	var reply := await _authed("GET", "/me/submissions", TYPE_ARRAY)
+	if reply.has("error"):
+		return known if known is Dictionary else {}
+	var fresh := {}
+	for row: Variant in reply.data:  # newest first: a level's first row is where it stands
+		if row is Dictionary and row.get("level_id") is String and not fresh.has(row.level_id):
+			fresh[row.level_id] = {"status": row.get("status"), "version": int(row.get("version", 0)), "comment": row.get("comment") if row.get("comment") is String else ""}
+	var file := _session()  # a silent sign-in may have rewritten it
+	file.set_value("statuses", "last", fresh)
+	file.save(session_path)
+	return fresh
+
+
+## Coroutine: deletes the player's community account on the server; `""` once it is gone and the session, statuses and draft level ids are cleared here too, else the sentence.
+func delete_account() -> String:
+	var reply := await _authed("DELETE", "/me", TYPE_NIL)
+	if reply.has("error"):
+		return reply.error
+	DirAccess.remove_absolute(session_path)  # holds the session and the statuses
+	for id in MyLevels.ids():
+		MyLevels.set_level_id(id, "")
+	return ""
+
+
+## The stored session token, "" when there is none or it has expired.
+func _token() -> String:
+	var file := _session()
+	var token: Variant = file.get_value("session", "token", "")
+	var expires: Variant = file.get_value("session", "expires", 0)
+	return token if token is String and (expires is int or expires is float) and expires > Time.get_unix_time_from_system() else ""
+
+
+func _session() -> ConfigFile:
+	var file := ConfigFile.new()
+	file.load(session_path)  # missing means signed out
+	return file
+
+
+func _store(path: String, bytes: PackedByteArray) -> bool:
+	DirAccess.make_dir_recursive_absolute(dir)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		return false
+	file.store_buffer(bytes)
+	return true
+
+
+func _parse(bytes: PackedByteArray) -> Variant:
+	var json := JSON.new()  # unlike parse_string, the instance parse does not log bad input
+	return json.data if json.parse(bytes.get_string_from_utf8()) == OK else null
+
+
+## A fresh one-time nonce, `{"nonce": String}` or `{"error": String}`. The server uses a nonce up when it checks it, even when the request fails, so every call that needs one fetches its own.
+func _nonce() -> Dictionary:
+	var reply := await _call("GET", api_url + "/nonce")
+	if reply.has("error"):
+		return reply
+	return reply.data if reply.data.get("nonce") is String else {"error": BAD_ANSWER}
+
+
+## One request. A 2xx answer is `{"status", "data"}` with `data` parsed as JSON of type `expect` (TYPE_NIL: no body; TYPE_PACKED_BYTE_ARRAY: the raw bytes); anything else is `{"status", "error"}` with the server's sentence.
+func _call(method: String, url: String, headers := PackedStringArray(), body := PackedByteArray(), expect := TYPE_DICTIONARY) -> Dictionary:
+	var reply: Dictionary = await transport.send(method, url, headers, body)
+	var status: int = reply.status
+	if status == 0:
+		return {"status": 0, "error": NO_CONNECTION}
+	if status < 200 or status > 299:
+		var failure: Variant = _parse(reply.body)
+		var sentence: Variant = failure.get("error") if failure is Dictionary else null
+		return {"status": status, "error": sentence if sentence is String and sentence != "" else "The server answered %d." % status}
+	var data: Variant = reply.body if expect == TYPE_PACKED_BYTE_ARRAY else _parse(reply.body)
+	return {"status": status, "data": data} if typeof(data) == expect else {"status": status, "error": BAD_ANSWER}
+
+
+## `_call` to the community server with the session. A 401 signs in again once and retries once. `build` is an optional coroutine that makes `{"headers", "body"}` (or `{"error"}`) afresh for each attempt.
+func _authed(method: String, path: String, expect := TYPE_DICTIONARY, build := Callable()) -> Dictionary:
+	var reply := await _send(method, path, expect, build)
+	if reply.status == 401:
+		var file := _session()
+		file.set_value("session", "expires", 0)  # the server no longer accepts this token
+		file.save(session_path)
+		reply = await _send(method, path, expect, build)
+	return reply
+
+
+func _send(method: String, path: String, expect: int, build: Callable) -> Dictionary:
+	if _token() == "":
+		var error := await sign_in()
+		if error != "":
+			return {"status": 0, "error": error}
+	var headers := PackedStringArray()
+	var body := PackedByteArray()
+	if build.is_valid():
+		var made: Dictionary = await build.call()
+		if made.has("error"):
+			return {"status": 0, "error": made.error}
+		headers = made.headers
+		body = made.body
+	headers.append("Authorization: Bearer " + _token())
+	return await _call(method, api_url + path, headers, body, expect)
+
+
+## The headers and multipart body of one submission attempt: a fresh nonce, and an integrity token bound to this nonce and these exact bytes.
+func _submission(level: PackedByteArray, demo: PackedByteArray, level_id: String) -> Dictionary:
+	var nonce := await _nonce()
+	if nonce.has("error"):
+		return nonce
+	var parts: Array[PackedByteArray] = [level, demo]
+	var proof: Dictionary = await platform.integrity(CommunityWire.bound_nonce(nonce.nonce, parts))
+	if proof.has("error"):
+		return proof
+	var boundary := Crypto.new().generate_random_bytes(16).hex_encode()  # random, so it cannot occur in the payload
+	return {
+		"headers": PackedStringArray(["Content-Type: multipart/form-data; boundary=" + boundary, "X-Nonce: " + nonce.nonce, "X-Integrity: " + proof.token]),
+		"body": CommunityWire.multipart({"level_id": level_id} if level_id != "" else {}, {"level": ["level.json", level], "demo": ["demo.gz", demo]}, boundary),
+	}

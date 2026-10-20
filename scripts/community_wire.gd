@@ -30,6 +30,11 @@ static func multipart(fields: Dictionary, files: Dictionary, boundary: String) -
 	return body
 
 
+## The lowercase hex SHA-256 of `bytes`: the hash that identifies a level file.
+static func sha256_hex(bytes: PackedByteArray) -> String:
+	return _sha256(bytes).hex_encode()
+
+
 static func _sha256(bytes: PackedByteArray) -> PackedByteArray:
 	var hash := HashingContext.new()
 	hash.start(HashingContext.HASH_SHA256)

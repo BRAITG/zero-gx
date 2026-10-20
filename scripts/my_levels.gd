@@ -59,7 +59,7 @@ static func export_file(id: String, path: String) -> Error:
 
 static func delete(id: String) -> void:
 	DirAccess.remove_absolute(dir + id + EXTENSION)
-	DirAccess.remove_absolute(_demo_path(id))
+	DirAccess.remove_absolute(demo_path(id))
 	var index := _index()
 	if index.has_section(id):
 		index.erase_section(id)
@@ -68,20 +68,20 @@ static func delete(id: String) -> void:
 
 ## The draft's last winning test flight, kept only while the draft is unchanged.
 static func demo(id: String) -> Demo:
-	var found := Demo.load_file(_demo_path(id))
+	var found := Demo.load_file(demo_path(id))
 	return found if found and found.frame_count() > 0 and found.level_sha256 == LevelFormat.sha256(load_level(id)) else null
 
 
 ## Whether `demo(id)` has something to show, without decoding the frames.
 static func has_demo(id: String) -> bool:
-	return Demo.peek_level_sha256(FileAccess.get_file_as_bytes(_demo_path(id))) == LevelFormat.sha256(load_level(id))
+	return Demo.peek_level_sha256(FileAccess.get_file_as_bytes(demo_path(id))) == LevelFormat.sha256(load_level(id))
 
 
 static func save_demo(id: String, run: Demo) -> void:
-	run.save(_demo_path(id))
+	run.save(demo_path(id))
 
 
-static func _demo_path(id: String) -> String:
+static func demo_path(id: String) -> String:
 	return dir + id + ".demo.gz"
 
 
@@ -93,6 +93,18 @@ static func is_completed(id: String) -> bool:
 static func mark_completed(id: String) -> void:
 	var index := _index()
 	index.set_value(id, "completed_hash", _hash(load_level(id)))
+	index.save(dir + "index.cfg")
+
+
+## The community id of a draft that was submitted, "" before its first submission; later versions of the draft are sent under it.
+static func level_id(id: String) -> String:
+	return _index().get_value(id, "level_id", "")
+
+
+## Remember the community id of `id`; "" forgets it.
+static func set_level_id(id: String, community_id: String) -> void:
+	var index := _index()
+	index.set_value(id, "level_id", community_id if community_id != "" else null)
 	index.save(dir + "index.cfg")
 
 
