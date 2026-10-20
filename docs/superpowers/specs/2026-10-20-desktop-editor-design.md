@@ -24,9 +24,10 @@ The My levels screen (`scenes/my_levels_screen.gd`) gains an **Import** button i
 
 1. Open a file dialog filtered to `*.json` and `*.json.gz`.
 2. Reject files larger than 64 KB before parsing; this is the server's submission limit.
-3. Parse with `LevelFormat.read` and check with `LevelFormat.validate`.
-4. On any error, show the errors in an overlay and save nothing.
-5. On success, save the level under a new id from `MyLevels.new_id()`. Import never overwrites an existing level.
+3. Parse with `LevelFormat.read`. The file must be a JSON object whose `format` is `"zero-gx-level"` and whose `version` is the current `LevelFormat.VERSION`.
+4. Unfinished drafts are accepted: full `LevelFormat.validate` is not required, so half-built levels can move between phone and PC. The editor shows the level's problems, and Play stays disabled until it is valid, as for any draft.
+5. On any error, show the errors in an overlay and save nothing.
+6. On success, save the level under a new id from `MyLevels.new_id()`. Import never overwrites an existing level.
 
 **Export**
 
@@ -50,6 +51,15 @@ Additions to `_unhandled_input` in `scenes/editor.gd`. The touch path does not c
 
 There is no redo and no Delete key: `LevelDoc` has no redo, and the sheet already deletes things.
 
+## Finer grid and easier wall points
+
+These apply to touch and mouse alike.
+
+- **Default snap of 1 m.** Walls, the start and the goal snap to the 1 m (10 px) step by default. The "1 m grid" toggle becomes a "10 m grid" toggle, off by default. Faint 1 m grid lines are drawn once they are at least 10 screen px apart; the 10 m lines stay.
+- **Pick radius in screen pixels.** `LevelDoc.hit` takes the pick radius as a parameter. The editor passes `HIT_SLOP` divided by the camera zoom, so a target is the same size under the finger at every zoom. Today the radius is 40 world px, which is only 20 screen px at the default zoom of 0.5.
+- **Wall points win over walls.** Wall points get 1.5 times the pick radius and are still checked first, so a near miss on a point moves the point, not the whole wall.
+- **Visible handles.** With the Select tool, every wall point shows a small ring.
+
 ## Builds
 
 New export presets: Windows (`.exe`), Linux (`.x86_64`) and macOS (`.zip`). The display is already 1280×720 landscape with `canvas_items` stretch, so a resizable desktop window scales correctly. `.github/workflows/build.yml` exports the three builds on its existing runner and attaches them to the prerelease beside the APK.
@@ -61,7 +71,8 @@ The desktop builds are not code-signed. On macOS the first launch needs right-cl
 In the existing `tests/` runner:
 
 - **Round-trip through a draft:** importing an official level and exporting it again produces a file byte-identical to the original, under a new `user_` id, with the original untouched. (`tests/test_level_format.gd` already checks that every official level is in the stable layout.)
-- **Import rejects bad files:** invalid JSON, a level that fails validation, and a file over 64 KB each leave no level saved.
+- **Import rejects bad files:** invalid JSON, a JSON value that is not an object, a wrong `format` or `version`, and a file over 64 KB each leave no level saved. An unfinished draft imports.
+- **Grid and picking:** a new wall point snaps to 1 m by default; at zoom 0.2 a press 30 screen px from a wall point picks the point, and a press on the middle of a segment picks the wall.
 - **Editor input:** right-drag pans; wheel zoom keeps the world point under the cursor fixed; `Ctrl+Z` undoes the last change.
 
 Smoke test before release: run a local desktop build, import an official level, edit it, test-fly it, and export it.
