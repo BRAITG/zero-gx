@@ -85,12 +85,13 @@ func _mouse(button: MouseButton, pressed: bool, at: Vector2) -> InputEventMouseB
 	return ev
 
 
-func _key(code: Key, command := false) -> InputEventKey:
+func _key(code: Key, command := false, shift := false) -> InputEventKey:
 	var ev := InputEventKey.new()
 	ev.keycode = code
 	ev.pressed = true
 	ev.ctrl_pressed = command  # Ctrl on Linux and Windows, Cmd on macOS: set both so the test holds on either
 	ev.meta_pressed = command
+	ev.shift_pressed = shift
 	return ev
 
 
@@ -117,6 +118,34 @@ func test_wheel_zoom_keeps_the_point_under_the_cursor() -> void:
 	check(e._to_world(cursor).distance_to(before) < 1.0, "world point under cursor moved: %s -> %s" % [before, e._to_world(cursor)])
 
 
+func test_magnify_gesture_zooms_around_the_cursor() -> void:
+	var e := editor()
+	await frames(1)
+	var cursor := Vector2(1000, 200)
+	var before: Vector2 = e._to_world(cursor)
+	var zoom_before: float = e._camera.zoom.x
+	var pinch := InputEventMagnifyGesture.new()
+	pinch.position = cursor
+	pinch.factor = 1.2
+	e._unhandled_input(pinch)
+	await frames(3)
+	check(is_equal_approx(e._camera.zoom.x, zoom_before * 1.2), "the pinch factor scales the zoom: %s -> %s" % [zoom_before, e._camera.zoom.x])
+	check(e._to_world(cursor).distance_to(before) < 1.0, "world point under cursor moved: %s -> %s" % [before, e._to_world(cursor)])
+	pinch.factor = 100.0
+	e._unhandled_input(pinch)
+	check(is_equal_approx(e._camera.zoom.x, LevelEditor.ZOOM_RANGE.y), "zoom stops at the limit: %s" % e._camera.zoom.x)
+
+
+func test_pan_gesture_pans_the_view() -> void:
+	var e := editor()
+	await frames(1)
+	var before: Vector2 = e._camera.position
+	var swipe := InputEventPanGesture.new()
+	swipe.delta = Vector2(100, -40)  # screen px; the content follows the fingers
+	e._unhandled_input(swipe)
+	check((e._camera.position - before).is_equal_approx(swipe.delta / e._camera.zoom.x), "the view moves by the swipe in world units: %s -> %s" % [before, e._camera.position])
+
+
 func test_ctrl_z_undoes_and_ctrl_s_saves() -> void:
 	var e := editor()
 	await frames(1)
@@ -127,6 +156,33 @@ func test_ctrl_z_undoes_and_ctrl_s_saves() -> void:
 	check(MyLevels.load_level(e.level_id).get("bodies", []).size() == 1, "Ctrl+S saves the planet")
 	e._unhandled_input(_key(KEY_Z, true))
 	check(e.doc.data.get("bodies", []).is_empty(), "Ctrl+Z removes the planet")
+
+
+func test_shortcuts_do_nothing_while_an_overlay_is_open() -> void:
+	var e := editor()
+	await frames(1)
+	e.select_tool("planet")
+	e.press(Vector2(3000, 0))
+	e.release(Vector2(3000, 0), false)
+	e._open_settings()
+	e._unhandled_input(_key(KEY_Z, true))
+	e._unhandled_input(_key(KEY_S, true))
+	check(e.doc.data.get("bodies", []).size() == 1, "Ctrl+Z must not undo under an open sheet")
+	check(MyLevels.load_level(e.level_id).is_empty(), "Ctrl+S must not save under an open sheet")
+	e.find_children("*", "Overlay", true, false)[0].close()
+	await frames(2)
+	e._unhandled_input(_key(KEY_Z, true))
+	check(e.doc.data.get("bodies", []).is_empty(), "Ctrl+Z works again once the sheet is closed")
+
+
+func test_shift_z_does_not_undo() -> void:
+	var e := editor()
+	await frames(1)
+	e.select_tool("planet")
+	e.press(Vector2(3000, 0))
+	e.release(Vector2(3000, 0), false)
+	e._unhandled_input(_key(KEY_Z, true, true))
+	check(e.doc.data.get("bodies", []).size() == 1, "Ctrl+Shift+Z is a redo, not an undo")
 
 
 func test_typing_in_a_text_field_is_not_a_shortcut() -> void:

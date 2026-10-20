@@ -2,7 +2,7 @@ class_name LevelEditor
 extends Node2D
 ## The in-app level editor: a tool palette over a snapping grid. One finger runs the tool; two
 ## fingers pan and pinch-zoom. Spec: docs/superpowers/specs/2026-10-16-level-editor-design.md.
-## A mouse pans with the right or middle button and zooms with the wheel; Ctrl/Cmd+Z undoes, Ctrl/Cmd+S saves, T test-flies.
+## A mouse pans with the right or middle button and zooms with the wheel; a Mac trackpad swipes to pan and pinches to zoom. Ctrl/Cmd+Z undoes, Ctrl/Cmd+S saves, T test-flies (none while a sheet is open).
 
 const PREVIEW := preload("res://scenes/level_preview.gd")
 const TOOLS := ["select", "wall", "planet", "black_hole", "star", "asteroid", "pickup", "start", "goal", "erase"]
@@ -171,11 +171,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION:
 		# A mouse on desktop: the wheel zooms; the right or middle button pans; the left acts like a finger.
 		if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and event.pressed:
-			var offset: Vector2 = event.position - get_viewport().get_visible_rect().size / 2.0  # the camera is centred on the view
-			var zoom := clampf(_camera.zoom.x * (1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9), ZOOM_RANGE.x, ZOOM_RANGE.y)
-			_camera.position += offset / _camera.zoom.x - offset / zoom  # keep the world point under the cursor still
-			_camera.zoom = Vector2.ONE * zoom
-			_marks.queue_redraw()
+			_zoom_at(1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9, event.position)
 		elif event.button_index in [MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
 			_pan_from = {"screen": event.position, "camera": _camera.position} if event.pressed else {}
 		elif event.button_index == MOUSE_BUTTON_LEFT:
@@ -188,9 +184,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_dragging = true
 		if _dragging:
 			drag(_to_world(event.position))
-	elif event is InputEventKey and event.pressed and not event.echo:
+	elif event is InputEventMagnifyGesture:
+		_zoom_at(event.factor, event.position)
+	elif event is InputEventPanGesture:
+		_camera.position += event.delta / _camera.zoom.x  # delta is in screen px (macOS), so the content follows the fingers 1:1
+		_marks.queue_redraw()
+	elif event is InputEventKey and event.pressed and not event.echo and find_children("*", "Overlay", true, false).is_empty():
 		var command: bool = event.is_command_or_control_pressed()
-		if command and event.keycode == KEY_Z:
+		if command and not event.shift_pressed and event.keycode == KEY_Z:
 			doc.undo()
 			_refresh()
 		elif command and event.keycode == KEY_S:
@@ -200,6 +201,15 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			return
 		get_viewport().set_input_as_handled()
+
+
+## Zoom by `factor`, clamped to ZOOM_RANGE, keeping the world point under the screen position `cursor` still.
+func _zoom_at(factor: float, cursor: Vector2) -> void:
+	var offset := cursor - get_viewport().get_visible_rect().size / 2.0  # the camera is centred on the view
+	var zoom := clampf(_camera.zoom.x * factor, ZOOM_RANGE.x, ZOOM_RANGE.y)
+	_camera.position += offset / _camera.zoom.x - offset / zoom
+	_camera.zoom = Vector2.ONE * zoom
+	_marks.queue_redraw()
 
 
 func _one_finger(down: bool, screen: Vector2) -> void:
