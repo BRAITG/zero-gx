@@ -87,7 +87,7 @@ Touch schemes use `InputEventScreenTouch` and `InputEventScreenDrag` for multi-t
 | `pad_preset` | `"a"`, `"b"` | `"a"` |
 | bindings | action → `Array[InputEvent]` | the `project.godot` defaults |
 
-These fields are saved in `settings.cfg` under `[input]`. `ConfigFile` stores `InputEvent` resources as text, the same format `project.godot` uses. A missing or unreadable section keeps the defaults. Applying bindings rewrites `InputMap` with `action_erase_events` and then `action_add_event`.
+These fields are saved in `settings.cfg` under `[input]`. `ConfigFile` stores `InputEvent` resources as text, the same format `project.godot` uses. Only bindings that differ from the project defaults are saved, so a default changed in a later version reaches existing players. A missing or unreadable section keeps the defaults, and so does a field whose stored value has the wrong type or is not an allowed value. Applying bindings rewrites `InputMap` with `action_erase_events` and then `action_add_event`.
 
 The Settings overlay in `main.gd` gains a **Controls** button. It opens an `Overlay` with:
 

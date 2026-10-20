@@ -23,11 +23,12 @@ func _ready() -> void:
 	add_child(_bloom())
 
 
-## Gives keyboard and gamepad focus to the first enabled button under `root`, if any.
+## Gives keyboard and gamepad focus to the first enabled button under `root`, if any, with the
+## ring hidden until the player navigates (a phone never shows it).
 func focus_first(root: Node) -> void:
 	for button: Button in root.find_children("*", "Button", true, false):
 		if button.is_visible_in_tree() and not button.disabled and button.focus_mode == Control.FOCUS_ALL:
-			button.grab_focus()
+			button.grab_focus(true)
 			return
 
 

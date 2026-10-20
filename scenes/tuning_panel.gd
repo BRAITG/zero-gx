@@ -27,7 +27,7 @@ static func open(parent: Node) -> TuningPanel:
 func close() -> void:
 	get_tree().paused = false
 	if is_instance_valid(_prior_focus) and _prior_focus.is_visible_in_tree():
-		_prior_focus.grab_focus()
+		_prior_focus.grab_focus(true)
 	get_parent().queue_free()
 
 
@@ -63,7 +63,7 @@ func _ready() -> void:
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 16)
 	rows.add_child(buttons)
-	_button(buttons, "Close", close).grab_focus()
+	_button(buttons, "Close", close).grab_focus(true)
 	_button(buttons, "Reset", _reset)
 	_overlays = CheckButton.new()
 	_overlays.text = "Debug overlays"

@@ -323,9 +323,55 @@ func test_result_card_takes_focus() -> void:
 	var lvl := level(Vector2(3000, 0))
 	await frames(2)
 	lvl.ship.take_damage(Ship.MAX_HEALTH)
-	await frames(2)
+	await frames(30)  # the card takes focus after a short delay
 	var focus := lvl.hud.get_viewport().gui_get_focus_owner()
 	check(focus is Button and focus.text == "Retry", "the result card's first button must hold focus, not %s" % focus)
+
+
+## A fire tap just after the finish must not skip the card by pressing its first button.
+func test_fire_tap_after_finish_presses_nothing() -> void:
+	var lvl := scored_level(Vector2(300, 0), {"linear_velocity": Vector2(300, 0)})
+	var pressed := []
+	lvl.hud.retry_requested.connect(func(): pressed.append("retry"))
+	lvl.hud.next_requested.connect(func(): pressed.append("next"))
+	lvl.hud.replay_requested.connect(func(): pressed.append("replay"))
+	for i in 150:
+		if lvl.hud._result.visible:
+			break
+		await frames(1)
+	check(lvl.hud._result.visible, "control: the level must have ended")
+	await frames(3)
+	for down in [true, false]:  # keycode for ui_accept, physical keycode for fire
+		var space := InputEventKey.new()
+		space.keycode = KEY_SPACE
+		space.physical_keycode = KEY_SPACE
+		space.pressed = down
+		Input.parse_input_event(space)
+		Input.flush_buffered_events()
+	await frames(3)
+	check(pressed.is_empty(), "a fire tap just after the finish pressed %s" % [pressed])
+
+
+func test_cancel_resumes_from_the_pause_card() -> void:
+	var lvl := level(Vector2(3000, 0))
+	await frames(2)
+	lvl.hud.toggle_pause()
+	check(tree.paused, "control: the pause card pauses")
+	send_action(&"ui_cancel")
+	send_action(&"ui_cancel", false)
+	await frames(1)
+	check(not tree.paused and not lvl.hud._pause.visible, "ui_cancel (B) must resume")
+
+
+func test_resume_returns_focus_to_the_caption() -> void:
+	var lvl := Progress.build("tutorial_1")
+	world.add_child(lvl)
+	await frames(5)
+	var ok := focused()
+	check(ok is Button and ok.text == "OK", "control: the caption's OK must hold focus, not %s" % ok)
+	lvl.hud.toggle_pause()
+	lvl.hud.toggle_pause()
+	check(focused() == ok, "after resuming, focus must return to OK, not %s" % focused())
 
 
 func menu(show_training: bool) -> Control:
@@ -350,6 +396,7 @@ func test_menu_opens_with_focus() -> void:
 	world.add_child(main)
 	var focus := focused()
 	check(focus is Button and focus.text.begins_with("Level 01"), "the main menu must focus the first level, not %s" % focus)
+	check(focus and not focus.has_focus(true), "a screen must open with its focus ring hidden, for phones")
 	main.free()
 	var training := menu(true)
 	world.add_child(training)

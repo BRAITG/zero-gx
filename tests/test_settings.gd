@@ -104,6 +104,7 @@ func test_keys_reach_reset_on_the_controls_screen() -> void:
 	await frames(2)
 	check(tree.root.gui_get_focus_owner() == reset, "ui_down stopped at %s, never reaching Reset" % tree.root.gui_get_focus_owner())
 	check(scroll.get_global_rect().encloses(reset.get_global_rect()), "Reset %s is outside the scroll's view %s" % [reset.get_global_rect(), scroll.get_global_rect()])
+	check(reset.has_focus(true), "navigating with keys must show the focus ring")
 	overlay.close()
 
 

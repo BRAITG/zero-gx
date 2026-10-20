@@ -81,7 +81,7 @@ func _ready() -> void:
 	_next.pressed.connect(Sfx.play.bind("tap"))
 	_next.pressed.connect(next)
 	column.add_child(_next)
-	_next.grab_focus()
+	_next.grab_focus(true)
 	card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 40)
 	card.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	card.grow_vertical = Control.GROW_DIRECTION_BEGIN

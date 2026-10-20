@@ -21,14 +21,14 @@ static func open(parent: Node, title: String) -> Overlay:
 	overlay._build(title)
 	layer.add_child(overlay)
 	parent.add_child(layer)
-	overlay._close.grab_focus()
+	overlay._close.grab_focus(true)
 	return overlay
 
 
 ## Closes, handing focus back to what had it before.
 func close() -> void:
 	if is_instance_valid(_prior_focus) and _prior_focus.is_visible_in_tree():
-		_prior_focus.grab_focus()
+		_prior_focus.grab_focus(true)
 	get_parent().queue_free()
 
 

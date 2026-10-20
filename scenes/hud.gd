@@ -15,6 +15,7 @@ const WARNING := Color("#ff5a4a")
 const METRES_PER_PX := 0.1
 const ARROW_MARGIN := 48.0  # px from the screen edge
 const GOAL_GREEN := Color(0.4, 1.0, 0.6)
+const RESULT_FOCUS_DELAY := 0.4  # s: a fire tap just after the finish must not press Next or Retry
 
 
 ## The pause card. It runs while the tree is paused, so it, not ShipInput, sees `pause` to resume.
@@ -22,7 +23,7 @@ class PauseCard extends PanelContainer:
 	signal resume_requested
 
 	func _unhandled_input(event: InputEvent) -> void:
-		if visible and event.is_action_pressed(&"pause"):
+		if visible and (event.is_action_pressed(&"pause") or event.is_action_pressed(&"ui_cancel")):
 			get_viewport().set_input_as_handled()
 			resume_requested.emit()
 
@@ -47,6 +48,7 @@ var _countdown_second := -1
 var _result: PanelContainer
 var _pause: PauseCard
 var _resume: Button
+var _prior_focus: Control  # what had focus before the pause card opened
 var _result_label: Label
 var _result_name: Label
 var _detail: Label
@@ -253,9 +255,12 @@ func toggle_pause() -> void:
 	_pause.visible = not _pause.visible
 	get_tree().paused = _pause.visible
 	if _pause.visible:
+		_prior_focus = get_viewport().gui_get_focus_owner()
 		_pause.reset_size()
 		_pause.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-		_resume.grab_focus()
+		_resume.grab_focus(true)
+	elif is_instance_valid(_prior_focus) and _prior_focus.is_visible_in_tree():
+		_prior_focus.grab_focus(true)
 
 
 func _exit_tree() -> void:
@@ -300,9 +305,13 @@ func show_result(won: bool, result: Dictionary) -> void:
 	_result.reset_size()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_result.show()
+	get_tree().create_timer(RESULT_FOCUS_DELAY).timeout.connect(_focus_result)
+
+
+func _focus_result() -> void:
 	for button: Button in _next.get_parent().get_children().filter(func(c: Node) -> bool: return c is Button):
 		if button.visible and not button.disabled:
-			button.grab_focus()
+			button.grab_focus(true)
 			break
 
 

@@ -61,7 +61,7 @@ The last device you use drives the ship. Every binding can be changed in **Setti
 
 Keys and sticks point the ship in the direction you press, and it holds that heading when you let go. With the mouse, the nose follows the cursor and a button fires; turn off **Mouse cursor aims** to aim and fire with a click instead.
 
-Menus work with the keyboard and a gamepad: the D-pad, left stick or arrow keys move the focus, Enter or A selects, and Esc or B closes an overlay or goes back (the main menu and the level editor ignore it). In a level, Esc or Start opens the pause card.
+Menus work with the keyboard and a gamepad: the D-pad, left stick or arrow keys move the focus, Enter or A selects, and Esc or B closes an overlay (the level editor's sheets too) or goes back (the main menu ignores it). In a level, Esc or Start opens the pause card, and Esc, Start or B closes it.
 
 On a touchscreen, **Controls** offers three layouts, with a diagram of the one you choose:
 
@@ -70,6 +70,8 @@ On a touchscreen, **Controls** offers three layouts, with a diagram of the one y
 - **Finger + button**: a finger anywhere aims the ship, and a round fire button sits in a bottom corner.
 
 In the last two you choose which side holds the fire button. **Change** replaces a binding of the same kind (key, mouse button or gamepad button) and **Add** gives the action one more; Esc cancels. Stick axes are set by the gamepad preset. **Reset to defaults** restores everything on the screen.
+
+While a thumb holds the virtual stick, a second finger cannot press the HUD buttons (Restart, Menu, Tune): Godot turns only the first touch into the clicks buttons need, so lift the thumb first.
 
 ## Tests
 
