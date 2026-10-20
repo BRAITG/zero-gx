@@ -2,6 +2,7 @@ class_name LevelEditor
 extends Node2D
 ## The in-app level editor: a tool palette over a snapping grid. One finger runs the tool; two
 ## fingers pan and pinch-zoom. Spec: docs/superpowers/specs/2026-10-16-level-editor-design.md.
+## A mouse pans with the right or middle button and zooms with the wheel; Ctrl/Cmd+Z undoes, Ctrl/Cmd+S saves, T test-flies.
 
 const PREVIEW := preload("res://scenes/level_preview.gd")
 const TOOLS := ["select", "wall", "planet", "black_hole", "star", "asteroid", "pickup", "start", "goal", "erase"]
@@ -37,6 +38,7 @@ var _dragging := false
 var _held: Dictionary = {}  # the ref a select drag is moving, or the asteroid being aimed
 var _view := []  # [camera position, zoom] to restore, or empty for the start
 var _moving := false  # a placing tool pressed on an existing thing, which it now drags
+var _pan_from := {}  # {"screen", "camera"} while a right or middle drag pans the view
 
 
 ## The editor for the player's level `id` (a new blank level if there is none yet).
@@ -167,17 +169,37 @@ func _unhandled_input(event: InputEvent) -> void:
 			if _dragging:
 				drag(_to_world(event.position))
 	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION:
-		# A mouse on desktop: the wheel zooms; the left button acts like a finger.
+		# A mouse on desktop: the wheel zooms; the right or middle button pans; the left acts like a finger.
 		if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and event.pressed:
-			_camera.zoom = Vector2.ONE * clampf(_camera.zoom.x * (1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9), ZOOM_RANGE.x, ZOOM_RANGE.y)
+			var offset: Vector2 = event.position - get_viewport().get_visible_rect().size / 2.0  # the camera is centred on the view
+			var zoom := clampf(_camera.zoom.x * (1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9), ZOOM_RANGE.x, ZOOM_RANGE.y)
+			_camera.position += offset / _camera.zoom.x - offset / zoom  # keep the world point under the cursor still
+			_camera.zoom = Vector2.ONE * zoom
 			_marks.queue_redraw()
+		elif event.button_index in [MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
+			_pan_from = {"screen": event.position, "camera": _camera.position} if event.pressed else {}
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			_one_finger(event.pressed, event.position)
+	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION and event.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE) and not _pan_from.is_empty():
+		_camera.position = _pan_from.camera - (event.position - _pan_from.screen) / _camera.zoom.x
+		_marks.queue_redraw()
 	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION and event.button_mask & MOUSE_BUTTON_MASK_LEFT:
 		if not _dragging and event.position.distance_to(_pressed_at) > DRAG_START:
 			_dragging = true
 		if _dragging:
 			drag(_to_world(event.position))
+	elif event is InputEventKey and event.pressed and not event.echo:
+		var command: bool = event.is_command_or_control_pressed()
+		if command and event.keycode == KEY_Z:
+			doc.undo()
+			_refresh()
+		elif command and event.keycode == KEY_S:
+			save()
+		elif not command and event.keycode == KEY_T:
+			_test()
+		else:
+			return
+		get_viewport().set_input_as_handled()
 
 
 func _one_finger(down: bool, screen: Vector2) -> void:

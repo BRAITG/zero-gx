@@ -75,3 +75,74 @@ func test_zoomed_out_press_near_a_wall_point_moves_only_the_point() -> void:
 	var points: Array = e.doc.data.walls[0].points
 	check(LevelDoc._v(points[1]) == Vector2(6000, 3000), "the other point stays: %s" % [points])
 	check(LevelDoc._v(points[0]) != Vector2(5000, 3000), "the grabbed point moves: %s" % [points])
+
+
+func _mouse(button: MouseButton, pressed: bool, at: Vector2) -> InputEventMouseButton:
+	var ev := InputEventMouseButton.new()
+	ev.button_index = button
+	ev.pressed = pressed
+	ev.position = at
+	return ev
+
+
+func _key(code: Key, command := false) -> InputEventKey:
+	var ev := InputEventKey.new()
+	ev.keycode = code
+	ev.pressed = true
+	ev.ctrl_pressed = command  # Ctrl on Linux and Windows, Cmd on macOS: set both so the test holds on either
+	ev.meta_pressed = command
+	return ev
+
+
+func test_right_drag_pans() -> void:
+	var e := editor()
+	await frames(1)
+	var before: Vector2 = e._camera.position
+	e._unhandled_input(_mouse(MOUSE_BUTTON_RIGHT, true, Vector2(600, 300)))
+	var move := InputEventMouseMotion.new()
+	move.position = Vector2(700, 300)
+	move.button_mask = MOUSE_BUTTON_MASK_RIGHT
+	e._unhandled_input(move)
+	check(e._camera.position.x < before.x, "dragging right moves the view left: %s -> %s" % [before, e._camera.position])
+	check(e.doc.data.get("bodies", []).is_empty() and e.doc.data.get("walls", []).is_empty(), "panning places nothing")
+
+
+func test_wheel_zoom_keeps_the_point_under_the_cursor() -> void:
+	var e := editor()
+	await frames(1)
+	var cursor := Vector2(1000, 200)
+	var before: Vector2 = e._to_world(cursor)
+	e._unhandled_input(_mouse(MOUSE_BUTTON_WHEEL_UP, true, cursor))
+	await frames(3)  # the canvas transform follows the camera a few frames later
+	check(e._to_world(cursor).distance_to(before) < 1.0, "world point under cursor moved: %s -> %s" % [before, e._to_world(cursor)])
+
+
+func test_ctrl_z_undoes_and_ctrl_s_saves() -> void:
+	var e := editor()
+	await frames(1)
+	e.select_tool("planet")
+	e.press(Vector2(3000, 0))
+	e.release(Vector2(3000, 0), false)
+	e._unhandled_input(_key(KEY_S, true))
+	check(MyLevels.load_level(e.level_id).get("bodies", []).size() == 1, "Ctrl+S saves the planet")
+	e._unhandled_input(_key(KEY_Z, true))
+	check(e.doc.data.get("bodies", []).is_empty(), "Ctrl+Z removes the planet")
+
+
+func test_typing_in_a_text_field_is_not_a_shortcut() -> void:
+	var id := MyLevels.new_id()
+	MyLevels.save(id, LevelFormat.read("res://levels/level_05.json"))  # a valid level, so a T that gets through really starts a flight
+	var e := LevelEditor.create(id)
+	world.add_child(e)
+	await frames(1)
+	var field := LineEdit.new()
+	e.add_child(field)
+	field.grab_focus()
+	await frames(1)
+	var typed := _key(KEY_T)
+	typed.unicode = "t".unicode_at(0)
+	tree.root.push_input(typed)
+	await frames(2)
+	check(field.text == "t", "the letter goes into the focused field: '%s'" % field.text)
+	check(not (tree.current_scene is Level), "T in a text field must not start a test flight: %s" % [tree.current_scene])
+	field.free()
