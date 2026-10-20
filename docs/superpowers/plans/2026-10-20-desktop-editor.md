@@ -16,17 +16,105 @@
 - Export writes plain `.json` in the `LevelFormat.to_json` stable layout. Import accepts `.json` and `.json.gz`.
 - Import size limit: `LevelFormat.MAX_BYTES` (65536), checked on the file before parsing.
 - Import never overwrites: every import gets `MyLevels.new_id()`.
+- Import accepts unfinished drafts: it checks size, that the file is a JSON object, `format == LevelFormat.FORMAT` and `version == LevelFormat.VERSION`; it does not require `LevelFormat.validate` to pass.
+- Editor default snap is 1 m (`LevelDoc.FINE_SNAP`, 10 px); the toggle reads "10 m grid" and is off by default.
+- Pick radius is `LevelDoc.HIT_SLOP` (40) **screen** px: the editor passes `HIT_SLOP / _camera.zoom.x` to `LevelDoc.hit`. Wall points use 1.5 times that radius.
 - The editor's touch handling (`InputEventScreenTouch`, `InputEventScreenDrag`) does not change.
 - Tests never touch the player's levels: the runner already points `MyLevels.dir` at `user://test_levels/`.
 - Desktop builds are not code-signed (macOS uses Godot's built-in ad-hoc signature only).
 
 ## Review Focus
 
-1. **Typing in a text field fires shortcuts.** Pressing `T` or `Ctrl+S` while the Settings title `LineEdit` has focus must type, not test-fly or save. `_unhandled_input` only sees keys the focused control did not consume; Task 2 pins it with a test.
+1. **Typing in a text field fires shortcuts.** Pressing `T` while the Settings title `LineEdit` has focus must type, not test-fly. `Ctrl+S` there may save: that is harmless, so the plan accepts it. `_unhandled_input` only sees keys the focused control did not consume; Task 2 pins the `T` case with a test.
 2. **Export to a name without `.json`.** A user types `my level` in the save dialog; the file written must be `my level.json` so the app's import filter finds it. Task 1 pins it.
 3. **Import of a file that is not a level** (an image, an empty file, a JSON array). No level saved, readable error shown, no crash. Task 1 pins empty, non-JSON and array.
 4. **Pan or zoom starting over a UI button.** Right-drag that starts on the top bar must not move the camera; `_unhandled_input` already skips GUI-handled events. Checked in the smoke run.
 5. **Android picker returns a `content://` URI.** `FileAccess` must open it on a real device. Not testable headless; checked in the device smoke run in Task 3.
+
+---
+
+### Task 0: Finer grid and easier wall points
+
+**Files:**
+- Modify: `scripts/level_doc.gd` (`hit`, lines 79-106; the `HIT_SLOP` comment at line 10)
+- Modify: `scenes/editor.gd` (`fine_snap` default at line 24; the three `doc.hit(world)` calls in `press` and `release`; the grid toggle in `_build_ui`; `_draw_marks`)
+- Test: `tests/test_level_doc.gd`, `tests/test_editor.gd`
+
+**Interfaces:**
+- Consumes: existing `LevelDoc.hit`, `LevelDoc.snap`, `LevelEditor.press/drag/release`, `_camera`.
+- Produces: `LevelDoc.hit(at: Vector2, slop := HIT_SLOP) -> Dictionary`. Wall points match within `slop * 1.5`; bodies, asteroids, pickups, start and segments within `slop` (bodies still add their radius; the goal keeps `Goal.RADIUS`). Later tasks call it unchanged.
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/test_level_doc.gd`:
+
+```gdscript
+func test_wall_points_win_near_misses() -> void:
+	var doc := LevelDoc.new()
+	doc.add_wall_point(Vector2(5000, 3000))
+	doc.add_wall_point(Vector2(6000, 3000))
+	doc.finish_wall()
+	check(doc.hit(Vector2(5055, 3000), 40.0).type == "wall_point", "55 px from a point is within 1.5 x 40: %s" % doc.hit(Vector2(5055, 3000), 40.0))
+	check(doc.hit(Vector2(5500, 3030), 40.0).type == "wall", "mid-segment picks the wall: %s" % doc.hit(Vector2(5500, 3030), 40.0))
+	check(doc.hit(Vector2(5500, 3100), 40.0).is_empty(), "100 px off the wall picks nothing")
+```
+
+In `tests/test_editor.gd`, change the last assertion of `test_things_go_where_they_are_put_and_walls_snap` to the 1 m default: `Vector2(3050, 950)` instead of `Vector2(3000, 1000)`, message "wall points snap to 1 m". Then add:
+
+```gdscript
+func test_ten_metre_toggle_restores_the_coarse_snap() -> void:
+	var e := editor()
+	await frames(1)
+	e.fine_snap = false
+	e.select_tool("wall")
+	e.press(Vector2(3049, 951))
+	e.release(Vector2(3049, 951), false)
+	check(LevelDoc._v(e.doc.data.walls[0].points[0]) == Vector2(3000, 1000), "10 m snap: %s" % [e.doc.data.walls[0].points])
+
+
+func test_zoomed_out_press_near_a_wall_point_moves_only_the_point() -> void:
+	var e := editor()
+	await frames(1)
+	e.doc.add_wall_point(Vector2(5000, 3000))
+	e.doc.add_wall_point(Vector2(6000, 3000))
+	e.doc.finish_wall()
+	e._camera.zoom = Vector2.ONE * 0.2
+	e.select_tool("select")
+	e.press(Vector2(5150, 3000))  # 30 screen px from the point at zoom 0.2
+	e.drag(Vector2(5200, 3500))
+	e.release(Vector2(5200, 3500), true)
+	var points: Array = e.doc.data.walls[0].points
+	check(LevelDoc._v(points[1]) == Vector2(6000, 3000), "the other point stays: %s" % [points])
+	check(LevelDoc._v(points[0]) != Vector2(5000, 3000), "the grabbed point moves: %s" % [points])
+```
+
+- [ ] **Step 2: Run tests to verify they fail**
+
+Run: `tests/run.sh`
+Expected: FAIL on `test_wall_points_win_near_misses` (`hit` takes one argument), the changed snap assertion, and `test_zoomed_out_press_near_a_wall_point_moves_only_the_point` (the whole wall moves).
+
+- [ ] **Step 3: Implement**
+
+- `scripts/level_doc.gd`: `hit(at: Vector2, slop := HIT_SLOP)` with wall points at `slop * 1.5` and everything else at `slop`; update the `HIT_SLOP` comment to say it is screen px, scaled by the editor's zoom. Keep the order: wall points first.
+- `scenes/editor.gd`: `var fine_snap := true`. Every `doc.hit(world)` passes `LevelDoc.HIT_SLOP / _camera.zoom.x`. The `CheckButton` reads "10 m grid", starts unpressed, and its `toggled(on)` sets `fine_snap = not on`.
+- `_draw_marks`: when `LevelDoc.FINE_SNAP * _camera.zoom.x >= 10.0`, also draw 1 m lines with a new `const FINE_GRID_COLOR := Color(1, 1, 1, 0.025)`, same loop shape as the 10 m lines. When `tool == "select"`, draw a ring of radius `8.0 / _camera.zoom.x` in `Style.ACCENT` at every wall point.
+- Header comment of `scenes/editor.gd`: no change needed for this task.
+
+- [ ] **Step 4: Run tests to verify they pass**
+
+Run: `tests/run.sh`
+Expected: all tests PASS, exit 0.
+
+- [ ] **Step 5: Smoke**
+
+Run: `godot --path .` → My levels → New level. Wall tool: points land on the 1 m step; at full zoom faint 1 m lines show. Select tool: rings on wall points; at the most zoomed-out view a slightly-off tap on a point moves only that point.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add scripts/level_doc.gd scenes/editor.gd tests/test_level_doc.gd tests/test_editor.gd
+git commit -m "feat(editor): 1 m snap by default and zoom-independent picking of wall points"
+```
 
 ---
 
@@ -70,7 +158,8 @@ func test_import_rejects_bad_files() -> void:
 		"user://bad_empty.json": "",
 		"user://bad_text.json": "not json",
 		"user://bad_array.json": "[1, 2]",
-		"user://bad_level.json": '{"format": "zero-gx-level", "version": 1}',
+		"user://bad_format.json": '{"format": "other-game", "version": 1}',
+		"user://bad_version.json": '{"format": "zero-gx-level", "version": 999}',
 		"user://bad_big.json": "x".repeat(LevelFormat.MAX_BYTES + 1),
 	}
 	for path: String in cases:
@@ -80,6 +169,15 @@ func test_import_rejects_bad_files() -> void:
 		check(not MyLevels.import_file(path).is_empty(), "%s must be rejected" % path)
 		DirAccess.remove_absolute(path)
 	check(MyLevels.ids().is_empty(), "nothing saved: %s" % MyLevels.ids())
+
+
+func test_import_accepts_an_unfinished_draft() -> void:
+	var draft := LevelFormat.read("res://levels/level_05.json")
+	draft.title = ""  # fails validation, as a half-built level may
+	LevelFormat.write("user://draft.json", draft)
+	check(MyLevels.import_file("user://draft.json").is_empty(), "a draft must import")
+	check(MyLevels.ids().size() == 1 and not LevelFormat.validate(MyLevels.load_level(MyLevels.ids()[0])).is_empty(), "saved as the invalid draft it is")
+	DirAccess.remove_absolute("user://draft.json")
 
 
 func test_export_adds_json_extension() -> void:
@@ -96,7 +194,7 @@ Expected: FAIL, script error `Static function "import_file()" not found`.
 
 - [ ] **Step 3: Implement `import_file` and `export_file` in `scripts/my_levels.gd`**
 
-`import_file`: if the file is missing or `FileAccess.get_file_as_bytes(path).size() > LevelFormat.MAX_BYTES`, return one error (`"file is larger than 65536 bytes"` / `"file cannot be read"`) without parsing. Then `LevelFormat.read`; an empty Dictionary returns `["not a Zero-GX level"]`; otherwise return `LevelFormat.validate(data)` if non-empty, else `save(new_id(), data)` and return empty. `export_file`: `LevelFormat.write(path if path.ends_with(".json") else path + ".json", load_level(id))`.
+`import_file`: if the file is missing or `FileAccess.get_file_as_bytes(path).size() > LevelFormat.MAX_BYTES`, return one error (`"file is larger than 65536 bytes"` / `"file cannot be read"`) without parsing. Then `LevelFormat.read`; an empty Dictionary, or `format != LevelFormat.FORMAT`, returns `["not a Zero-GX level"]`; `version != LevelFormat.VERSION` returns `["made for a different version of Zero-GX"]`; otherwise `save(new_id(), data)` and return empty. Do not call `LevelFormat.validate`. `export_file`: `LevelFormat.write(path if path.ends_with(".json") else path + ".json", load_level(id))`.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -268,7 +366,7 @@ Expected: run succeeds; the artifact `zero-gx-apk` lists the APK, AAB and three 
 
 - [ ] **Step 6: Android device smoke** (author, on a phone, with the CI APK)
 
-My levels → Export a level to Drive → Import it back from Drive → a second copy appears. Covers Review Focus 5.
+My levels → Export a level to Downloads → Import it back from Downloads → a second copy appears. Covers Review Focus 5.
 
 - [ ] **Step 7: Commit**
 

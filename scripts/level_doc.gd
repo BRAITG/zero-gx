@@ -6,8 +6,8 @@ extends RefCounted
 
 const FINE_SNAP := 10.0  # px: 1 m
 const COARSE_SNAP := 100.0  # px: 10 m
-const CLOSE_DISTANCE := 40.0  # px: tapping this near a wall's first point closes it
-const HIT_SLOP := 40.0  # px of finger tolerance when picking things
+const CLOSE_DISTANCE := 20.0  # screen px: the editor divides it by the zoom; tapping this near a wall's first point closes it
+const HIT_SLOP := 40.0  # screen px of finger tolerance when picking things; the editor scales it by zoom
 const ORBIT_SPEED := 0.8  # rad/s for a new orbiting asteroid
 const UNDO_LIMIT := 50
 
@@ -55,14 +55,14 @@ func place(kind: String, at: Vector2) -> Dictionary:
 
 ## Add a point to the wall being drawn, starting a new wall of `kind` if none is. Tapping near
 ## the first point of a wall with three or more points closes it and ends the wall.
-func add_wall_point(at: Vector2, kind := "blue") -> void:
+func add_wall_point(at: Vector2, kind := "blue", close := CLOSE_DISTANCE) -> void:
 	_remember()
 	if drawing < 0:
 		data.get_or_add("walls", []).append({"kind": kind, "points": [_p(at)]})
 		drawing = data.walls.size() - 1
 		return
 	var wall: Dictionary = data.walls[drawing]
-	if wall.points.size() >= 3 and _v(wall.points[0]).distance_to(at) <= CLOSE_DISTANCE:
+	if wall.points.size() >= 3 and _v(wall.points[0]).distance_to(at) <= close:
 		wall.closed = true
 		drawing = -1
 		return
@@ -77,30 +77,31 @@ func finish_wall() -> void:
 
 
 ## The thing under `at`, nearest first in this order: wall points, bodies, asteroids, pickups,
-## start, goal, wall segments. Empty when nothing is there.
-func hit(at: Vector2) -> Dictionary:
+## start, goal, wall segments. Empty when nothing is there. `slop` is the pick tolerance in world
+## px; wall points get 1.5 x slop so they win near misses.
+func hit(at: Vector2, slop := HIT_SLOP) -> Dictionary:
 	var walls: Array = data.get("walls", [])
 	for i in walls.size():
 		for k in walls[i].points.size():
-			if _v(walls[i].points[k]).distance_to(at) <= HIT_SLOP:
+			if _v(walls[i].points[k]).distance_to(at) <= slop * 1.5:
 				return {"type": "wall_point", "index": i, "point": k}
 	var bodies: Array = data.get("bodies", [])
 	for i in bodies.size():
-		if _v(bodies[i].position).distance_to(at) <= LevelFormat.body_value(bodies[i], "radius") + HIT_SLOP:
+		if _v(bodies[i].position).distance_to(at) <= LevelFormat.body_value(bodies[i], "radius") + slop:
 			return {"type": "body", "index": i}
 	for type: String in ["asteroid", "pickup"]:
 		var list: Array = data.get(type + "s", [])
 		for i in list.size():
-			if _v(list[i].position).distance_to(at) <= HIT_SLOP:
+			if _v(list[i].position).distance_to(at) <= slop:
 				return {"type": type, "index": i}
-	if _v(data.ship.position).distance_to(at) <= HIT_SLOP:
+	if _v(data.ship.position).distance_to(at) <= slop:
 		return {"type": "ship", "index": 0}
 	if _v(data.goal.position).distance_to(at) <= Goal.RADIUS:
 		return {"type": "goal", "index": 0}
 	for i in walls.size():
 		var points: Array = walls[i].points
 		for k in points.size() - 1:
-			if Geometry2D.get_closest_point_to_segment(at, _v(points[k]), _v(points[k + 1])).distance_to(at) <= HIT_SLOP:
+			if Geometry2D.get_closest_point_to_segment(at, _v(points[k]), _v(points[k + 1])).distance_to(at) <= slop:
 				return {"type": "wall", "index": i}
 	return {}
 
