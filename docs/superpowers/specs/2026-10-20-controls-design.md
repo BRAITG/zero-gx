@@ -37,7 +37,7 @@ Today the ship has one control scheme: a finger (or a mouse click) sets where th
 - `steering: bool`: turn toward `aim_point` without firing.
 - `align_gate: bool`: fire only once the nose is within `Tuning.align_degrees` of `aim_point`. Defaults to `true`.
 
-In `_integrate_forces` the ship turns while `steering or thrusting`. The pressed-and-aligned latch (`_press_aligned`) applies only when `align_gate` is true; otherwise `firing = boosting or (thrusting and fuel > 0.0)`. The ship's `_unhandled_input` moves to the input layer. `accept_input` stays on the ship and the input layer honours it.
+In `_integrate_forces` the ship turns while `steering or (thrusting and align_gate)`, so a fire button alone never turns the ship toward a stale aim point, while the existing finger, autopilot and tests keep working. The pressed-and-aligned latch (`_press_aligned`) applies only when `align_gate` is true; otherwise `firing = boosting or (thrusting and fuel > 0.0)`. The ship's `_unhandled_input` moves to the input layer. `accept_input` stays on the ship and the input layer honours it.
 
 ## Input layer
 
