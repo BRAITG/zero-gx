@@ -77,6 +77,7 @@
   - `Community.download(row: Dictionary) -> String` (`""` when the file is cached and verified).
   - `Community.can_submit(id: String) -> bool`, `Community.submit(id: String) -> String`, `Community.statuses() -> Dictionary` (level_id → `{status, version, comment}`; the last known statuses are kept in `session_path`).
   - `Community.level_id_of(id: String) -> String` (from `MyLevels`' `index.cfg`, key `level_id`; `""` if never submitted).
+  - `Community.delete_account() -> String` (coroutine: `DELETE /me`; on success clears the stored session, statuses and `level_id`s, returns `""`; else the error sentence). Required by `PRIVACY.md` ("delete your community account at any time in the game, from the community screen") and Google Play's account-deletion policy.
 
 - [ ] **Step 1: Write the fakes.** `FakeTransport` answers from a queue of `{method, path_prefix, status, body}` and records every request (method, url, headers, body). `FakePlatform` returns `{"auth_code": "test:p1:Pilot"}` and `{"token": "ok:" + nonce}`, with switches to fail either.
 - [ ] **Step 2: Write the failing tests** in `tests/test_community.gd`:
@@ -87,6 +88,7 @@
   - Submit: the multipart body carries exactly the draft's `to_json` bytes and the demo file bytes; `X-Integrity` is `ok:` + `bound_nonce(nonce, [level, demo])`; the returned `level_id` is stored and sent on the next submit; a server error text (for example 429) comes back as the result sentence; a failed submit fetches a new nonce on the next try.
   - `can_submit` is false for a draft without a matching demo, and false when `available()` is false.
   - `statuses()` maps `GET /me/submissions` rows and falls back to the last known ones offline.
+  - `delete_account()` sends `DELETE /me` with the session, then `signed_in()` is false and `statuses()` is empty; a failure keeps the session and returns the server's sentence.
 - [ ] **Step 3: Run them.** `TEST_FILTER=test_community` fails (no `Community`).
 - [ ] **Step 4: Implement.** `CommunityTransport` uses one `HTTPRequest` child per call with `request_raw`, awaiting `request_completed`. Use `ConfigFile` for `session_path`. Every public coroutine returns the shapes above; no UI.
 - [ ] **Step 5: Run the tests.** All pass; then the full suite, which must stay clean on desktop (the base platform is unavailable, so `Community` makes no calls).
@@ -140,6 +142,7 @@
   - Community lists Top rows (title, `vN`, author, likes); New switches the sort; More asks for page 1; offline with no cache shows "No connection" and no rows.
   - Play on a row downloads, then opens `community_<sha256>`, which builds from the cached file; a rejected download shows the spec's sentence and opens nothing.
   - My levels: Submit shows only for a completed draft with a matching demo; after a submit the row shows "Pending"; `statuses()` rows map to "Pending", "Approved vN" and "Rejected: <comment>"; without an available platform neither Submit nor statuses show.
+  - Community has a **Delete my community account** button (shown only when signed in) that opens a confirmation `Overlay` ("This removes your scores, likes, reports and your name from Zero-GX's servers. Levels you shared stay, shown as by Deleted player."); confirming calls `delete_account()` and returns to the main menu; cancelling sends nothing.
 - [ ] **Step 2: Run them.** `TEST_FILTER=test_community_screens` fails.
 - [ ] **Step 3: Implement the screens.** Follow `my_levels_screen.gd`'s layout, buttons and focus conventions. Sign-in happens on the first tap of Community, or on Submit when signed out, with the error shown in an `Overlay`.
 - [ ] **Step 4: Run the tests.** They pass; then the full suite.
