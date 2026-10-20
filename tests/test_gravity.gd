@@ -89,6 +89,25 @@ func test_field_opacity_follows_pull() -> void:
 	check(planet.field_alpha(100) > before, "the planet gravity slider must show in the field")
 
 
+func test_ripple_period_follows_pull() -> void:
+	var planet: float = GravityBody.ripple_period(PLANET_PULL)
+	var hole: float = GravityBody.ripple_period(GravityBody.PRESETS[GravityBody.Preset.BLACK_HOLE][1])
+	check(hole < planet, "a stronger pull must ripple faster: %f vs %f" % [hole, planet])
+	check(GravityBody.ripple_period(1e9) == 0.6 and GravityBody.ripple_period(0.0) == 4.0, "period must stay within 0.6-4 s")
+
+
+func test_ripples_follow_setting_and_tuning() -> void:
+	var planet: GravityBody = spawn(GRAVITY_BODY, Vector2.ZERO)
+	var ripples: Sprite2D = planet.get_node("Ripples")
+	var before: float = ripples.material.get_shader_parameter("surface_pull")
+	Tuning.set_value("planet_gravity", 2.0)
+	check(is_equal_approx(ripples.material.get_shader_parameter("surface_pull"), 2.0 * before), "ripples must follow planet_gravity")
+	Settings.show_gravity = false
+	check(not ripples.visible, "ripples must hide when the field setting is off")
+	Settings.show_gravity = true
+	check(ripples.visible, "ripples must show when the field setting is on")
+
+
 func test_black_hole_gravity_multiplier() -> void:
 	Tuning.set_value("black_hole_gravity", 2.0)
 	spawn(GRAVITY_BODY, Vector2.ZERO, {"preset": GravityBody.Preset.BLACK_HOLE})
