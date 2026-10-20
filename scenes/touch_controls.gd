@@ -26,6 +26,16 @@ func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_IGNORE
 
 
+## Lets go of every touch, for when the tree pauses and their lifts would never be seen.
+func release() -> void:
+	fire = false
+	direction = Vector2.ZERO
+	aim_screen = null
+	_steer_index = -1
+	_fire_index = -1
+	queue_redraw()
+
+
 func _input(event: InputEvent) -> void:
 	if Settings.touch_scheme == "finger" or not (event is InputEventScreenTouch or event is InputEventScreenDrag):
 		return

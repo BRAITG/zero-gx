@@ -16,6 +16,17 @@ const METRES_PER_PX := 0.1
 const ARROW_MARGIN := 48.0  # px from the screen edge
 const GOAL_GREEN := Color(0.4, 1.0, 0.6)
 
+
+## The pause card. It runs while the tree is paused, so it, not ShipInput, sees `pause` to resume.
+class PauseCard extends PanelContainer:
+	signal resume_requested
+
+	func _unhandled_input(event: InputEvent) -> void:
+		if visible and event.is_action_pressed(&"pause"):
+			get_viewport().set_input_as_handled()
+			resume_requested.emit()
+
+
 ## The label of the buttons that leave the level ("Edit" on a test flight).
 var menu_text := "Menu"
 ## The label of the button that goes on after a win ("End training" after the last training stage).
@@ -34,6 +45,8 @@ var _countdown_number: Label
 var _countdown_caption: Label
 var _countdown_second := -1
 var _result: PanelContainer
+var _pause: PauseCard
+var _resume: Button
 var _result_label: Label
 var _result_name: Label
 var _detail: Label
@@ -84,9 +97,9 @@ func _ready() -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(spacer)
-	restart_button = _button(top, "Restart", retry_requested.emit)
-	_button(top, menu_text, menu_requested.emit)
-	_button(top, "Tune", func(): TuningPanel.open(self))
+	restart_button = _button(top, "Restart", retry_requested.emit, false)
+	_button(top, menu_text, menu_requested.emit, false)
+	_button(top, "Tune", func(): TuningPanel.open(self), false)
 	_effect = Label.new()
 	_effect.position = Vector2(16, 64)
 	_effect.add_theme_font_size_override("font_size", 24)
@@ -187,6 +200,17 @@ func _ready() -> void:
 	_button(column, "Retry", retry_requested.emit)
 	_replay = _button(column, "Replay", replay_requested.emit)
 	_button(column, menu_text, menu_requested.emit)
+	_pause = PauseCard.new()
+	_pause.process_mode = Node.PROCESS_MODE_ALWAYS
+	_pause.resume_requested.connect(toggle_pause)
+	_pause.hide()
+	add_child(_pause)
+	var pause_column := VBoxContainer.new()
+	pause_column.add_theme_constant_override("separation", 12)
+	_pause.add_child(pause_column)
+	_resume = _button(pause_column, "Resume", toggle_pause)
+	_button(pause_column, "Restart", retry_requested.emit)
+	_button(pause_column, menu_text, menu_requested.emit)
 	_arrow = Control.new()
 	_arrow.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_arrow.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -220,6 +244,22 @@ func _process(_delta: float) -> void:
 			var fade := create_tween()
 			fade.tween_property(_intro, "modulate:a", 0.0, INTRO_FADE)
 			fade.tween_callback(_intro.hide)
+
+
+## Shows or hides the pause card, pausing or unpausing the tree. Does nothing on the end panel.
+func toggle_pause() -> void:
+	if _result.visible:
+		return
+	_pause.visible = not _pause.visible
+	get_tree().paused = _pause.visible
+	if _pause.visible:
+		_pause.reset_size()
+		_pause.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+		_resume.grab_focus()
+
+
+func _exit_tree() -> void:
+	get_tree().paused = false  # a scene change from the pause card must not leave the next scene paused
 
 
 func show_intro(title: String, hint: String) -> void:
@@ -260,6 +300,10 @@ func show_result(won: bool, result: Dictionary) -> void:
 	_result.reset_size()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_result.show()
+	for button: Button in _next.get_parent().get_children().filter(func(c: Node) -> bool: return c is Button):
+		if button.visible and not button.disabled:
+			button.grab_focus()
+			break
 
 
 ## Everything the end panel shows, for tests.
@@ -353,11 +397,14 @@ func _bar(parent: Control, icon: ScoreIcon.Kind, maximum: float, unlimited := fa
 	return bar
 
 
-func _button(parent: Control, text: String, action: Callable) -> Button:
+## `focus` false for buttons that must never hold keyboard focus (the in-level top bar).
+func _button(parent: Control, text: String, action: Callable, focus := true) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(160, 56)
 	button.add_theme_font_size_override("font_size", 24)
+	if not focus:
+		button.focus_mode = Control.FOCUS_NONE
 	button.pressed.connect(Sfx.play.bind("tap"))
 	button.pressed.connect(action)
 	parent.add_child(button)

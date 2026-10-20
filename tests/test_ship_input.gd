@@ -274,3 +274,52 @@ func test_touch_on_hud_button_is_ignored() -> void:
 	check(not input.touch.fire and not input.ship.thrusting, "a touch on Restart fired")
 	check(input.touch.direction == Vector2.ZERO, "a touch on Restart anchored the stick")
 	touch(0, on_button + Vector2(110, 0), false)
+
+
+## A real Level (so it has a HUD to pause from) with a ship at the origin and a distant goal.
+func playable_level() -> Level:
+	var lvl := Node2D.new()
+	lvl.set_script(load("res://scenes/level.gd"))
+	lvl.add_child(load(SHIP).instantiate())
+	var goal: Node2D = load(GOAL).instantiate()
+	goal.position = Vector2(3000, 0)
+	lvl.add_child(goal)
+	world.add_child(lvl)
+	return lvl
+
+
+func test_key_released_during_pause_stops_thrust() -> void:
+	var lvl := playable_level()
+	await frames(2)
+	key(KEY_SPACE, true)
+	await frames(2)
+	check(lvl.ship.thrusting, "Space must thrust before the pause")
+	for down in [true, false]:
+		key(KEY_ESCAPE, down)
+	await frames(1)
+	check(tree.paused, "Escape must pause")
+	key(KEY_SPACE, false)  # a paused ShipInput never sees this
+	for down in [true, false]:
+		key(KEY_ESCAPE, down)
+	await frames(3)
+	check(not tree.paused and not lvl.ship.thrusting, "the ship thrusts on after Space was released in the pause (paused %s, thrusting %s)" % [tree.paused, lvl.ship.thrusting])
+
+
+func test_touch_released_during_pause_is_let_go() -> void:
+	Settings.touch_scheme = "stick"
+	Settings.fire_side = "right"
+	var lvl := playable_level()
+	await frames(2)
+	var fire_at := Vector2(lvl.input.touch.size.x - 300, 500)
+	touch(0, fire_at, true)
+	await frames(2)
+	check(lvl.input.touch.fire and lvl.ship.thrusting, "a touch on the fire side must fire before the pause")
+	lvl.hud.toggle_pause()
+	touch(0, fire_at, false)  # a paused TouchControls never sees this
+	lvl.hud.toggle_pause()
+	await frames(3)
+	check(not lvl.input.touch.fire and not lvl.ship.thrusting, "the touch's lift in the pause was missed (fire %s, thrusting %s)" % [lvl.input.touch.fire, lvl.ship.thrusting])
+	touch(1, fire_at, true)
+	await frames(2)
+	check(lvl.input.touch.fire and lvl.ship.thrusting, "a new touch on the fire side must fire again")
+	touch(1, fire_at, false)

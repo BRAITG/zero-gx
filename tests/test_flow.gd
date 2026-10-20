@@ -270,3 +270,59 @@ func test_main_menu_marks_completed_training() -> void:
 	check(training_button.call() == "Training", "not all training done: %s" % training_button.call())
 	Progress.record_win(Progress.trainings()[-1], 1000, 10.0)
 	check(training_button.call().contains("completed"), "all training done: %s" % training_button.call())
+
+
+## A key tap through Input, as the OS delivers it.
+func tap(code: Key) -> void:
+	for down in [true, false]:
+		var event := InputEventKey.new()
+		event.physical_keycode = code
+		event.pressed = down
+		Input.parse_input_event(event)
+		Input.flush_buffered_events()
+
+
+func test_pause_toggles_the_tree() -> void:
+	var lvl := level(Vector2(3000, 0))
+	await frames(2)
+	tap(KEY_ESCAPE)
+	await frames(1)
+	check(tree.paused, "pause must pause the tree")
+	var focus := lvl.hud.get_viewport().gui_get_focus_owner()
+	check(focus is Button and focus.text == "Resume", "Resume must hold focus on the pause card, not %s" % focus)
+	tap(KEY_ESCAPE)
+	await frames(1)
+	check(not tree.paused, "pause again must resume")
+
+
+func test_accept_in_flight_presses_nothing() -> void:
+	var lvl := level(Vector2(3000, 0))
+	await frames(2)
+	var on_button := lvl.hud.restart_button.get_global_rect().get_center()
+	for at in [on_button, on_button + Vector2(0, 300)]:  # press on Restart, release away from it
+		var move := InputEventMouseMotion.new()
+		move.position = at
+		tree.root.push_input(move, true)
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = at == on_button
+		event.position = at
+		tree.root.push_input(event, true)
+	var accept := InputEventAction.new()
+	accept.action = &"ui_accept"
+	accept.pressed = true
+	Input.parse_input_event(accept)
+	Input.flush_buffered_events()
+	await frames(5)
+	check(is_instance_valid(lvl) and not lvl.is_queued_for_deletion(), "ui_accept restarted the level")
+	var focus := lvl.hud.get_viewport().gui_get_focus_owner()
+	check(focus == null, "a HUD top-bar button took focus: %s" % focus)
+
+
+func test_result_card_takes_focus() -> void:
+	var lvl := level(Vector2(3000, 0))
+	await frames(2)
+	lvl.ship.take_damage(Ship.MAX_HEALTH)
+	await frames(2)
+	var focus := lvl.hud.get_viewport().gui_get_focus_owner()
+	check(focus is Button and focus.text == "Retry", "the result card's first button must hold focus, not %s" % focus)

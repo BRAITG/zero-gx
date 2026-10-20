@@ -37,6 +37,16 @@ func _ready() -> void:
 	touch.visible = scheme in TWO_HANDED
 
 
+## Releases during a pause are never seen (nor are presses), so a pause lets go of everything held;
+## the next physics tick then writes the release to the ship.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_PAUSED:
+		_fire = false
+		_pointer = null
+		if touch:
+			touch.release()
+
+
 ## Where the player steers, in world space; Vector2.ZERO when not steering.
 func steer_direction() -> Vector2:
 	if _pointer != null:
@@ -85,6 +95,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		var hud: Node = get_parent().get("hud")
 		if hud and hud.has_method("toggle_pause"):
 			hud.toggle_pause()
+			get_viewport().set_input_as_handled()  # the pause card, next in line, would resume at once
 
 
 func _physics_process(_delta: float) -> void:
