@@ -76,8 +76,8 @@ func finish_wall() -> void:
 	drawing = -1
 
 
-## The thing under `at`, nearest first in this order: wall points, bodies, asteroids, pickups,
-## start, goal, wall segments. Empty when nothing is there. `slop` is the pick tolerance in world
+## The thing under `at`, nearest first in this order: wall points, start, goal, asteroids, pickups,
+## bodies, wall segments. Empty when nothing is there. `slop` is the pick tolerance in world
 ## px; wall points get 1.5 x slop so they win near misses.
 func hit(at: Vector2, slop := HIT_SLOP) -> Dictionary:
 	var walls: Array = data.get("walls", [])
@@ -85,19 +85,19 @@ func hit(at: Vector2, slop := HIT_SLOP) -> Dictionary:
 		for k in walls[i].points.size():
 			if _v(walls[i].points[k]).distance_to(at) <= slop * 1.5:
 				return {"type": "wall_point", "index": i, "point": k}
-	var bodies: Array = data.get("bodies", [])
-	for i in bodies.size():
-		if _v(bodies[i].position).distance_to(at) <= LevelFormat.body_value(bodies[i], "radius") + slop:
-			return {"type": "body", "index": i}
+	if _v(data.ship.position).distance_to(at) <= slop:
+		return {"type": "ship", "index": 0}
+	if _v(data.goal.position).distance_to(at) <= Goal.RADIUS:
+		return {"type": "goal", "index": 0}
 	for type: String in ["asteroid", "pickup"]:
 		var list: Array = data.get(type + "s", [])
 		for i in list.size():
 			if _v(list[i].position).distance_to(at) <= slop:
 				return {"type": type, "index": i}
-	if _v(data.ship.position).distance_to(at) <= slop:
-		return {"type": "ship", "index": 0}
-	if _v(data.goal.position).distance_to(at) <= Goal.RADIUS:
-		return {"type": "goal", "index": 0}
+	var bodies: Array = data.get("bodies", [])
+	for i in bodies.size():
+		if _v(bodies[i].position).distance_to(at) <= LevelFormat.body_value(bodies[i], "radius") + slop:
+			return {"type": "body", "index": i}
 	for i in walls.size():
 		var points: Array = walls[i].points
 		for k in points.size() - 1:
