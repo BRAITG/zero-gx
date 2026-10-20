@@ -179,6 +179,8 @@ func goal_revealed() -> bool:
 func _physics_process(delta: float) -> void:
 	ship.align_exact = false  # set again below only on a tick the assist applies
 	if _ring_direction == null:
+		if not _goal_shown and not input.touches_rings():
+			ship.thrusting = false  # before the goal shows, a free-aim fire thrusts only on a ring, as one-finger touch
 		return
 	var screen := get_viewport_rect().size
 	var at := get_viewport().canvas_transform * ship.global_position
