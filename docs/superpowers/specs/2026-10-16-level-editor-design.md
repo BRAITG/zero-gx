@@ -11,7 +11,7 @@ Players build levels inside the game, on the phone, and play them. Publishing th
 
 | Topic | Decision |
 |---|---|
-| Where | Inside the game app. A desktop or web editor may come later and would share the level format. |
+| Where | Inside the game app. The desktop build of the same editor is in [2026-10-20-desktop-editor-design.md](2026-10-20-desktop-editor-design.md); a web editor may come later and would share the level format. |
 | Input | A tool palette and a snapping grid. One finger edits; two fingers pan and pinch-zoom. |
 | Scope | Object presets that can be customized within per-kind limits, plus level settings (title, hint, fuel, hull, each of fuel and hull optionally unlimited). |
 | Storage | `user://levels/<id>.json.gz` in the level format, plus `user://levels/index.cfg` holding each level's completion state. |
