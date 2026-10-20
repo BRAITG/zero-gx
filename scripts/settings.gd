@@ -6,6 +6,7 @@ signal changed
 const ACTIONS: Array[StringName] = [&"steer_left", &"steer_right", &"steer_up", &"steer_down", &"fire", &"pause"]
 
 var path := "user://settings.cfg"
+var _loading := false  # the setters save; load_file saves once, after the bindings are read
 ## Draw the ship's velocity arrow in levels (tutorials always show it).
 var show_velocity := false:
 	set(value):
@@ -47,19 +48,27 @@ func _ready() -> void:
 func load_file() -> void:
 	var file := ConfigFile.new()
 	file.load(path)  # a missing or unreadable file keeps the defaults
-	show_velocity = file.get_value("display", "show_velocity", false)
-	volume = file.get_value("audio", "volume", 0.8)
-	touch_scheme = file.get_value("input", "touch_scheme", "finger")
-	fire_side = file.get_value("input", "fire_side", "right")
-	mouse_aims = file.get_value("input", "mouse_aims", true)
-	pad_preset = file.get_value("input", "pad_preset", "a")
+	_loading = true
+	show_velocity = _value(file, "display", "show_velocity", false)
+	volume = _value(file, "audio", "volume", 0.8)
+	touch_scheme = _value(file, "input", "touch_scheme", "finger", ["finger", "stick", "finger_button"])
+	fire_side = _value(file, "input", "fire_side", "right", ["left", "right"])
+	mouse_aims = _value(file, "input", "mouse_aims", true)
+	pad_preset = _value(file, "input", "pad_preset", "a", ["a", "b"])
 	for action in ACTIONS:
 		var saved = file.get_value("input", action) if file.has_section_key("input", action) else null
 		if saved is Array and saved.all(func(e): return e is InputEvent):
 			_apply_events(action, saved)
 		else:
 			_apply_events(action, _default_events(action))
-	_save()  # the setters above saved mid-load, before the bindings were read
+	_loading = false
+	_save()
+
+
+## The stored value of `key`, or `default` when it is missing, of another type or not in `allowed`.
+func _value(file: ConfigFile, section: String, key: String, default: Variant, allowed := []) -> Variant:
+	var value = file.get_value(section, key, default)
+	return value if typeof(value) == typeof(default) and (allowed.is_empty() or value in allowed) else default
 
 
 ## Replace the bindings of `action` with `events`, for every controller, and save.
@@ -130,7 +139,7 @@ func _pad_button(button: JoyButton) -> InputEventJoypadButton:
 
 
 func _save() -> void:
-	if not is_inside_tree():
+	if _loading or not is_inside_tree():
 		return
 	var file := ConfigFile.new()
 	file.set_value("display", "show_velocity", show_velocity)
@@ -139,7 +148,10 @@ func _save() -> void:
 	file.set_value("input", "fire_side", fire_side)
 	file.set_value("input", "mouse_aims", mouse_aims)
 	file.set_value("input", "pad_preset", pad_preset)
-	for action in ACTIONS:
-		file.set_value("input", action, InputMap.action_get_events(action))
+	for action in ACTIONS:  # only changed ones, so a new default in a later version still applies
+		var events := InputMap.action_get_events(action)
+		var defaults := _default_events(action)
+		if events.size() != defaults.size() or not defaults.all(func(d: InputEvent) -> bool: return events.any(d.is_match)):
+			file.set_value("input", action, events)
 	file.save(path)
 	changed.emit()

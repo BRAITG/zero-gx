@@ -47,6 +47,66 @@ func test_corrupt_input_section_keeps_defaults() -> void:
 	Settings.reset_controls()
 
 
+func test_bad_values_keep_defaults_and_bindings() -> void:
+	Settings.mouse_aims = false
+	var pad := InputEventJoypadButton.new()
+	pad.button_index = JOY_BUTTON_X
+	var file := ConfigFile.new()
+	file.set_value("input", "fire", [pad])
+	file.set_value("input", "mouse_aims", "yes")
+	file.set_value("input", "touch_scheme", "bogus")
+	file.set_value("input", "fire_side", 3)
+	file.save(Settings.path)
+	Settings.load_file()
+	var fire := InputMap.action_get_events(&"fire")
+	check(fire.size() == 1 and fire[0] is InputEventJoypadButton and fire[0].button_index == JOY_BUTTON_X, "the custom fire binding was lost: %s" % [fire])
+	check(Settings.mouse_aims == true, "a wrong-typed mouse_aims must load as the default, not %s" % Settings.mouse_aims)
+	check(Settings.touch_scheme == "finger", "an unknown touch_scheme must load as the default, not %s" % Settings.touch_scheme)
+	check(Settings.fire_side == "right", "a wrong-typed fire_side must load as the default, not %s" % Settings.fire_side)
+	file.load(Settings.path)
+	var saved = file.get_value("input", "fire", [])
+	check(saved is Array and saved.size() == 1 and saved[0] is InputEventJoypadButton, "the file lost the custom fire binding: %s" % [saved])
+	Settings.reset_controls()
+
+
+## Saving the defaults would freeze them: a later version's new default would never reach the player.
+func test_only_changed_bindings_are_saved() -> void:
+	Settings.reset_controls()
+	var file := ConfigFile.new()
+	file.load(Settings.path)
+	check(not file.has_section_key("input", "fire"), "default fire bindings were written")
+	var key := InputEventKey.new()
+	key.physical_keycode = KEY_F
+	Settings.set_events(&"fire", [key])
+	file = ConfigFile.new()
+	file.load(Settings.path)
+	check(file.has_section_key("input", "fire"), "a changed fire binding must be saved")
+	check(not file.has_section_key("input", "pause"), "unchanged pause bindings were written")
+	Settings.reset_controls()
+
+
+## Keys and the D-pad reach every row, scrolling it into view, down to Reset.
+func test_keys_reach_reset_on_the_controls_screen() -> void:
+	var overlay := ControlsScreen.open(world)
+	var reset: Button = overlay.find_children("*", "Button", true, false).filter(func(b): return b.text == "Reset to defaults")[0]
+	var scroll: ScrollContainer = overlay.find_children("*", "ScrollContainer", true, false)[0]
+	await frames(2)
+	for i in 40:
+		if tree.root.gui_get_focus_owner() == reset:
+			break
+		for down in [true, false]:
+			var event := InputEventAction.new()
+			event.action = &"ui_down"
+			event.pressed = down
+			Input.parse_input_event(event)
+			Input.flush_buffered_events()
+		await frames(1)
+	await frames(2)
+	check(tree.root.gui_get_focus_owner() == reset, "ui_down stopped at %s, never reaching Reset" % tree.root.gui_get_focus_owner())
+	check(scroll.get_global_rect().encloses(reset.get_global_rect()), "Reset %s is outside the scroll's view %s" % [reset.get_global_rect(), scroll.get_global_rect()])
+	overlay.close()
+
+
 func open_controls() -> ControlsScreen:
 	return ControlsScreen.open(world).find_child("ControlsScreen", true, false)
 
