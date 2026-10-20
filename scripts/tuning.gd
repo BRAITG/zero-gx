@@ -23,7 +23,7 @@ const DEFAULTS := {
 	"points_fuel": 15.0,  # points per unit of fuel left at the goal
 	"points_hull": 3.0,  # points per point of hull left
 	"points_per_second": 2.0,  # points lost per second of flight
-	"show_overlays": true,  # gravity field discs and speedometer
+	"show_speedometer": true,  # the HUD speedometer
 	"tours": true,  # walk through each new level's elements before the first flight
 }
 ## [min, max, step] per setting, for the panel's sliders.
@@ -66,7 +66,7 @@ var spin_decay: float
 var points_fuel: float
 var points_hull: float
 var points_per_second: float
-var show_overlays: bool
+var show_speedometer: bool
 var tours: bool
 
 

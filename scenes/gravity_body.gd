@@ -30,7 +30,7 @@ const SHARDS_MAX := 20
 const SHARD_SPEED_MIN := 100.0
 const SHARD_SPEED_MAX := 250.0
 const SHARD_GAP := 4.0  # px between neighbouring shards on the spawn ring
-## Debug field disc: opacity grows with the square root of the pull, so weak edges stay visible.
+## Field disc: opacity grows with the square root of the pull, so weak edges stay visible.
 const FIELD_REFERENCE_PULL := 4000.0  # px/s² drawn at full opacity
 const FIELD_MAX_ALPHA := 0.35
 const FIELD_BANDS := 32
@@ -76,6 +76,7 @@ func _ready() -> void:
 	field.gravity_point_unit_distance = radius
 	_apply_gravity_tuning(field)
 	Tuning.changed.connect(_apply_gravity_tuning.bind(field))
+	Settings.changed.connect(queue_redraw)  # the field disc follows the player's setting
 	var field_shape := CollisionShape2D.new()
 	field_shape.shape = CircleShape2D.new()
 	field_shape.shape.radius = reach
@@ -85,7 +86,7 @@ func _ready() -> void:
 
 func _apply_gravity_tuning(field: Area2D) -> void:
 	field.gravity = _surface_pull()
-	queue_redraw()  # the field disc shows planet_gravity and the overlay toggle
+	queue_redraw()  # the field disc shows planet_gravity
 
 
 func _surface_pull() -> float:
@@ -95,7 +96,7 @@ func _surface_pull() -> float:
 	return strength
 
 
-## Opacity of the debug field disc at `distance` from the centre; 0 beyond reach.
+## Opacity of the field disc at `distance` from the centre; 0 beyond reach.
 func field_alpha(distance: float) -> float:
 	if distance > reach:
 		return 0.0
@@ -134,11 +135,16 @@ func _shatter() -> void:
 
 func _draw() -> void:
 	var r: float = radius if radius > 0 else PRESETS[preset][0]
-	if not Engine.is_editor_hint() and Tuning.show_overlays:
+	if not Engine.is_editor_hint() and Settings.show_gravity:
 		var band := (reach - r) / FIELD_BANDS
-		for i in FIELD_BANDS:
+		var shown := 0.0  # alpha the discs outside this band already paint
+		for i in range(FIELD_BANDS - 1, -1, -1):  # filled discs like the star's corona: no arc seam
 			var middle := r + band * (i + 0.5)
-			draw_arc(Vector2.ZERO, middle, 0.0, TAU, 96, Color(1, 1, 1, field_alpha(middle)), band)
+			var alpha := field_alpha(middle)
+			var paint := (alpha - shown) / (1.0 - shown)  # so the visible ring keeps field_alpha
+			if paint > 0.0:
+				_disc(r + band * (i + 1), Color(1, 1, 1, paint))
+			shown = alpha
 	match preset:
 		Preset.PLANET: _draw_planet(r)
 		Preset.BLACK_HOLE: _draw_black_hole(r)

@@ -7,7 +7,7 @@ const SLIDER_WIDTH := 520.0
 
 var _labels := {}
 var _sliders := {}
-var _overlays: CheckButton
+var _speedometer: CheckButton
 var _prior_focus: Control
 
 
@@ -65,12 +65,12 @@ func _ready() -> void:
 	rows.add_child(buttons)
 	_button(buttons, "Close", close).grab_focus(true)
 	_button(buttons, "Reset", _reset)
-	_overlays = CheckButton.new()
-	_overlays.text = "Debug overlays"
-	_overlays.add_theme_font_size_override("font_size", 24)
-	_overlays.button_pressed = Tuning.show_overlays
-	_overlays.toggled.connect(func(on: bool): Tuning.set_value("show_overlays", on))
-	buttons.add_child(_overlays)
+	_speedometer = CheckButton.new()
+	_speedometer.text = "Speedometer"
+	_speedometer.add_theme_font_size_override("font_size", 24)
+	_speedometer.button_pressed = Tuning.show_speedometer
+	_speedometer.toggled.connect(func(on: bool): Tuning.set_value("show_speedometer", on))
+	buttons.add_child(_speedometer)
 	var tours := CheckButton.new()
 	tours.text = "Level tours"
 	tours.add_theme_font_size_override("font_size", 24)
@@ -127,7 +127,7 @@ func _reset() -> void:
 	for key: String in _sliders:
 		_sliders[key].set_value_no_signal(Tuning.get(key))
 		_show(key)
-	_overlays.set_pressed_no_signal(Tuning.show_overlays)
+	_speedometer.set_pressed_no_signal(Tuning.show_speedometer)
 
 
 func _button(parent: Control, text: String, action: Callable) -> Button:
