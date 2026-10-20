@@ -65,3 +65,13 @@ func test_settings_and_validity() -> void:
 	check(not doc.errors().is_empty(), "an empty title must be reported")
 	doc.erase({"type": "ship", "index": 0})
 	check(doc.data.has("ship"), "the start cannot be erased")
+
+
+func test_wall_points_win_near_misses() -> void:
+	var doc := LevelDoc.new()
+	doc.add_wall_point(Vector2(5000, 3000))
+	doc.add_wall_point(Vector2(6000, 3000))
+	doc.finish_wall()
+	check(doc.hit(Vector2(5055, 3000), 40.0).type == "wall_point", "55 px from a point is within 1.5 x 40: %s" % doc.hit(Vector2(5055, 3000), 40.0))
+	check(doc.hit(Vector2(5500, 3030), 40.0).type == "wall", "mid-segment picks the wall: %s" % doc.hit(Vector2(5500, 3030), 40.0))
+	check(doc.hit(Vector2(5500, 3100), 40.0).is_empty(), "100 px off the wall picks nothing")
