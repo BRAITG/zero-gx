@@ -51,6 +51,7 @@ func _run() -> void:
 			var settings := root.get_node("Settings")
 			settings.path = "user://test_settings.cfg"  # never touch the player's real settings
 			settings.show_velocity = false
+			settings.reset_controls()  # a test that rebinds a key must not leak it
 			var my_levels = load("res://scripts/my_levels.gd")
 			my_levels.dir = "user://test_levels/"  # never touch the player's own levels
 			for id in my_levels.ids():
