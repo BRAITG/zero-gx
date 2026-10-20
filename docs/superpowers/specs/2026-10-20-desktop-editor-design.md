@@ -74,7 +74,7 @@ In the existing `tests/` runner:
 
 - **Round-trip through a draft:** importing an official level and exporting it again produces a file byte-identical to the original, under a new `user_` id, with the original untouched. (`tests/test_level_format.gd` already checks that every official level is in the stable layout.)
 - **Import rejects bad files:** invalid JSON, a JSON value that is not an object, a wrong `format` or `version` (including values of the wrong type), a file with the wrong shape (a bare header, a number for the title, an unknown wall kind), and a file over 64 KB each leave no level saved. An unfinished draft imports, and a gzip level imports whatever its file name.
-- **Grid and picking:** a new wall point snaps to 1 m by default; at zoom 0.2 a press 30 screen px from a wall point picks the point, and a press on the middle of a segment picks the wall.
+- **Grid and picking:** a new wall point snaps to 10 m by default and to 1 m with the **Fine grid** toggle on; at zoom 0.2 a press 30 screen px from a wall point picks the point, and a press on the middle of a segment picks the wall; the close distance is 20 screen px at every zoom.
 - **Editor input:** right-drag pans; wheel zoom and trackpad pinch keep the world point under the cursor fixed; a trackpad swipe pans; `Ctrl+Z` undoes the last change, but not with a sheet open or with Shift held.
 
 Smoke test before release: run a local desktop build, import an official level, edit it, test-fly it, and export it.
