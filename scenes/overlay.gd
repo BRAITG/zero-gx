@@ -87,6 +87,7 @@ func _build(title: String) -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true  # keys and pads reach the rows below the fold
 	column.add_child(scroll)
 	body = VBoxContainer.new()
 	body.add_theme_constant_override("separation", 14)
