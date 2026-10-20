@@ -202,14 +202,28 @@ func test_click_on_hud_button_does_not_fire() -> void:
 	click(on_button, false)
 
 
-func test_ignored_while_controls_are_locked() -> void:
+func test_one_finger_ignored_while_controls_are_locked() -> void:
+	Settings.mouse_aims = false  # a click aims and fires: the scheme the lock is for
 	var input := controlled({"accept_input": false})
 	await frames(1)
+	click(screen_centre() + Vector2(300, 0), true)
+	await frames(2)
+	check(input.scheme == "mouse_click", "scheme %s, expected mouse_click" % input.scheme)
+	check(not input.ship.thrusting, "a click reached a locked ship")
+	check(input.steer_direction() != Vector2.ZERO, "the click must still be tracked while locked")
+	click(screen_centre() + Vector2(300, 0), false)
+
+
+func test_free_aim_schemes_steer_and_fire_while_controls_are_locked() -> void:
+	var input := controlled({"accept_input": false})
+	input.scheme = "keys"
+	await frames(1)
+	key(KEY_S, true)
 	key(KEY_SPACE, true)
 	await frames(2)
-	check(not input.ship.thrusting, "fire reached a locked ship")
-	check(input.fire_held(), "fire must still be tracked while locked")
+	check(input.ship.steering and input.ship.thrusting, "steering and fire must reach a locked ship on the keys")
 	key(KEY_SPACE, false)
+	key(KEY_S, false)
 
 
 func test_held_finger_keeps_steering_as_the_camera_follows() -> void:

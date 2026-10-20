@@ -88,8 +88,11 @@ var touch_screen: Variant = null
 var _effect_left := 0.0  # s of power effect or boost remaining
 var _wobble_phase := 0.0
 var _spin := 0.0  # rad/s left from the last glancing hit; decays with Tuning.spin_decay
-## False while a tutorial step owns the controls: ShipInput leaves the ship alone.
+## False while a tutorial's rings own a one-finger ship: ShipInput leaves it alone. The schemes
+## that aim freely (keys, pad, mouse, sticks) steer and fire regardless.
 var accept_input := true
+## Where a tutorial's `wait` ring holds the ship: motionless there, still free to turn; null lets it fly.
+var anchor: Variant = null
 var _respawn: Variant = null  # [position, velocity] to apply on the next physics step
 var _lookahead := Vector2.ZERO
 var _trauma := 0.0
@@ -100,9 +103,11 @@ var _heat_phase := 0.0  # radians of the heat pulse
 var _burn: AudioStreamPlayer
 var _trail: Line2D
 var _exhaust: CPUParticles2D
+var _tick_rotation := [0.0, 0.0]  # `rotation` at the last two physics ticks
 
 
 func _ready() -> void:
+	_tick_rotation = [rotation, rotation]
 	mass = 1.0
 	z_index = 2  # above stars, which draw over walls
 	health = hull
@@ -176,6 +181,9 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		_respawn = null
 		return
 	var step := state.step
+	if anchor != null:  # held in place: no drift, whatever gravity does, but the turn below still runs
+		state.transform = Transform2D(state.transform.get_rotation(), anchor as Vector2)
+		state.linear_velocity = Vector2.ZERO
 	if touch_screen != null:
 		aim_point = get_canvas_transform().affine_inverse() * (touch_screen as Vector2)
 	var to_aim := aim_point - state.transform.origin
@@ -340,6 +348,7 @@ func respawn(at: Vector2, velocity: Vector2, with_fuel: float) -> void:
 	fuel = with_fuel
 	death_cause = ""
 	thrusting = false
+	anchor = null
 	_stranded_sent = false
 	_empty_time = 0.0
 	_spin = 0.0
@@ -422,6 +431,22 @@ func velocity_arrow_length() -> float:
 	return minf(linear_velocity.length() * VELOCITY_ARROW_SCALE, VELOCITY_ARROW_MAX)
 
 
+## Where the velocity arrow ends, in the ship's own drawing space: the world direction of travel,
+## undone by the rotation the ship is drawn with.
+func velocity_arrow_tip() -> Vector2:
+	return linear_velocity.normalized().rotated(-_drawn_rotation()) * velocity_arrow_length()
+
+
+## Physics interpolation draws the ship at a rotation between its last two physics ticks; the
+## physics `rotation` is only right at a tick, and turning fast it differs from the drawn one.
+func _drawn_rotation() -> float:
+	return lerp_angle(_tick_rotation[0], _tick_rotation[1], Engine.get_physics_interpolation_fraction())
+
+
+func _physics_process(_delta: float) -> void:
+	_tick_rotation = [_tick_rotation[1], rotation]
+
+
 func _draw() -> void:
 	var nose := Vector2(RADIUS * 1.4, 0)
 	var hull := PackedVector2Array([nose, Vector2(-RADIUS, RADIUS * 0.8), Vector2(-RADIUS * 0.5, 0), Vector2(-RADIUS, -RADIUS * 0.8), nose])
@@ -437,7 +462,7 @@ func _draw() -> void:
 	draw_circle(Vector2(RADIUS * 0.35, 0), RADIUS * 0.18, Color("#3aa0ff"))
 	if show_velocity and linear_velocity.length() > 1.0:
 		# World direction: undo the ship's own rotation.
-		var tip := linear_velocity.normalized().rotated(-rotation) * velocity_arrow_length()
+		var tip := velocity_arrow_tip()
 		var arrow := Color(1, 1, 1, 0.45)
 		draw_line(Vector2.ZERO, tip, arrow, 3.0, true)
 		var back := -tip.normalized() * 14.0

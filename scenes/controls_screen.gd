@@ -5,6 +5,8 @@ extends VBoxContainer
 const PROMPT := "Press a key or button… (Esc cancels)"
 const FONT := 22
 
+## Whether to offer the touch layouts; tests set it before the screen enters the tree.
+var touch_available := DisplayServer.is_touchscreen_available()
 var _choices: Array[Dictionary] = []  # {button, field, value}, kept in step with Settings
 var _mouse: CheckButton
 var _diagram: Diagram
@@ -28,11 +30,12 @@ func _init() -> void:
 
 
 func _ready() -> void:
-	var touch := _row("Touch")
-	_choice(touch, "touch_scheme", [["One finger", "finger"], ["Stick + button", "stick"], ["Finger + button", "finger_button"]])
-	_diagram = Diagram.new()
-	touch.add_child(_diagram)
-	_choice(_row("Fire button"), "fire_side", [["Fire on the left", "left"], ["Fire on the right", "right"]])
+	if touch_available:
+		var touch := _row("Touch")
+		_choice(touch, "touch_scheme", [["One finger", "finger"], ["Stick + button", "stick"], ["Finger + button", "finger_button"]])
+		_diagram = Diagram.new()
+		touch.add_child(_diagram)
+		_choice(_row("On-screen fire button"), "fire_side", [["Left side", "left"], ["Right side", "right"]])
 	_mouse = CheckButton.new()
 	_mouse.text = "Mouse cursor aims; a button fires"
 	_mouse.add_theme_font_size_override("font_size", 26)
@@ -104,7 +107,8 @@ func _refresh() -> void:
 	for choice in _choices:
 		choice.button.set_pressed_no_signal(Settings.get(choice.field) == choice.value)
 	_mouse.set_pressed_no_signal(Settings.mouse_aims)
-	_diagram.queue_redraw()
+	if _diagram:
+		_diagram.queue_redraw()
 	for action in _values:
 		_values[action].text = PROMPT if action == _capturing else ", ".join(InputMap.action_get_events(action).map(_name))
 

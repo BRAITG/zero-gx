@@ -4,10 +4,12 @@ const SHIP := "res://scenes/ship.tscn"
 const GOAL := "res://scenes/goal.tscn"
 
 
-func probe() -> Level:
+func probe(script := "res://tests/support/tutorial_probe.gd", velocity := Vector2.ZERO) -> Level:
 	var root := Node2D.new()
-	root.set_script(load("res://tests/support/tutorial_probe.gd"))
-	root.add_child(load(SHIP).instantiate())
+	root.set_script(load(script))
+	var ship: Ship = load(SHIP).instantiate()
+	ship.linear_velocity = velocity
+	root.add_child(ship)
 	var goal: Node2D = load(GOAL).instantiate()
 	goal.position = Vector2(3000, 0)
 	root.add_child(goal)
@@ -24,6 +26,7 @@ func press(at: Vector2, down: bool) -> void:
 
 
 func test_touch_target_ignores_off_ring() -> void:
+	Settings.mouse_aims = false  # a click is a one-finger touch; a cursor that aims fires without a ring
 	var lvl = probe()
 	await frames(3)
 	check(lvl.ring_active(), "the probe must show a ring")
@@ -110,8 +113,8 @@ func test_tutorial_restores_after_lethal_touch() -> void:
 
 
 func test_aims_at_boundary() -> void:
-	check(Tutorial.aims_at(Vector2.RIGHT, Vector2.RIGHT.rotated(deg_to_rad(29))), "29 degrees off must still aim at the ring")
-	check(not Tutorial.aims_at(Vector2.RIGHT, Vector2.RIGHT.rotated(deg_to_rad(31))), "31 degrees off must not aim at the ring")
+	check(Tutorial.aims_at(Vector2.RIGHT, Vector2.RIGHT.rotated(deg_to_rad(89))), "89 degrees off must still aim at the ring")
+	check(not Tutorial.aims_at(Vector2.RIGHT, Vector2.RIGHT.rotated(deg_to_rad(91))), "91 degrees off must not aim at the ring")
 	check(not Tutorial.aims_at(Vector2.ZERO, Vector2.RIGHT), "no steering aims at nothing")
 
 
@@ -160,3 +163,102 @@ func test_fire_without_aim_does_not_hold_the_ring() -> void:
 	key(KEY_SPACE, false)
 	key(KEY_A, false)
 	check(lvl.ring_active(), "firing away from the ring must not complete the step")
+
+
+## The ring's direction from the ship, in world space.
+func ring_angle(lvl: Tutorial) -> float:
+	return (tree.root.canvas_transform.affine_inverse() * lvl.ring_centre() - lvl.ship.global_position).angle()
+
+
+func test_steering_turns_the_ship_before_the_goal_is_revealed() -> void:
+	var lvl := await keys_training()
+	check(not lvl.goal_revealed(), "the goal must still be hidden")
+	key(KEY_S, true)
+	await frames(30)
+	key(KEY_S, false)
+	check(absf(wrapf(lvl.ship.rotation - PI / 2.0, -PI, PI)) < 0.1, "holding S turned the ship to %f rad, expected toward +Y" % lvl.ship.rotation)
+	check(not lvl.ship.thrusting and lvl.held_time == 0.0, "steering alone must neither fire nor count the ring")
+
+
+func test_fire_within_ninety_degrees_counts_the_ring_and_turns_to_it() -> void:
+	var lvl := await keys_training()
+	var to_ring := ring_angle(lvl)
+	lvl.ship.rotation = to_ring + deg_to_rad(80)
+	key(KEY_SPACE, true)
+	await frames(20)
+	key(KEY_SPACE, false)
+	check(lvl.held_time > 0.2, "fire 80 degrees off the ring counted only %f s" % lvl.held_time)
+	check(absf(wrapf(lvl.ship.rotation - to_ring, -PI, PI)) < 0.1, "the ship turned to %f rad, the ring is at %f" % [lvl.ship.rotation, to_ring])
+
+
+func test_fire_beyond_ninety_degrees_thrusts_but_does_not_count() -> void:
+	var lvl := await keys_training()
+	var nose := ring_angle(lvl) + deg_to_rad(100)
+	lvl.ship.rotation = nose
+	key(KEY_SPACE, true)
+	await frames(30)
+	key(KEY_SPACE, false)
+	check(lvl.held_time == 0.0 and lvl.ring_active(), "fire 100 degrees off the ring counted %f s" % lvl.held_time)
+	check(lvl.ship.linear_velocity.length() > 20.0 and absf(wrapf(lvl.ship.linear_velocity.angle() - nose, -PI, PI)) < 0.1, "fire must thrust along the nose, got %s" % lvl.ship.linear_velocity)
+	check(absf(wrapf(lvl.ship.rotation - nose, -PI, PI)) < 0.05, "the ship must not turn to a ring it is not counting")
+
+
+func test_steering_without_fire_never_counts_the_ring() -> void:
+	var lvl := await keys_training()
+	key(KEY_D, true)
+	await frames(60)
+	key(KEY_D, false)
+	check(lvl.held_time == 0.0 and lvl.ring_active(), "steering at the ring counted %f s without fire" % lvl.held_time)
+
+
+## The cursor aims too, and the assist must win over it within the same physics tick.
+func test_ring_assist_overrides_the_cursor_aim() -> void:
+	var lvl := await keys_training()
+	lvl.input.scheme = "mouse_aim"
+	var to_ring := ring_angle(lvl)
+	lvl.ship.rotation = to_ring + deg_to_rad(80)
+	var motion := InputEventMouseMotion.new()
+	motion.position = tree.root.canvas_transform * lvl.ship.global_position + Vector2.from_angle(to_ring - deg_to_rad(60)) * 200.0
+	tree.root.push_input(motion, true)
+	key(KEY_SPACE, true)
+	await frames(20)
+	key(KEY_SPACE, false)
+	check(lvl.held_time > 0.2, "fire with the cursor 60 degrees off the ring counted only %f s" % lvl.held_time)
+	check(absf(wrapf(lvl.ship.rotation - to_ring, -PI, PI)) < 0.1, "the ship followed the cursor to %f rad, the ring is at %f" % [lvl.ship.rotation, to_ring])
+
+
+func test_wait_ring_lets_the_player_turn_then_fire_releases_the_ship() -> void:
+	var moving := Vector2(0, -150)
+	var lvl := await probe("res://tests/support/tutorial_wait_probe.gd", moving)
+	await frames(5)
+	lvl.input.scheme = "keys"
+	check(lvl.waiting(), "the ring must hold the ship")
+	var start: Vector2 = lvl.ship.global_position
+	key(KEY_S, true)
+	await frames(30)
+	key(KEY_S, false)
+	check(absf(wrapf(lvl.ship.rotation - PI / 2.0, -PI, PI)) < 0.1, "holding S turned the waiting ship to %f rad, expected toward +Y" % lvl.ship.rotation)
+	check(lvl.ship.global_position.distance_to(start) < 0.5 and lvl.waiting() and lvl.held_time == 0.0, "the waiting ship drifted %s px" % lvl.ship.global_position.distance_to(start))
+	key(KEY_SPACE, true)  # the nose is 45 degrees off the ring
+	for i in 30:
+		await frames(1)
+		if not lvl.waiting():
+			break
+	var released: Vector2 = lvl.ship.linear_velocity  # at most a tick of thrust on the stored velocity
+	await frames(5)
+	key(KEY_SPACE, false)
+	check(not lvl.waiting() and lvl.held_time > 0.0, "fire within 90 degrees must release the ship")
+	check(absf(released.y - moving.y) < 15.0, "the ship must be released with its stored velocity %s, got %s" % [moving, released])
+	check(lvl.ship.global_position.distance_to(start) > 5.0, "the released ship must fly on")
+
+
+func test_wait_ring_ignores_fire_pointing_away() -> void:
+	var lvl := await probe("res://tests/support/tutorial_wait_probe.gd", Vector2(0, -150))
+	await frames(5)
+	lvl.input.scheme = "keys"
+	var start: Vector2 = lvl.ship.global_position
+	lvl.ship.rotation = ring_angle(lvl) + deg_to_rad(150)
+	key(KEY_SPACE, true)
+	await frames(20)
+	key(KEY_SPACE, false)
+	check(lvl.waiting() and lvl.ship.global_position.distance_to(start) < 0.5, "fire away from a wait ring moved the ship %f px" % lvl.ship.global_position.distance_to(start))

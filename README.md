@@ -65,13 +65,13 @@ Keys and sticks point the ship in the direction you press, and it holds that hea
 
 Menus work with the keyboard and a gamepad: the D-pad, left stick or arrow keys move the focus, Enter or A selects, and Esc or B closes an overlay (the level editor's sheets too) or goes back (the main menu ignores it). In a level, Esc or Start opens the pause card, and Esc, Start or B closes it.
 
-On a touchscreen, **Controls** offers three layouts, with a diagram of the one you choose:
+On a touchscreen (the touch options are hidden on devices without one), **Controls** offers three layouts, with a diagram of the one you choose:
 
 - **One finger** (default): touch and hold to turn toward your finger and thrust.
 - **Stick + button**: a floating stick appears where your thumb lands on one half of the screen; the other half is the fire button.
 - **Finger + button**: a finger anywhere aims the ship, and a round fire button sits in a bottom corner.
 
-In the last two you choose which side holds the fire button. **Change** replaces a binding of the same kind (key, mouse button or gamepad button) and **Add** gives the action one more; Esc cancels. Stick axes are set by the gamepad preset. **Reset to defaults** restores everything on the screen.
+In the last two you choose which side holds the on-screen fire button. **Change** replaces a binding of the same kind (key, mouse button or gamepad button) and **Add** gives the action one more; Esc cancels. Stick axes are set by the gamepad preset. **Reset to defaults** restores everything on the screen.
 
 While a thumb holds the virtual stick, a second finger cannot press the HUD buttons (Restart, Menu, Tune): Godot turns only the first touch into the clicks buttons need, so lift the thumb first.
 

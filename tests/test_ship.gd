@@ -141,3 +141,28 @@ func test_velocity_arrow_length() -> void:
 	ship.linear_velocity = Vector2(0, 1200)
 	await frames(1)
 	check(is_equal_approx(ship.velocity_arrow_length(), Ship.VELOCITY_ARROW_MAX), "arrow must cap at %f, got %f" % [Ship.VELOCITY_ARROW_MAX, ship.velocity_arrow_length()])
+
+
+## With physics interpolation the ship is drawn at a rotation between its last two physics ticks,
+## so the arrow must undo that rotation, not the physics one: while turning fast it swung every
+## frame. Headless, 30 physics ticks under 60 rendered frames put every other frame between ticks.
+func test_velocity_arrow_follows_the_velocity_while_turning() -> void:
+	Engine.physics_ticks_per_second = 30
+	var ship: Ship = spawn(SHIP, Vector2.ZERO, {"linear_velocity": Vector2(300, 100), "steering": true, "aim_point": Vector2(-1000, 10)})
+	var ticks: Array[float] = [0.0, 0.0]  # the ship's rotation at the last two physics ticks
+	var on_tick := func() -> void:
+		ticks[0] = ticks[1]  # in place: a lambda copies the variables it captures
+		ticks[1] = ship.rotation
+	tree.physics_frame.connect(on_tick)
+	var worst := 0.0
+	var apart := 0.0  # how far the drawn rotation strays from the physics one: the test must see it
+	for i in 24:
+		await tree.process_frame  # the interpolation fraction is current here
+		var drawn := lerp_angle(ticks[0], ticks[1], Engine.get_physics_interpolation_fraction())
+		var tip := ship.velocity_arrow_tip().rotated(drawn)
+		worst = maxf(worst, rad_to_deg(absf(tip.angle_to(ship.linear_velocity))))
+		apart = maxf(apart, rad_to_deg(absf(drawn - ship.rotation)))
+	tree.physics_frame.disconnect(on_tick)
+	Engine.physics_ticks_per_second = 60
+	check(apart > 3.0, "the drawn rotation never left the physics one (%f degrees), so this test sees nothing" % apart)
+	check(worst < 1.0, "the arrow strayed %f degrees from the velocity" % worst)
