@@ -106,7 +106,7 @@ func _physics_process(_delta: float) -> void:
 		_fire = touch.fire
 	var direction := steer_direction()
 	var gated := scheme in GATED
-	var active := (ship.accept_input or not gated) and (direction != Vector2.ZERO or _fire or _pointer != null)
+	var active := not ship.controls_locked and (ship.accept_input or not gated) and (direction != Vector2.ZERO or _fire or _pointer != null)
 	if not (active or _applied):
 		return
 	_applied = active  # going idle writes once, to let go of the ship

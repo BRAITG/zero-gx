@@ -39,12 +39,15 @@ const HEAT_RED := Color("#ff3b1f")
 const BURN_VOLUME_DB := -22.0  # the burning roar at full heat
 const VELOCITY_ARROW_SCALE := 0.25  # px of arrow per px/s
 const VELOCITY_ARROW_MAX := 200.0  # px
+const EXACT_ALIGN_DEGREES := 0.5  # the turn lands exactly on the aim within a tick; this only absorbs float error
 
 var thrusting := false
 ## Turn toward aim_point without thrust (a ship that steers while its engine is on a separate button).
 var steering := false
 ## Engine waits until the nose has pointed within Tuning.align_degrees of the finger.
 var align_gate := true
+## The ring assist sets this: the engine waits for the nose to be exactly on the ring, not Tuning.align_degrees.
+var align_exact := false
 var aim_point := Vector2.ZERO
 ## Starting fuel; a level can give less than a full tank.
 @export var fuel := MAX_FUEL
@@ -91,6 +94,8 @@ var _spin := 0.0  # rad/s left from the last glancing hit; decays with Tuning.sp
 ## False while a tutorial's rings own a one-finger ship: ShipInput leaves it alone. The schemes
 ## that aim freely (keys, pad, mouse, sticks) steer and fire regardless.
 var accept_input := true
+## While true, no input scheme steers or fires; tutorials use it for scripted moments.
+var controls_locked := false
 ## Where a tutorial's `wait` ring holds the ship: motionless there, still free to turn; null lets it fly.
 var anchor: Variant = null
 var _respawn: Variant = null  # [position, velocity] to apply on the next physics step
@@ -192,7 +197,8 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		var turn := wrapf(to_aim.angle() - state.transform.get_rotation(), -PI, PI)
 		var rate := Tuning.boost_turn_rate if boosting else Tuning.turn_rate
 		state.angular_velocity = clampf(turn / step, -rate, rate)
-		aligned = absf(turn) <= deg_to_rad(Tuning.align_degrees)
+		var tolerance := EXACT_ALIGN_DEGREES if align_exact else Tuning.align_degrees
+		aligned = absf(turn) <= deg_to_rad(tolerance)
 		_spin = 0.0
 	else:
 		state.angular_velocity = _spin  # zero unless a recent hit set the ship spinning
@@ -349,6 +355,7 @@ func respawn(at: Vector2, velocity: Vector2, with_fuel: float) -> void:
 	death_cause = ""
 	thrusting = false
 	anchor = null
+	align_exact = false
 	_stranded_sent = false
 	_empty_time = 0.0
 	_spin = 0.0

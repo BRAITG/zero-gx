@@ -12,7 +12,9 @@ func lesson() -> void:
 	var start: Vector2 = ship.global_position  # outside the hole's reach: safe to rest at
 	await say("Black holes pull far harder than planets, and anything that touches one is gone. Don't touch anything: watch your arrow.")
 	# Pause so the tipping point falls inside the half turn to face away: once turned, it's too late.
+	ship.controls_locked = true  # the watched fall takes no thrust or turn, from the keys either
 	await until(func() -> bool: return _doomed_after(PI / Tuning.turn_rate - LATE), "Watch the black hole pull you in.")
+	ship.controls_locked = false  # the close call's ring is up: the player may turn and fire
 	ship.invulnerable = true  # the fall below must end in the rescue, never in a death
 	var falling := for_seconds(8.0)  # a backstop, should the ship ever hang at the tipping point
 	await touch_target(_away, func() -> bool: return not waiting() and (falling.call() or _distance() < _hole.radius + CLOSE_CALL),
