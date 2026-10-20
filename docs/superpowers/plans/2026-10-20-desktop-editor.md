@@ -25,7 +25,7 @@
 
 ## Review Focus
 
-1. **Typing in a text field fires shortcuts.** Pressing `T` or `Ctrl+S` while the Settings title `LineEdit` has focus must type, not test-fly or save. `_unhandled_input` only sees keys the focused control did not consume; Task 2 pins it with a test.
+1. **Typing in a text field fires shortcuts.** Pressing `T` while the Settings title `LineEdit` has focus must type, not test-fly. `Ctrl+S` there may save: that is harmless, so the plan accepts it. `_unhandled_input` only sees keys the focused control did not consume; Task 2 pins the `T` case with a test.
 2. **Export to a name without `.json`.** A user types `my level` in the save dialog; the file written must be `my level.json` so the app's import filter finds it. Task 1 pins it.
 3. **Import of a file that is not a level** (an image, an empty file, a JSON array). No level saved, readable error shown, no crash. Task 1 pins empty, non-JSON and array.
 4. **Pan or zoom starting over a UI button.** Right-drag that starts on the top bar must not move the camera; `_unhandled_input` already skips GUI-handled events. Checked in the smoke run.
@@ -366,7 +366,7 @@ Expected: run succeeds; the artifact `zero-gx-apk` lists the APK, AAB and three 
 
 - [ ] **Step 6: Android device smoke** (author, on a phone, with the CI APK)
 
-My levels → Export a level to Drive → Import it back from Drive → a second copy appears. Covers Review Focus 5.
+My levels → Export a level to Downloads → Import it back from Downloads → a second copy appears. Covers Review Focus 5.
 
 - [ ] **Step 7: Commit**
 

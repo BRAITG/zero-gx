@@ -10,7 +10,7 @@ Build and edit Zero-GX levels on Windows, macOS and Linux, mainly so the author 
 |---|---|
 | Codebase | The existing Godot project. No second editor. The desktop editor is `scenes/editor.gd` with extra mouse and keyboard input. |
 | Platforms | Windows, macOS and Linux now. A web build comes later. |
-| Moving levels | Files, through native file dialogs (`DisplayServer.file_dialog_show`). On Android this is the system picker (Storage Access Framework), so Drive, Downloads and USB all work. No Android share sheet for now. |
+| Moving levels | Files, through native file dialogs (`DisplayServer.file_dialog_show`). On Android this is the system picker (Storage Access Framework), which covers Downloads, USB and local storage. Drive may not be listed, because Godot's Android picker asks for local files only. No Android share sheet for now. |
 | File format | The existing level format. Export always writes plain `.json` in the stable `LevelFormat.to_json` layout. Import accepts `.json` and `.json.gz`. |
 | Official levels | No special mode. Import `levels/<id>.json`, edit, test, then export over the same file. The stable layout keeps `git diff` limited to real changes. |
 | Demos | Test flights on desktop record and replay through the existing `MyLevels.save_demo` and Watch. Demos stay on the device. There is no demo export. |
@@ -25,7 +25,7 @@ The My levels screen (`scenes/my_levels_screen.gd`) gains an **Import** button i
 1. Open a file dialog filtered to `*.json` and `*.json.gz`.
 2. Reject files larger than 64 KB before parsing; this is the server's submission limit.
 3. Parse with `LevelFormat.read`. The file must be a JSON object whose `format` is `"zero-gx-level"` and whose `version` is the current `LevelFormat.VERSION`.
-4. Unfinished drafts are accepted: full `LevelFormat.validate` is not required, so half-built levels can move between phone and PC. The editor shows the level's problems, and Play stays disabled until it is valid, as for any draft.
+4. Unfinished drafts are accepted: `LevelFormat.validate(data, true)` checks only that the file is well formed (types and shapes), not its sizes, ranges, limits or placement, so half-built levels can move between phone and PC. The editor shows the level's problems, and Play stays disabled until it is valid, as for any draft. A file with the wrong shape (for example a missing ship or a number for the title) is refused.
 5. On any error, show the errors in an overlay and save nothing.
 6. On success, save the level under a new id from `MyLevels.new_id()`. Import never overwrites an existing level.
 
@@ -45,6 +45,7 @@ Additions to `_unhandled_input` in `scenes/editor.gd`. The touch path does not c
 |---|---|
 | Right-drag or middle-drag | Pan, with the same camera maths as a two-finger drag. |
 | Mouse wheel | Zoom around the cursor. The wheel already zooms, but around the screen centre. |
+| Trackpad pinch and swipe (macOS) | Zoom around the cursor, and pan. |
 | `Ctrl+Z` / `Cmd+Z` | Undo (`LevelDoc.undo`). |
 | `Ctrl+S` / `Cmd+S` | Save (`save`). |
 | `T` | Test flight (`_test`). |
@@ -64,16 +65,16 @@ These apply to touch and mouse alike.
 
 New export presets: Windows (`.exe`), Linux (`.x86_64`) and macOS (`.zip`). The display is already 1280×720 landscape with `canvas_items` stretch, so a resizable desktop window scales correctly. `.github/workflows/build.yml` exports the three builds on its existing runner and attaches them to the prerelease beside the APK.
 
-The desktop builds are not code-signed. On macOS the first launch needs right-click and Open; on Windows SmartScreen shows a warning.
+The desktop builds are not code-signed. On macOS the first launch needs System Settings → Privacy & Security → Open Anyway (macOS 15 and later; older versions use right-click and Open); on Windows SmartScreen shows a warning.
 
 ## Tests
 
 In the existing `tests/` runner:
 
 - **Round-trip through a draft:** importing an official level and exporting it again produces a file byte-identical to the original, under a new `user_` id, with the original untouched. (`tests/test_level_format.gd` already checks that every official level is in the stable layout.)
-- **Import rejects bad files:** invalid JSON, a JSON value that is not an object, a wrong `format` or `version`, and a file over 64 KB each leave no level saved. An unfinished draft imports.
+- **Import rejects bad files:** invalid JSON, a JSON value that is not an object, a wrong `format` or `version` (including values of the wrong type), a file with the wrong shape (a bare header, a number for the title, an unknown wall kind), and a file over 64 KB each leave no level saved. An unfinished draft imports, and a gzip level imports whatever its file name.
 - **Grid and picking:** a new wall point snaps to 1 m by default; at zoom 0.2 a press 30 screen px from a wall point picks the point, and a press on the middle of a segment picks the wall.
-- **Editor input:** right-drag pans; wheel zoom keeps the world point under the cursor fixed; `Ctrl+Z` undoes the last change.
+- **Editor input:** right-drag pans; wheel zoom and trackpad pinch keep the world point under the cursor fixed; a trackpad swipe pans; `Ctrl+Z` undoes the last change, but not with a sheet open or with Shift held.
 
 Smoke test before release: run a local desktop build, import an official level, edit it, test-fly it, and export it.
 

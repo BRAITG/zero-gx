@@ -126,7 +126,7 @@ jobs:
           tag="prototype-r${GITHUB_RUN_NUMBER}"
           gh release create "$tag" build/zero-gx.apk build/zero-gx.aab build/zero-gx-windows.exe build/zero-gx-linux.x86_64 build/zero-gx-macos.zip --target "$GITHUB_SHA" --prerelease \
             --title "Zero-GX prototype r${GITHUB_RUN_NUMBER} (${GITHUB_SHA::7})" \
-            --notes "Debug-signed prototype build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Install: open this page on the phone, download zero-gx.apk, allow installs from the browser, open the file. Later builds install over this one. zero-gx.aab is the signed bundle for Google Play. Desktop builds (Windows, macOS, Linux) are unsigned: on macOS, right-click the app and choose Open; on Windows, choose More info → Run anyway; on Linux, run \`chmod +x\` first."
+            --notes "Debug-signed prototype build from ${GITHUB_REF_NAME} @ ${GITHUB_SHA::7}. Install: open this page on the phone, download zero-gx.apk, allow installs from the browser, open the file. Later builds install over this one. zero-gx.aab is the signed bundle for Google Play. Desktop builds (Windows, macOS, Linux) are unsigned: on macOS, open System Settings → Privacy & Security and choose Open Anyway (macOS 15 and later; on older versions, right-click the app and choose Open); on Windows, choose More info → Run anyway; on Linux, run \`chmod +x\` first."
 
       - name: Upload to Google Play internal testing
         if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && env.PLAY_UPLOAD == 'true' }}

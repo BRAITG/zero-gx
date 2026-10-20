@@ -47,6 +47,8 @@ Controls: touch and hold anywhere. The ship turns toward your finger and thrusts
 
 Levels live in `levels/` as level files (see [Level files](#level-files)). Build your own in the app: **My levels** in the main menu opens the level editor (`scenes/editor.gd`). Pick a tool from the bottom palette (walls, planets, black holes, stars, asteroids, pickups, start and goal); one finger places or drags, two fingers pan and pinch-zoom. Walls, the start and the goal snap to a 1 m grid; turn on **10 m grid** for 10 m steps. Everything else goes exactly where you put it, and pressing on something already placed picks it up instead of adding another. **Select** then tap opens a thing's sheet, with sliders kept within its kind's limits; **Settings** sets the title, hint, fuel, hull and velocity arrow. **Test** flies the level: finishing it marks the level completed until its next change, and returning keeps your undo history. Your levels are saved on the device in `user://levels/` (`scripts/my_levels.gd`); the editor's model with undo is `scripts/level_doc.gd`.
 
+**Import and export.** **Import** in My levels reads a level file (`.json` or `.json.gz`, including the official levels in `levels/`) as a new draft; a file that is not a Zero-GX level, or is malformed, is refused with the reasons. **Export** writes the level as plain `.json`, in the stable layout. Both use the system's file dialog; on Android that is the system picker, which lists Downloads, USB and local storage. In the editor on a computer, the left mouse button acts like a finger, the right or middle button drags the view, the wheel zooms at the cursor (on a Mac trackpad, pinch to zoom and swipe to pan), Ctrl/Cmd+Z undoes, Ctrl/Cmd+S saves, and T test-flies. These shortcuts are off while a sheet or Settings is open.
+
 ## Tests
 
 ```sh
@@ -57,7 +59,7 @@ The suite runs headless at a fixed 60 FPS. `tests/test_levels.gd` checks the lev
 
 ## Build pipeline
 
-`.github/workflows/build.yml` runs the tests, exports the APK and the desktop builds (Windows, macOS, Linux), and uploads them as a workflow artifact on every pull request. On `master`, and on a manual run with `publish` checked, it also publishes a prerelease with all of them. The desktop builds are unsigned: on macOS, right-click the app and choose Open; on Windows, SmartScreen warns, so choose More info → Run anyway. The debug keystore is the `ANDROID_DEBUG_KEYSTORE_B64` repository secret.
+`.github/workflows/build.yml` runs the tests, exports the APK and the desktop builds (Windows, macOS, Linux), and uploads them as a workflow artifact on every pull request. On `master`, and on a manual run with `publish` checked, it also publishes a prerelease with all of them. The desktop builds are unsigned. On macOS, open System Settings → Privacy & Security and choose Open Anyway (macOS 15 and later; on older versions, right-click the app and choose Open). On Windows, SmartScreen warns, so choose More info → Run anyway. On Linux, run `chmod +x` on the file first. The debug keystore is the `ANDROID_DEBUG_KEYSTORE_B64` repository secret.
 
 ## Community server
 
