@@ -134,16 +134,22 @@ func begin_move() -> void:
 	_remember()
 
 
-func erase(ref: Dictionary) -> void:
+## Removes `ref`. A point taken from a closed wall keeps it closed when `reclose` and three or more points remain; otherwise the wall opens at the gap, starting from the removed point's next neighbour.
+func erase(ref: Dictionary, reclose := true) -> void:
 	if ref.type in ["ship", "goal"]:
 		return  # every level needs both
 	_remember()
 	match ref.type:
 		"wall_point":
-			var points: Array = data.walls[ref.index].points
+			var wall: Dictionary = data.walls[ref.index]
+			var points: Array = wall.points
 			points.remove_at(ref.point)
 			if points.size() < 2:
 				data.walls.remove_at(ref.index)
+			elif wall.get("closed", false) and not (reclose and points.size() >= 3):
+				var at: int = ref.point % points.size()  # the next neighbour; wraps past the last point
+				wall.points = points.slice(at) + points.slice(0, at)
+				wall.erase("closed")
 		"wall":
 			data.walls.remove_at(ref.index)
 		"body":
