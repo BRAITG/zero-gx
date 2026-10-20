@@ -12,8 +12,12 @@ var training := false
 var _levels: GridContainer
 var _column: VBoxContainer
 
+## Set once per run: the menu scene is entered again on every return to it.
+static var _sized := false
+
 
 func _ready() -> void:
+	_size_window()
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var stars := Starfield.new()
 	stars.drift = MENU_DRIFT
@@ -117,6 +121,26 @@ static func menu(show_training: bool) -> Control:
 	var main: Control = load(SCENE).instantiate()
 	main.training = show_training
 	return main
+
+
+## Desktop only. A 720p window is a quarter of a Retina screen, so it opens at the screen's scale.
+func _size_window() -> void:
+	if _sized or not OS.has_feature("pc") or DisplayServer.get_name() == "headless":
+		return
+	_sized = true
+	var screen := DisplayServer.window_get_current_screen()
+	var dpi_scale := DisplayServer.screen_get_scale(screen)
+	if OS.get_name() == "Windows":
+		dpi_scale = DisplayServer.screen_get_dpi(screen) / 96.0
+	get_window().size = window_size(maxf(dpi_scale, 1.0), DisplayServer.screen_get_usable_rect(screen).size)
+	get_window().move_to_center()
+
+
+## The window size at `scale`: 1280x720 px times it, shrunk in 16:9 to fit 90% of `usable` if larger.
+static func window_size(scale: float, usable: Vector2i) -> Vector2i:
+	var fitted := Vector2(1280, 720) * scale
+	fitted *= minf(1.0, minf(usable.x * 0.9 / fitted.x, usable.y * 0.9 / fitted.y))
+	return Vector2i(roundi(fitted.x), roundi(fitted.y))
 
 
 ## project.godot turns off quit_on_go_back so levels can return here; the training list goes
