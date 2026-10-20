@@ -30,10 +30,12 @@ const SHARDS_MAX := 20
 const SHARD_SPEED_MIN := 100.0
 const SHARD_SPEED_MAX := 250.0
 const SHARD_GAP := 4.0  # px between neighbouring shards on the spawn ring
-## Field disc: opacity grows with the square root of the pull, so weak edges stay visible.
+## Field ripples: opacity grows with the square root of the pull, so weak edges stay visible.
 const FIELD_REFERENCE_PULL := 4000.0  # px/s² drawn at full opacity
 const FIELD_MAX_ALPHA := 0.35
-const FIELD_BANDS := 32
+const RIPPLE_SHADER := preload("res://scenes/gravity_field.gdshader")
+const RIPPLE_TINT := Color(0.62, 0.72, 0.9)
+const RIPPLE_TINT_BLACK_HOLE := Color(0.5, 0.56, 0.85)
 
 var _shattering := false
 var _time := 0.0
@@ -43,6 +45,8 @@ var _time := 0.0
 		preset = value
 		queue_redraw()
 static var _unit_disc: ArrayMesh  # see _disc()
+static var _white: ImageTexture  # 1 px, scaled to the ripple quad
+var _ripples: Sprite2D
 ## Negative values mean "use the preset's value".
 @export var radius := -1.0
 @export var strength := -1.0
@@ -67,6 +71,7 @@ func _ready() -> void:
 	body_shape.shape = CircleShape2D.new()
 	body_shape.shape.radius = radius
 	add_child(body_shape)
+	_build_ripples()
 	var field := Area2D.new()
 	field.name = "Field"
 	field.monitorable = false
@@ -76,7 +81,7 @@ func _ready() -> void:
 	field.gravity_point_unit_distance = radius
 	_apply_gravity_tuning(field)
 	Tuning.changed.connect(_apply_gravity_tuning.bind(field))
-	Settings.changed.connect(queue_redraw)  # the field disc follows the player's setting
+	Settings.changed.connect(_sync_ripples)
 	var field_shape := CollisionShape2D.new()
 	field_shape.shape = CircleShape2D.new()
 	field_shape.shape.radius = reach
@@ -86,7 +91,43 @@ func _ready() -> void:
 
 func _apply_gravity_tuning(field: Area2D) -> void:
 	field.gravity = _surface_pull()
-	queue_redraw()  # the field disc shows planet_gravity
+	_sync_ripples()
+
+
+## The ripple quad sits under the body, covering the whole field, and is drawn by the shader.
+func _build_ripples() -> void:
+	if _white == null:
+		var pixel := Image.create_empty(1, 1, false, Image.FORMAT_RGBA8)
+		pixel.fill(Color.WHITE)
+		_white = ImageTexture.create_from_image(pixel)
+	_ripples = Sprite2D.new()
+	_ripples.name = "Ripples"
+	_ripples.texture = _white
+	_ripples.scale = Vector2.ONE * 2.0 * reach
+	_ripples.show_behind_parent = true
+	_ripples.material = ShaderMaterial.new()
+	_ripples.material.shader = RIPPLE_SHADER
+	add_child(_ripples)
+
+
+func _sync_ripples() -> void:
+	_ripples.visible = Settings.show_gravity
+	var material: ShaderMaterial = _ripples.material
+	var pull := _surface_pull()
+	material.set_shader_parameter("radius", radius)
+	material.set_shader_parameter("reach", reach)
+	material.set_shader_parameter("surface_pull", pull)
+	material.set_shader_parameter("reference_pull", FIELD_REFERENCE_PULL)
+	material.set_shader_parameter("max_alpha", FIELD_MAX_ALPHA)
+	material.set_shader_parameter("period", ripple_period(pull))
+	material.set_shader_parameter("phase", fposmod(position.x * 0.013 + position.y * 0.0071, 1.0))
+	material.set_shader_parameter("rings", 7.0 if preset == Preset.BLACK_HOLE else 6.0)
+	material.set_shader_parameter("tint", RIPPLE_TINT_BLACK_HOLE if preset == Preset.BLACK_HOLE else RIPPLE_TINT)
+
+
+## Seconds a ripple takes to fall into the body: stronger pull, faster fall.
+static func ripple_period(surface_pull: float) -> float:
+	return clampf(3.0 * sqrt(FIELD_REFERENCE_PULL / maxf(surface_pull, 1.0)), 0.6, 4.0)
 
 
 func _surface_pull() -> float:
@@ -96,7 +137,7 @@ func _surface_pull() -> float:
 	return strength
 
 
-## Opacity of the field disc at `distance` from the centre; 0 beyond reach.
+## Opacity of the field at `distance` from the centre; 0 beyond reach.
 func field_alpha(distance: float) -> float:
 	if distance > reach:
 		return 0.0
@@ -135,16 +176,6 @@ func _shatter() -> void:
 
 func _draw() -> void:
 	var r: float = radius if radius > 0 else PRESETS[preset][0]
-	if not Engine.is_editor_hint() and Settings.show_gravity:
-		var band := (reach - r) / FIELD_BANDS
-		var shown := 0.0  # alpha the discs outside this band already paint
-		for i in range(FIELD_BANDS - 1, -1, -1):  # filled discs like the star's corona: no arc seam
-			var middle := r + band * (i + 0.5)
-			var alpha := field_alpha(middle)
-			var paint := (alpha - shown) / (1.0 - shown)  # so the visible ring keeps field_alpha
-			if paint > 0.0:
-				_disc(r + band * (i + 1), Color(1, 1, 1, paint))
-			shown = alpha
 	match preset:
 		Preset.PLANET: _draw_planet(r)
 		Preset.BLACK_HOLE: _draw_black_hole(r)
