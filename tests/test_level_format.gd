@@ -62,6 +62,43 @@ func test_validation_rejects_each_rule() -> void:
 	rejects(big, "too many tour stops")
 
 
+func test_draft_validation_skips_the_rules_but_keeps_the_shapes() -> void:
+	var many := []
+	for i in LevelFormat.MAX_WALLS + 1:
+		many.append(WALL)
+	var unfinished := {
+		"an empty title": with("title", ""), "no fuel": with("ship.fuel", 0), "a ship outside the map": with("ship.position", [60000, 0]),
+		"a ship in the goal": with("goal.position", [10, 10]), "a one-point wall": with("walls", [{"kind": "blue", "points": [[0, 0]]}]),
+		"a huge planet over the ship": with("bodies", [{"kind": "planet", "position": [40, 0], "radius": 5000}]), "too many walls": with("walls", many),
+		"a long hint": with("hint", "x".repeat(201)),
+	}
+	for why: String in unfinished:
+		check(LevelFormat.validate(unfinished[why], true).is_empty(), "a draft with %s must pass: %s" % [why, LevelFormat.validate(unfinished[why], true)])
+		check(not LevelFormat.validate(unfinished[why]).is_empty(), "a full validation must still reject %s" % why)
+	var broken := {
+		"only a format and version": {"format": "zero-gx-level", "version": 1}, "a number for the format": with("format", 5), "a string for the version": with("version", "1"),
+		"a number title": with("title", 5), "no title": with("title", null), "a number hint": with("hint", 7), "a lone ship position number": with("ship.position", [5]),
+		"a text coordinate": with("ship.position", ["a", 0]), "a goal that is not an object": with("goal", 5), "an unknown wall kind": with("walls", [{"kind": "green", "points": [[0, 0], [1, 1]]}]),
+		"wall points that are not a list": with("walls", [{"kind": "blue", "points": 3}]), "walls that are not a list": with("walls", "x"), "an unknown body kind": with("bodies", [{"kind": "moon", "position": [0, 0]}]),
+		"an orbit around a missing body": with("asteroids", [{"position": [800, 0], "orbit": {"body": 3}}]), "a tour stop that is not an object": with("tour", [4]),
+		"a route without points": with("route", {}), "a bad wall among too many": with("walls", many + [{"kind": "green", "points": [[0, 0], [1, 1]]}]),
+	}
+	for why: String in broken:
+		check(not LevelFormat.validate(broken[why], true).is_empty(), "a draft with %s must be rejected" % why)
+
+
+func test_a_gzip_file_reads_whatever_its_name() -> void:
+	var path := "user://disguised.json"
+	var file := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_GZIP)
+	file.store_string(JSON.stringify(minimal()))
+	file.close()
+	check(LevelFormat.read(path).get("title") == "Test", "a gzip file named .json must read: %s" % LevelFormat.read(path))
+	LevelFormat.write("user://plain.json", minimal())
+	check(LevelFormat.read("user://plain.json").get("title") == "Test", "a plain file must still read")
+	DirAccess.remove_absolute(path)
+	DirAccess.remove_absolute("user://plain.json")
+
+
 func test_unlimited_fuel_never_burns_or_strands() -> void:
 	var lvl := LevelFormat.build(with("ship.fuel", "unlimited"))
 	world.add_child(lvl)

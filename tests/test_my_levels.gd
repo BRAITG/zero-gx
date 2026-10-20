@@ -76,6 +76,11 @@ func test_import_rejects_bad_files() -> void:
 		"user://bad_array.json": "[1, 2]",
 		"user://bad_format.json": '{"format": "other-game", "version": 1}',
 		"user://bad_version.json": '{"format": "zero-gx-level", "version": 999}',
+		"user://bad_bare.json": '{"format": "zero-gx-level", "version": 1}',
+		"user://bad_format_type.json": '{"format": 5, "version": 1}',
+		"user://bad_version_type.json": '{"format": "zero-gx-level", "version": "1"}',
+		"user://bad_title.json": '{"format": "zero-gx-level", "version": 1, "title": 5, "ship": {"position": [0, 0]}, "goal": {"position": [2000, 0]}}',
+		"user://bad_wall.json": '{"format": "zero-gx-level", "version": 1, "title": "x", "ship": {"position": [0, 0]}, "goal": {"position": [2000, 0]}, "walls": [{"kind": "green", "points": [[0, 0], [1, 1]]}]}',
 		"user://bad_big.json": "x".repeat(LevelFormat.MAX_BYTES + 1),
 	}
 	for path: String in cases:
@@ -96,6 +101,16 @@ func test_import_accepts_an_unfinished_draft() -> void:
 	DirAccess.remove_absolute("user://draft.json")
 
 
+func test_import_reads_gzip_whatever_the_name() -> void:
+	var path := "user://disguised.json"  # a content:// path from Android's picker has no extension to go by
+	var file := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_GZIP)
+	file.store_string(JSON.stringify(LevelFormat.read("res://levels/level_05.json")))
+	file.close()
+	check(MyLevels.import_file(path).is_empty(), "a gzip level named .json must import")
+	check(MyLevels.ids().size() == 1 and MyLevels.load_level(MyLevels.ids()[0]).get("title") == "Swing", "imported level: %s" % [MyLevels.ids()])
+	DirAccess.remove_absolute(path)
+
+
 func test_export_adds_json_extension() -> void:
 	MyLevels.import_file("res://levels/level_05.json")
 	check(MyLevels.export_file(MyLevels.ids()[0], "user://my level") == OK, "export")
@@ -111,3 +126,12 @@ func test_my_levels_screen_offers_import_and_export() -> void:
 	var labels: Array = screen.find_children("*", "Button", true, false).map(func(b: Button): return b.text)
 	check("Import" in labels and "Export" in labels, "buttons: %s" % [labels])
 	screen.queue_free()
+
+
+func test_export_dialog_suggests_a_safe_file_name() -> void:
+	var screen := MyLevelsScreen.new()
+	world.add_child(screen)
+	await frames(1)
+	screen._export("user_x", "a/b:c?")
+	var dialogs := screen.find_children("*", "FileDialog", true, false)
+	check(dialogs.size() == 1 and dialogs[0].current_file == "a_b_c_.json", "suggested name: %s" % [dialogs.map(func(d: FileDialog) -> String: return d.current_file)])

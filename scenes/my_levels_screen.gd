@@ -65,8 +65,8 @@ func _fill() -> void:
 			_button(row, "Watch", _watch.bind(id, data))
 		var play := _button(row, "Play", func() -> void: Progress.open(id))
 		play.disabled = data.is_empty() or not LevelFormat.validate(data).is_empty()
-		_button(row, "Export", _export.bind(id, data.get("title", "level")))
-		_button(row, "Delete", _confirm_delete.bind(id, data.get("title", "?")))
+		_button(row, "Export", _export.bind(id, str(data.get("title", "level"))))
+		_button(row, "Delete", _confirm_delete.bind(id, str(data.get("title", "?"))))
 
 
 func _edit(id: String) -> void:
@@ -92,7 +92,7 @@ func _confirm_delete(id: String, title: String) -> void:
 
 
 func _import() -> void:
-	_file_dialog(FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.json, *.json.gz ; Zero-GX levels"]), "", func(path: String) -> void:
+	_file_dialog(false, PackedStringArray(["*.json, *.json.gz ; Zero-GX levels"]), "", func(path: String) -> void:
 		var errors := MyLevels.import_file(path)
 		if errors.is_empty():
 			_fill()
@@ -103,17 +103,22 @@ func _import() -> void:
 
 
 func _export(id: String, title: String) -> void:
-	_file_dialog(FileDialog.FILE_MODE_SAVE_FILE, PackedStringArray(["*.json ; Zero-GX level"]), title + ".json", func(path: String) -> void:
+	_file_dialog(true, PackedStringArray(["*.json ; Zero-GX level"]), title.validate_filename() + ".json", func(path: String) -> void:
 		if MyLevels.export_file(id, path) != OK:
 			Overlay.open(self, "Cannot export").paragraph("The file could not be written."))
 
 
-## A native file dialog; `on_pick` gets the chosen path. The dialog frees itself on pick or cancel.
-func _file_dialog(mode: FileDialog.FileMode, filters: PackedStringArray, current: String, on_pick: Callable) -> void:
-	var dialog := FileDialog.new()
-	dialog.use_native_dialog = true
+## A file dialog; `on_pick` gets the chosen path (a `content://` URI on Android). The system's own dialog where there is one, which Android needs; a Godot FileDialog otherwise.
+func _file_dialog(save: bool, filters: PackedStringArray, current: String, on_pick: Callable) -> void:
+	if DisplayServer.has_feature(DisplayServer.FEATURE_NATIVE_DIALOG_FILE):
+		var mode := DisplayServer.FILE_DIALOG_MODE_SAVE_FILE if save else DisplayServer.FILE_DIALOG_MODE_OPEN_FILE
+		DisplayServer.file_dialog_show("Export level" if save else "Import level", "", current, false, mode, filters, func(status: bool, paths: PackedStringArray, _filter: int) -> void:
+			if status and not paths.is_empty():
+				on_pick.call(paths[0]))
+		return
+	var dialog := FileDialog.new()  # Linux without a desktop portal
 	dialog.access = FileDialog.ACCESS_FILESYSTEM
-	dialog.file_mode = mode
+	dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE if save else FileDialog.FILE_MODE_OPEN_FILE
 	dialog.filters = filters
 	dialog.current_file = current
 	add_child(dialog)

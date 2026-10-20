@@ -32,17 +32,19 @@ static func save(id: String, data: Dictionary) -> void:
 	LevelFormat.write(dir + id + EXTENSION, data)
 
 
-## Imports a level file as a new level. Drafts import too: `LevelFormat.validate` gates only Play.
+## Imports a level file as a new level. Drafts import too: only a malformed file (wrong format,
+## version, types or shapes) is refused; `LevelFormat.validate` gates Play.
 static func import_file(path: String) -> PackedStringArray:
-	if not FileAccess.file_exists(path):
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
 		return ["file cannot be read"]
-	if FileAccess.get_file_as_bytes(path).size() > LevelFormat.MAX_BYTES:
+	# shortcut: the 64 KB limit applies to the compressed size of a gzip file, so a small gzip bomb still inflates in memory; cap the inflated read when levels come from the community server
+	if file.get_length() > LevelFormat.MAX_BYTES:
 		return ["file is larger than %d bytes" % LevelFormat.MAX_BYTES]
 	var data := LevelFormat.read(path)
-	if data.is_empty() or data.get("format") != LevelFormat.FORMAT:
-		return ["not a Zero-GX level"]
-	if data.get("version") != LevelFormat.VERSION:
-		return ["made for a different version of Zero-GX"]
+	var errors := LevelFormat.validate(data, true)
+	if not errors.is_empty():
+		return errors
 	var id := new_id()
 	while FileAccess.file_exists(dir + id + EXTENSION):  # same-second ids can collide; never overwrite
 		id = new_id()
@@ -50,8 +52,9 @@ static func import_file(path: String) -> PackedStringArray:
 	return PackedStringArray()
 
 
+## `path` is a file name or an Android `content://` URI, which already names the file and takes no extension.
 static func export_file(id: String, path: String) -> Error:
-	return LevelFormat.write(path if path.ends_with(".json") else path + ".json", load_level(id))
+	return LevelFormat.write(path if path.ends_with(".json") or path.begins_with("content://") else path + ".json", load_level(id))
 
 
 static func delete(id: String) -> void:

@@ -7,6 +7,7 @@ const FORMAT := "zero-gx-level"
 const VERSION := 1
 const UNLIMITED := "unlimited"
 const EXTENSION := ".json"
+const COMPRESSED_MAGIC := "GCPF"  # the first bytes of what `FileAccess.open_compressed` writes: Godot's own container, not a standard .gz
 
 const WALL_KINDS := ["blue", "orange", "red"]  # Barrier.Kind order
 const BODY_KINDS := ["planet", "black_hole", "star"]  # GravityBody.Preset order
@@ -47,9 +48,11 @@ static func is_unlimited(value: Variant) -> bool:
 	return value is String and value == UNLIMITED
 
 
-## Reads a level file: gzip when the path ends in `.gz`, plain text otherwise.
+## Reads a level file: compressed when it starts with Godot's compressed-file header (whatever its name), plain text otherwise.
 static func read(path: String) -> Dictionary:
-	var file := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_GZIP) if path.ends_with(".gz") else FileAccess.open(path, FileAccess.READ)
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file != null and file.get_length() >= COMPRESSED_MAGIC.length() and file.get_buffer(COMPRESSED_MAGIC.length()).get_string_from_ascii() == COMPRESSED_MAGIC:
+		file = FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_GZIP)
 	if file == null:
 		return {}
 	var json := JSON.new()  # unlike parse_string, the instance parse does not log every bad file
@@ -89,60 +92,62 @@ static func _normalized(value: Variant) -> Variant:
 	return value
 
 
-## Every way `data` breaks the format's rules; empty when the level is valid.
-static func validate(data: Dictionary) -> PackedStringArray:
+## Every way `data` breaks the format's rules; empty when the level is valid. A `draft` (an
+## unfinished level, which the editor accepts and shows the problems of) only has to be well
+## formed: wrong types and shapes still fail, but sizes, ranges, limits and placement do not.
+static func validate(data: Dictionary, draft := false) -> PackedStringArray:
 	var errors := PackedStringArray()
-	if JSON.stringify(data).to_utf8_buffer().size() > MAX_BYTES:
+	if not draft and JSON.stringify(data).to_utf8_buffer().size() > MAX_BYTES:
 		errors.append("level is larger than %d bytes" % MAX_BYTES)
 	if not data.get("format") is String or data.format != FORMAT or not (data.get("version") is float or data.get("version") is int) or int(data.version) != VERSION:
 		errors.append("not a %s version %d file" % [FORMAT, VERSION])
 		return errors
 	var title: Variant = data.get("title")
-	if not title is String or title.length() < 1 or title.length() > MAX_TITLE:
+	if not title is String or (not draft and (title.length() < 1 or title.length() > MAX_TITLE)):
 		errors.append("title must be 1-%d characters" % MAX_TITLE)
-	_text(data.get("hint", ""), "hint", errors)
+	_text(data.get("hint", ""), "hint", errors, draft)
 	var ship: Variant = data.get("ship")
 	if not ship is Dictionary:
 		errors.append("missing ship")
 		return errors
-	_point(ship.get("position"), "ship position", errors)
-	_point(ship.get("velocity", [0, 0]), "ship velocity", errors)
-	_number(ship.get("rotation", 0), -TAU, TAU, "ship rotation", errors)
+	_point(ship.get("position"), "ship position", errors, draft)
+	_point(ship.get("velocity", [0, 0]), "ship velocity", errors, draft)
+	_number(ship.get("rotation", 0), -TAU, TAU, "ship rotation", errors, draft)
 	for tank: String in ["fuel", "hull"]:
 		var value: Variant = ship.get(tank, 100)
 		if not is_unlimited(value):
-			_number(value, TANK_RANGE.x, TANK_RANGE.y, "ship %s" % tank, errors)
+			_number(value, TANK_RANGE.x, TANK_RANGE.y, "ship %s" % tank, errors, draft)
 	var goal: Variant = data.get("goal")
 	if not goal is Dictionary:
 		errors.append("missing goal")
 	else:
-		_point(goal.get("position"), "goal position", errors)
-	var walls := _list(data, "walls", MAX_WALLS, errors)
+		_point(goal.get("position"), "goal position", errors, draft)
+	var walls := _list(data, "walls", MAX_WALLS, errors, draft)
 	for i in walls.size():
 		var wall: Variant = walls[i]
 		if not wall is Dictionary or not wall.get("kind") in WALL_KINDS:
 			errors.append("wall %d: unknown kind" % i)
 			continue
 		var points: Variant = wall.get("points")
-		if not points is Array or points.size() < 2 or points.size() > MAX_WALL_POINTS:
+		if not points is Array or (not draft and (points.size() < 2 or points.size() > MAX_WALL_POINTS)):
 			errors.append("wall %d: needs 2-%d points" % [i, MAX_WALL_POINTS])
 			continue
 		for p in points:
-			_point(p, "wall %d point" % i, errors)
-	var bodies := _list(data, "bodies", MAX_BODIES, errors)
+			_point(p, "wall %d point" % i, errors, draft)
+	var bodies := _list(data, "bodies", MAX_BODIES, errors, draft)
 	for i in bodies.size():
 		var body: Variant = bodies[i]
 		if not body is Dictionary or not body.get("kind") in BODY_KINDS:
 			errors.append("body %d: unknown kind" % i)
 			continue
 		var before := errors.size()
-		_point(body.get("position"), "body %d position" % i, errors)
+		_point(body.get("position"), "body %d position" % i, errors, draft)
 		for key: String in BODY_RANGES:
 			if body.has(key):
-				_number(body[key], BODY_RANGES[key].x, BODY_RANGES[key].y, "body %d %s" % [i, key], errors)
-		if errors.size() == before:  # only well-formed numbers can be compared to the kind's limits
+				_number(body[key], BODY_RANGES[key].x, BODY_RANGES[key].y, "body %d %s" % [i, key], errors, draft)
+		if not draft and errors.size() == before:  # only well-formed numbers can be compared to the kind's limits
 			_check_kind_limits(i, body, errors)
-	if errors.is_empty():
+	if not draft and errors.is_empty():
 		var strongest_star := 0.0
 		for body in bodies:
 			if body.kind == "star":
@@ -150,42 +155,42 @@ static func validate(data: Dictionary) -> PackedStringArray:
 		for i in bodies.size():
 			if bodies[i].kind == "black_hole" and body_value(bodies[i], "strength") <= strongest_star:
 				errors.append("body %d: a black hole must pull harder at its surface than every star" % i)
-	var rocks := _list(data, "asteroids", MAX_ASTEROIDS, errors)
+	var rocks := _list(data, "asteroids", MAX_ASTEROIDS, errors, draft)
 	for i in rocks.size():
 		var rock: Variant = rocks[i]
 		if not rock is Dictionary:
 			errors.append("asteroid %d: not an object" % i)
 			continue
-		_point(rock.get("position"), "asteroid %d position" % i, errors)
-		_point(rock.get("velocity", [0, 0]), "asteroid %d velocity" % i, errors)
+		_point(rock.get("position"), "asteroid %d position" % i, errors, draft)
+		_point(rock.get("velocity", [0, 0]), "asteroid %d velocity" % i, errors, draft)
 		var orbit: Variant = rock.get("orbit")
 		if orbit != null:
 			var index: Variant = orbit.get("body") if orbit is Dictionary else null
 			if not (index is float or index is int) or int(index) < 0 or int(index) >= bodies.size():
 				errors.append("asteroid %d: orbit names no body" % i)
-	var pickups := _list(data, "pickups", MAX_PICKUPS, errors)
+	var pickups := _list(data, "pickups", MAX_PICKUPS, errors, draft)
 	for i in pickups.size():
 		var pickup: Variant = pickups[i]
 		if not pickup is Dictionary or not pickup.get("kind") in PICKUP_KINDS:
 			errors.append("pickup %d: unknown kind" % i)
 			continue
-		_point(pickup.get("position"), "pickup %d position" % i, errors)
-	var tour := _list(data, "tour", MAX_TOUR, errors)
+		_point(pickup.get("position"), "pickup %d position" % i, errors, draft)
+	var tour := _list(data, "tour", MAX_TOUR, errors, draft)
 	for i in tour.size():
 		if not tour[i] is Dictionary:
 			errors.append("tour stop %d: not an object" % i)
 			continue
-		_point(tour[i].get("position"), "tour stop %d position" % i, errors)
-		_text(tour[i].get("text", ""), "tour stop %d text" % i, errors)
+		_point(tour[i].get("position"), "tour stop %d position" % i, errors, draft)
+		_text(tour[i].get("text", ""), "tour stop %d text" % i, errors, draft)
 	var route: Variant = data.get("route")
 	if route != null:
 		var points: Variant = route.get("points") if route is Dictionary else null
-		if not points is Array or points.size() > MAX_ROUTE:
+		if not points is Array or (not draft and points.size() > MAX_ROUTE):
 			errors.append("route needs up to %d points" % MAX_ROUTE)
 		else:
 			for p in points:
-				_point(p, "route point", errors)
-	if errors.is_empty():
+				_point(p, "route point", errors, draft)
+	if not draft and errors.is_empty():
 		_check_start(data, errors)
 	return errors
 
@@ -377,32 +382,32 @@ static func _check_start(data: Dictionary, errors: PackedStringArray) -> void:
 		errors.append("the ship starts inside the goal")
 
 
-static func _list(data: Dictionary, key: String, limit: int, errors: PackedStringArray) -> Array:
+static func _list(data: Dictionary, key: String, limit: int, errors: PackedStringArray, draft: bool) -> Array:
 	var value: Variant = data.get(key, [])
 	if not value is Array:
 		errors.append("%s must be a list" % key)
 		return []
-	if value.size() > limit:
+	if value.size() > limit and not draft:  # a draft's items still get their shapes checked
 		errors.append("more than %d %s" % [limit, key])
 		return []
 	return value
 
 
-static func _point(value: Variant, what: String, errors: PackedStringArray) -> void:
+static func _point(value: Variant, what: String, errors: PackedStringArray, draft: bool) -> void:
 	if not value is Array or value.size() != 2:
 		errors.append("%s must be [x, y]" % what)
 		return
 	for c in value:
-		_number(c, -MAX_COORD, MAX_COORD, what, errors)
+		_number(c, -MAX_COORD, MAX_COORD, what, errors, draft)
 
 
-static func _number(value: Variant, low: float, high: float, what: String, errors: PackedStringArray) -> void:
-	if not (value is float or value is int) or is_nan(float(value)) or is_inf(float(value)) or value < low or value > high:
+static func _number(value: Variant, low: float, high: float, what: String, errors: PackedStringArray, draft: bool) -> void:
+	if not (value is float or value is int) or is_nan(float(value)) or is_inf(float(value)) or (not draft and (value < low or value > high)):
 		errors.append("%s must be a number from %s to %s" % [what, low, high])
 
 
-static func _text(value: Variant, what: String, errors: PackedStringArray) -> void:
-	if not value is String or value.length() > MAX_TEXT:
+static func _text(value: Variant, what: String, errors: PackedStringArray, draft: bool) -> void:
+	if not value is String or (not draft and value.length() > MAX_TEXT):
 		errors.append("%s must be text up to %d characters" % [what, MAX_TEXT])
 
 
