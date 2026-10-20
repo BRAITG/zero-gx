@@ -41,23 +41,15 @@ func test_touch_target_ignores_off_ring() -> void:
 	press(lvl.ring_centre(), false)
 
 
-func test_tutorial_restores_on_death() -> void:
+func test_lethal_hit_loses_the_stage() -> void:
 	var lvl = probe()
 	var lost := []
 	lvl.finished.connect(func(won: bool): lost.append(won))
 	await frames(3)
-	var start: Vector2 = lvl.ship.global_position
-	lvl.hold_ring(true)
-	await frames(20)
-	lvl.ship.take_damage(Ship.MAX_HEALTH)
-	for i in 300:  # the wreck, then the beam back
-		await frames(1)
-		if lvl.retries > 0:
-			break
-	await frames(3)
-	check(lost.is_empty(), "dying in a tutorial must not end the stage")
-	check(lvl.ship.health == Ship.MAX_HEALTH and lvl.ship.visible, "the ship must come back whole")
-	check(lvl.ship.global_position.distance_to(start) < 5.0, "the ship must return to the step's start, not %s" % lvl.ship.global_position)
+	lvl.ship.take_damage(1.0, true)  # a lethal hit, like a red wall or a star
+	await frames(300)  # long enough for a rescue, were there one, to have played out
+	check(lost == [false], "a lethal hit must lose the stage, got %s" % [lost])
+	check(not lvl.ship.visible, "the wreck must stay down once the stage is lost")
 
 
 ## Every tutorial can be finished: answer each step as a player would, then fly the route.
@@ -74,42 +66,91 @@ func test_tutorials_complete() -> void:
 		waypoints.append(lvl.goal.position)
 		var pilot := {"next": 0}
 		var step := "lesson"
-		var lesson_retries := -1
+		var lesson_lost := false
 		for frame in 4800:
 			await frames(1)
 			if outcome.won != null:
+				lesson_lost = outcome.won == false and not lvl.goal_revealed()
 				break
 			if lvl.card_waiting():
 				lvl.press_ok()
 			lvl.hold_ring(lvl.ring_active())
 			if lvl.goal_revealed():
-				if lesson_retries < 0:
-					lesson_retries = lvl.retries
 				step = "flight"
 				fly(lvl.ship, waypoints, pilot, route.get_meta("cruise", CRUISE))
-		check(lesson_retries == 0, "%s: the guided steps killed the ship %d times" % [id, lesson_retries])
+		check(not lesson_lost, "%s: the guided steps lost the stage" % id)
 		check(outcome.won == true, "%s: not finished (%s, at %s, fuel %d, hull %d)" % [id, step, lvl.ship.global_position.round(), lvl.ship.fuel, lvl.ship.health])
 		lvl.free()
 
 
-## A lethal touch kills inside the physics step, where the freeze is deferred: the respawn must
-## still leave the ship free, back at the step's start.
-func test_tutorial_restores_after_lethal_touch() -> void:
+## A black hole kills inside the physics step, where the freeze is deferred: the stage must still
+## end as a loss, with the ship left down. Only Training 6's script rescues from a black hole.
+func test_black_hole_touch_loses_the_stage() -> void:
 	var lvl = probe()
 	var hole: GravityBody = load("res://scenes/gravity_body.tscn").instantiate()
 	hole.preset = GravityBody.Preset.BLACK_HOLE
 	hole.position = Vector2(400, 0)
 	lvl.add_child(hole)
+	var lost := []
+	lvl.finished.connect(func(won: bool): lost.append(won))
 	await frames(3)
-	var start: Vector2 = lvl.ship.global_position
 	for i in 400:
 		await frames(1)
-		if lvl.retries > 0:
+		if not lost.is_empty():
 			break
-	await frames(10)
-	check(lvl.retries == 1, "the ship must fall in once, not %d times" % lvl.retries)
-	check(not lvl.ship.freeze and lvl.ship.visible, "the respawned ship must fly again")
-	check(lvl.ship.global_position.distance_to(start) < 150.0, "the ship must be back near the step's start, not at %s" % lvl.ship.global_position.round())
+	await frames(300)
+	check(lost == [false], "falling into a black hole must lose the stage, got %s" % [lost])
+	check(not lvl.ship.visible, "the wreck must stay down once the stage is lost")
+
+
+## Training 6's close call: its script beams the ship back exactly once, to where the step began.
+func test_training_6_close_call_is_rescued_once() -> void:
+	var lvl: Level = Progress.build("tutorial_6")
+	world.add_child(lvl)
+	var outcome := {"won": null}
+	lvl.finished.connect(func(won: bool): outcome.won = won)
+	var beams := {"n": 0}  # each beam hides the ship while its pixels stream back
+	lvl.ship.visibility_changed.connect(func(): if not lvl.ship.visible: beams.n += 1)
+	await frames(1)
+	var start: Vector2 = lvl.ship.global_position
+	var back := false
+	for i in 4800:
+		await frames(1)
+		if outcome.won != null:
+			break
+		if lvl.card_waiting():
+			lvl.press_ok()
+		lvl.hold_ring(lvl.ring_active())
+		if beams.n == 1 and lvl.ship.visible:
+			back = true
+			break
+	await frames(3)  # the respawn lands on the next physics step
+	check(outcome.won == null, "the close call must not lose the stage, got %s" % outcome.won)
+	check(beams.n == 1, "the close call must beam the ship back once, not %d times" % beams.n)
+	check(back and lvl.ship.global_position.distance_to(start) < 10.0, "the ship must come back at the step's start %s, not %s" % [start.round(), lvl.ship.global_position.round()])
+
+
+## Training 3: a ship that runs dry after the goal shows loses the stage like a level, and is not beamed back.
+func test_training_3_out_of_fuel_loses_the_stage() -> void:
+	var lvl: Level = Progress.build("tutorial_3")
+	world.add_child(lvl)
+	lvl.ship.fuel = 10.0  # the fuel step is done once the tank holds 15 or less
+	var outcome := {"won": null}
+	lvl.finished.connect(func(won: bool): outcome.won = won)
+	var drained := false
+	for i in 900:
+		await frames(1)
+		if outcome.won != null:
+			break
+		if lvl.card_waiting():
+			lvl.press_ok()
+		if lvl.goal_revealed() and not drained:
+			drained = true
+			lvl.ship.fuel = 0.0
+	check(drained, "the goal must show before the tank runs dry")
+	check(outcome.won == false, "running out of fuel after the goal shows must lose the stage, got %s" % outcome.won)
+	check(lvl.ship.death_cause == "Out of fuel", "the death cause must be out of fuel, got '%s'" % lvl.ship.death_cause)
+	check(lvl.ship.fuel == 0.0, "the ship must not be refilled and beamed back, fuel %f" % lvl.ship.fuel)
 
 
 func test_aims_at_boundary() -> void:

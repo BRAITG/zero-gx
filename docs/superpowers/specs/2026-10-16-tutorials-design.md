@@ -36,7 +36,7 @@ She also skips text. The developer agreed that a real tutorial is needed, and as
   - `await touch_target(direction, hold, text)`: a pulsing ring on screen, 300 px from the ship in `direction` (a Vector2, or a Callable returning one, so the ring can follow "opposite to your motion"). Only touches on the ring count; while held, the ship steers and thrusts toward it. The step ends after `hold` seconds of holding.
   - `await until(condition, text)`: shows `text` until `condition` (a Callable returning bool) is true.
   - `reveal_goal()`: shows the goal, hidden until then.
-- In a tutorial, a lethal hit or the empty-tank timeout does not lose the stage. The ship is put back where the current step started, with zero velocity and the fuel it had then.
+- A lethal hit or an empty tank loses a training stage like any level, and Retry restarts the stage. The only rescue is Training 6's scripted black hole close call.
 - Tutorials have no tour and no intro card. Their lesson is the introduction.
 
 ## Tutorials
@@ -68,6 +68,6 @@ She also skips text. The developer agreed that a real tutorial is needed, and as
 
 - A tutorial runner test drives each lesson through its steps with scripted touches and checks that it reaches the goal, and that no guided step kills the ship.
 - `touch_target` ignores touches off the ring.
-- A lethal hit in a tutorial restores the step's start instead of losing.
+- A lethal hit or an empty tank loses a training stage like any level, and Retry restarts it. Training 6's scripted black hole close call is the only rescue.
 - The velocity vector length follows speed and caps at 200 px.
 - Progress lists tutorials before levels and unlocks Level 1 after Training 5.

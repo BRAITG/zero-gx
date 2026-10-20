@@ -342,7 +342,7 @@ func _process(delta: float) -> void:
 		queue_redraw()
 
 
-## Bring the ship back whole at `at` with `velocity` and `with_fuel` (tutorial retries).
+## Bring the ship back whole at `at` with `velocity` and `with_fuel` (Training 6's rescue).
 func respawn(at: Vector2, velocity: Vector2, with_fuel: float) -> void:
 	health = hull
 	fuel = with_fuel
