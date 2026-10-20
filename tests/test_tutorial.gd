@@ -223,6 +223,61 @@ func test_steering_turns_the_ship_before_the_goal_is_revealed() -> void:
 	check(not lvl.ship.thrusting and lvl.held_time == 0.0, "steering alone must neither fire nor count the ring")
 
 
+## Training 1 on the keyboard once it watches: its first ring is held, no ring shows and the goal is hidden.
+func training_1_watching() -> Tutorial:
+	var lvl: Tutorial = Progress.build(Progress.trainings()[0])
+	world.add_child(lvl)
+	await frames(5)
+	lvl.press_ok()
+	await frames(3)
+	lvl.input.scheme = "keys"
+	key(KEY_D, true)
+	key(KEY_SPACE, true)
+	for i in 600:
+		await frames(1)
+		if lvl.card_waiting():
+			lvl.press_ok()
+		if lvl._caption_label.text == "Now just watch.":
+			break
+	key(KEY_D, false)
+	key(KEY_SPACE, false)
+	await frames(1)
+	return lvl
+
+
+## Before the goal shows, Space on keys thrusts only while a ring shows: with none up, the ship coasts
+## while steering still turns it.
+func test_space_without_a_ring_does_not_thrust_before_the_goal_shows() -> void:
+	var lvl := await training_1_watching()
+	check(not lvl.ring_active() and not lvl.goal_revealed(), "the watch step must show no ring and hide the goal")
+	var speed := lvl.ship.linear_velocity.length()
+	key(KEY_S, true)
+	key(KEY_SPACE, true)
+	var fired := false
+	for i in 30:
+		await frames(1)
+		fired = fired or lvl.ship.firing
+	key(KEY_SPACE, false)
+	key(KEY_S, false)
+	check(not fired, "fire with no ring up thrust before the goal showed")
+	check(absf(lvl.ship.linear_velocity.length() - speed) < 1.0, "the coasting ship changed speed from %f to %f" % [speed, lvl.ship.linear_velocity.length()])
+	check(absf(wrapf(lvl.ship.rotation - PI / 2.0, -PI, PI)) < 0.1, "steering S with fire held turned the ship to %f rad, expected toward +Y" % lvl.ship.rotation)
+
+
+## After the goal shows, Space thrusts with no ring, as in a level.
+func test_space_after_the_goal_shows_thrusts_without_a_ring() -> void:
+	var lvl := await training_1_watching()
+	lvl.reveal_goal()
+	var speed := lvl.ship.linear_velocity.length()
+	key(KEY_SPACE, true)
+	var fired := false
+	for i in 30:
+		await frames(1)
+		fired = fired or lvl.ship.firing
+	key(KEY_SPACE, false)
+	check(fired and lvl.ship.linear_velocity.length() > speed + 20.0, "fire after the goal showed must thrust: speed %f to %f" % [speed, lvl.ship.linear_velocity.length()])
+
+
 func test_fire_within_ninety_degrees_counts_the_ring_and_turns_to_it() -> void:
 	var lvl := await keys_training()
 	var to_ring := ring_angle(lvl)
@@ -315,10 +370,11 @@ func test_ring_click_keeps_the_tuned_gate() -> void:
 	check(first <= deg_to_rad(10.0), "a click fired at %f° off, outside the 10° gate" % rad_to_deg(first))
 
 ## Training 4 played by a keyboard or a finger: the first ring is held to the right, the brake ring to the
-## left. Returns the state the moment the brake step completes: its rings, speed, and the seconds the ship
-## has left before the orange corner wall at that speed. "keys" holds D or A with Space; any other scheme
-## holds the ring as a finger would.
-func training_4_brake(scheme: String) -> Dictionary:
+## left. Returns the state the moment the brake step completes: its rings, the speed the brake ring met, the
+## speed at completion, and the seconds the ship has left before the orange corner wall at that speed. "keys"
+## holds D or A with Space; any other scheme holds the ring as a finger would. `space_held` keeps Space held
+## from the first ring to the end, rather than letting go between the rings.
+func training_4_brake(scheme: String, space_held := false) -> Dictionary:
 	var lvl: Tutorial = Progress.build("tutorial_4")
 	world.add_child(lvl)
 	await frames(5)
@@ -329,32 +385,41 @@ func training_4_brake(scheme: String) -> Dictionary:
 	lvl.finished.connect(func(won: bool): outcome.won = won)
 	var rings := 0
 	var showing := false
-	var result := {"rings": 0, "speed": -1.0, "seconds": -1.0, "lost": false}
+	var last_speed := 0.0  # the speed on the last tick with no ring showing: a coast keeps it to the brake ring
+	var result := {"rings": 0, "ring_speed": -1.0, "speed": -1.0, "seconds": -1.0, "lost": false}
 	for i in 3000:
 		await frames(1)
 		if lvl.card_waiting():
 			lvl.press_ok()
 		var active := lvl.ring_active()
-		if scheme == "keys":
-			if active and not showing:
-				rings += 1
-				key(KEY_SPACE, true)
-				key(KEY_D if rings == 1 else KEY_A, true)
-			elif showing and not active:
-				key(KEY_SPACE, false)
-				key(KEY_D, false)
-				key(KEY_A, false)
-		else:
+		if active and not showing:
+			rings += 1
+			if rings == 2:
+				result.ring_speed = last_speed
+		if scheme != "keys":
 			lvl.hold_ring(active)
-			if active and not showing:
-				rings += 1
+		elif active and not showing:
+			key(KEY_SPACE, true)
+			key(KEY_D if rings == 1 else KEY_A, true)
+		elif showing and not active:
+			key(KEY_D, false)
+			key(KEY_A, false)
+			if not space_held:
+				key(KEY_SPACE, false)
 		if rings == 2 and showing and not active:
 			result.speed = lvl.ship.linear_velocity.length()
 			result.seconds = (TRAINING_4.CORNER_WALL_X - lvl.ship.global_position.x) / result.speed
 			break
+		if not active:
+			last_speed = lvl.motion().length()
 		showing = active
+	key(KEY_SPACE, false)
+	key(KEY_D, false)
+	key(KEY_A, false)
 	result.rings = rings
 	result.lost = outcome.won == false
+	lvl.queue_free()
+	await frames(2)  # the next run's keys must not reach this ship
 	return result
 
 
@@ -370,6 +435,17 @@ func test_training_4_brake_leaves_two_seconds_to_the_corner_by_touch() -> void:
 	check(r.rings == 2 and r.speed >= 0.0, "the brake ring must show and complete by touch (rings %d)" % r.rings)
 	check(r.seconds >= 2.0, "the touch brake left %f s to the corner wall at %f px/s, expected 2 s or more" % [r.seconds, r.speed])
 	check(not r.lost, "the stage was lost")
+
+
+## Space held on keys from the first ring to the brake: the coast must not thrust, so the brake ring meets the
+## speed a touch player brings to it, and the brake still leaves two seconds to the corner.
+func test_training_4_space_held_on_keys_coasts_like_touch() -> void:
+	var touch: Dictionary = await training_4_brake("finger")
+	var keys: Dictionary = await training_4_brake("keys", true)
+	check(keys.rings == 2 and keys.speed >= 0.0, "the brake ring must show and complete with Space held (rings %d)" % keys.rings)
+	check(touch.ring_speed > 0.0 and absf(keys.ring_speed - touch.ring_speed) <= 0.05 * touch.ring_speed, "with Space held the brake ring met %f px/s, touch met %f px/s" % [keys.ring_speed, touch.ring_speed])
+	check(keys.seconds >= 2.0, "the held-Space brake left %f s to the corner wall at %f px/s, expected 2 s or more" % [keys.seconds, keys.speed])
+	check(not keys.lost, "the stage was lost")
 
 
 ## The ticks from the first hold of fire on a ring until the engine thrusts. "keys" holds the fire key; any other
