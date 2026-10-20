@@ -14,6 +14,7 @@ const MAX_DRIFT := 400.0  # px/s
 const DRAG_START := 12.0  # screen px a finger must move before a press becomes a drag
 const GRID_COLOR := Color(1, 1, 1, 0.06)
 const MAJOR_GRID_COLOR := Color(1, 1, 1, 0.14)
+const FINE_GRID_MIN_PX := 3.0  # screen px between 1 m lines below which they would merge into a fill
 
 ## The editor left for a test flight: {id, doc, view}. Only one test flight runs at a time.
 static var _kept := {}
@@ -258,7 +259,7 @@ func _draw_grid(snap_size: float, step: float, color: Color) -> void:
 
 
 func _draw_marks() -> void:
-	if fine_snap and LevelDoc.FINE_SNAP * _camera.zoom.x >= 8.0:
+	if fine_snap and LevelDoc.FINE_SNAP * _camera.zoom.x >= FINE_GRID_MIN_PX:
 		_draw_grid(LevelDoc.FINE_SNAP, LevelDoc.FINE_SNAP, GRID_COLOR)
 		_draw_grid(LevelDoc.COARSE_SNAP, LevelDoc.COARSE_SNAP, MAJOR_GRID_COLOR)
 	else:

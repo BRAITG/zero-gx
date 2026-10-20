@@ -56,7 +56,7 @@ There is no redo and no Delete key: `LevelDoc` has no redo, and the sheet alread
 
 These apply to touch and mouse alike.
 
-- **Two grid modes.** Normal is the default: walls, the start and the goal snap to the 10 m (100 px) step. The **Fine grid** toggle switches to Fine mode, where they snap to the 1 m (10 px) step. The drawn grid follows the mode: in Fine mode, 1 m lines are drawn in faint white once they are at least 8 screen px apart, with the 10 m lines drawn over them; in Normal mode, and in Fine mode when zoomed out further, only the 10 m lines are drawn, as before.
+- **Two grid modes.** Normal is the default: walls, the start and the goal snap to the 10 m (100 px) step. The **Fine grid** toggle switches to Fine mode, where they snap to the 1 m (10 px) step. The drawn grid follows the mode: in Fine mode, 1 m lines are drawn in faint white once they are at least 3 screen px apart, with the 10 m lines drawn over them; in Normal mode, and in Fine mode when zoomed out further, only the 10 m lines are drawn, as before.
 - **Pick radius in screen pixels.** `LevelDoc.hit` takes the pick radius as a parameter. The editor passes `HIT_SLOP` divided by the camera zoom, so a target is the same size under the finger at every zoom. Today the radius is 40 world px, which is only 20 screen px at the default zoom of 0.5.
 - **Wall points win over walls.** Wall points get 1.5 times the pick radius and are still checked first, so a near miss on a point moves the point, not the whole wall.
 - **Visible handles.** Every wall point is drawn as a small dot. With the Select, Wall or Erase tool, each dot also has a ring.
