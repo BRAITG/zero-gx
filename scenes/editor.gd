@@ -134,7 +134,10 @@ func release(world: Vector2, was_drag: bool) -> void:
 				doc.add_wall_point(LevelDoc.snap(world, fine_snap), wall_kind, LevelDoc.CLOSE_DISTANCE / _camera.zoom.x)
 		"erase":
 			var ref := doc.hit(world, LevelDoc.HIT_SLOP / _camera.zoom.x)
-			if not ref.is_empty():
+			var wall: Dictionary = doc.data.walls[ref.index] if ref.get("type") == "wall_point" else {}
+			if wall.get("closed", false) and wall.points.size() >= 4:
+				_ask_reclose(ref)
+			elif not ref.is_empty():
 				doc.erase(ref)
 		"select":
 			if not was_drag and not _held.is_empty():
@@ -460,6 +463,20 @@ func _open_sheet(ref: Dictionary) -> void:
 				o.body.add_child(breakable)
 				_slider(o, "Health", Vector2(1, 1000), 1, body.get("health", 100), func(v: float) -> void: doc.set_property(ref, "health", v))
 			o.paragraph("Total pull from afar must stay within this kind's limits; problems show at the bottom of the editor.", 18, Style.INK_DIM)
+
+
+## A closed wall loses a point: ask whether it stays closed or opens where the point was.
+func _ask_reclose(ref: Dictionary) -> void:
+	var o := Overlay.open(self, "Remove point")
+	o.paragraph("This wall is closed. Keep it closed, or open it where the point was?", 22)
+	_button(o.body, "Keep closed", func() -> void:
+		doc.erase(ref, true)
+		o.close()
+		_refresh())
+	_button(o.body, "Open here", func() -> void:
+		doc.erase(ref, false)
+		o.close()
+		_refresh())
 
 
 func _choice(o: Overlay, label: String, options: Array, current: String, apply: Callable) -> void:

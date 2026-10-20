@@ -75,3 +75,70 @@ func test_wall_points_win_near_misses() -> void:
 	check(doc.hit(Vector2(5055, 3000), 40.0).type == "wall_point", "55 px from a point is within 1.5 x 40: %s" % doc.hit(Vector2(5055, 3000), 40.0))
 	check(doc.hit(Vector2(5500, 3030), 40.0).type == "wall", "mid-segment picks the wall: %s" % doc.hit(Vector2(5500, 3030), 40.0))
 	check(doc.hit(Vector2(5500, 3100), 40.0).is_empty(), "100 px off the wall picks nothing")
+
+
+func closed_square() -> LevelDoc:
+	var doc := LevelDoc.new()
+	for p in [Vector2(0, 0), Vector2(1000, 0), Vector2(1000, 1000), Vector2(0, 1000)]:
+		doc.add_wall_point(p)
+	doc.add_wall_point(Vector2(10, 10))  # near the first point: closes
+	return doc
+
+
+func test_removing_a_point_keeps_a_closed_wall_closed() -> void:
+	var doc := closed_square()
+	doc.erase({"type": "wall_point", "index": 0, "point": 1}, true)
+	var wall: Dictionary = doc.data.walls[0]
+	check(wall.get("closed", false) and wall.points == [[0, 0], [1000, 1000], [0, 1000]], "closed A-C-D expected: %s" % [wall])
+
+
+func test_removing_a_point_without_reclose_opens_the_wall_at_the_gap() -> void:
+	var doc := closed_square()
+	doc.erase({"type": "wall_point", "index": 0, "point": 1}, false)
+	var wall: Dictionary = doc.data.walls[0]
+	check(not wall.has("closed") and wall.points == [[1000, 1000], [0, 1000], [0, 0]], "open C-D-A expected: %s" % [wall])
+
+
+func test_opening_at_the_first_point_starts_at_its_next_neighbour() -> void:
+	var doc := closed_square()
+	doc.erase({"type": "wall_point", "index": 0, "point": 0}, false)
+	var wall: Dictionary = doc.data.walls[0]
+	check(not wall.has("closed") and wall.points == [[1000, 0], [1000, 1000], [0, 1000]], "open B-C-D expected: %s" % [wall])
+
+
+func test_opening_at_the_last_point_starts_at_its_next_neighbour() -> void:
+	var doc := closed_square()
+	doc.erase({"type": "wall_point", "index": 0, "point": 3}, false)
+	var wall: Dictionary = doc.data.walls[0]
+	check(not wall.has("closed") and wall.points == [[0, 0], [1000, 0], [1000, 1000]], "open A-B-C expected: %s" % [wall])
+
+
+func test_closed_triangle_minus_a_point_opens_even_with_reclose() -> void:
+	var doc := LevelDoc.new()
+	for p in [Vector2(0, 0), Vector2(1000, 0), Vector2(1000, 1000)]:
+		doc.add_wall_point(p)
+	doc.add_wall_point(Vector2(10, 10))  # closes the triangle
+	doc.erase({"type": "wall_point", "index": 0, "point": 1}, true)
+	var wall: Dictionary = doc.data.walls[0]
+	check(not wall.has("closed") and wall.points == [[1000, 1000], [0, 0]], "two points, open: %s" % [wall])
+
+
+func test_reclose_does_not_change_an_open_wall() -> void:
+	var doc := LevelDoc.new()
+	for p in [Vector2(0, 0), Vector2(1000, 0), Vector2(1000, 1000), Vector2(0, 1000)]:
+		doc.add_wall_point(p)
+	doc.finish_wall()
+	for reclose in [true, false]:
+		var copy := LevelDoc.new(doc.data)
+		copy.erase({"type": "wall_point", "index": 0, "point": 1}, reclose)
+		var wall: Dictionary = copy.data.walls[0]
+		check(not wall.has("closed") and wall.points == [[0, 0], [1000, 1000], [0, 1000]], "open wall minus B (reclose %s): %s" % [reclose, wall])
+
+
+func test_undo_restores_the_closed_wall() -> void:
+	for reclose in [true, false]:
+		var doc := closed_square()
+		doc.erase({"type": "wall_point", "index": 0, "point": 1}, reclose)
+		doc.undo()
+		var wall: Dictionary = doc.data.walls[0]
+		check(wall.get("closed", false) and wall.points == [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "undo restores the closed square (reclose %s): %s" % [reclose, wall])

@@ -229,3 +229,65 @@ func test_typing_in_a_text_field_is_not_a_shortcut() -> void:
 	check(field.text == "t", "the letter goes into the focused field: '%s'" % field.text)
 	check(not (tree.current_scene is Level), "T in a text field must not start a test flight: %s" % [tree.current_scene])
 	field.free()
+
+
+func _button_named(e: LevelEditor, text: String) -> Button:
+	for b: Button in e.find_children("*", "Button", true, false):
+		if b.text == text:
+			return b
+	return null
+
+
+func closed_square_in(e: LevelEditor) -> void:
+	for p in [Vector2(0, 0), Vector2(1000, 0), Vector2(1000, 1000), Vector2(0, 1000)]:
+		e.doc.add_wall_point(p)
+	e.doc.add_wall_point(Vector2(10, 10))  # closes the square
+
+
+func test_erasing_a_point_of_a_closed_wall_asks_first() -> void:
+	var e := editor()
+	await frames(1)
+	closed_square_in(e)
+	e.select_tool("erase")
+	e.press(Vector2(1000, 0))
+	e.release(Vector2(1000, 0), false)
+	check(e.find_children("*", "Overlay", true, false).size() == 1, "erasing a point of a closed 4-point wall opens one sheet")
+	check(e.doc.data.walls[0].get("closed", false) and e.doc.data.walls[0].points.size() == 4, "the wall is untouched until a button is pressed: %s" % [e.doc.data.walls])
+	var open_here := _button_named(e, "Open here")
+	check(open_here != null, "the sheet has an 'Open here' button")
+	if open_here:
+		open_here.pressed.emit()
+	await frames(2)
+	var wall: Dictionary = e.doc.data.walls[0]
+	check(not wall.has("closed") and wall.points == [[1000, 1000], [0, 1000], [0, 0]], "Open here opens the wall at the gap: %s" % [wall])
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "the sheet closes after a choice")
+
+
+func test_keep_closed_removes_the_point_and_stays_closed() -> void:
+	var e := editor()
+	await frames(1)
+	closed_square_in(e)
+	e.select_tool("erase")
+	e.press(Vector2(1000, 0))
+	e.release(Vector2(1000, 0), false)
+	var keep := _button_named(e, "Keep closed")
+	check(keep != null, "the sheet has a 'Keep closed' button")
+	if keep:
+		keep.pressed.emit()
+	await frames(2)
+	var wall: Dictionary = e.doc.data.walls[0]
+	check(wall.get("closed", false) and wall.points == [[0, 0], [1000, 1000], [0, 1000]], "Keep closed leaves A-C-D closed: %s" % [wall])
+
+
+func test_erasing_a_point_of_a_closed_triangle_acts_at_once() -> void:
+	var e := editor()
+	await frames(1)
+	for p in [Vector2(0, 0), Vector2(1000, 0), Vector2(1000, 1000)]:
+		e.doc.add_wall_point(p)
+	e.doc.add_wall_point(Vector2(10, 10))  # closes the triangle
+	e.select_tool("erase")
+	e.press(Vector2(1000, 0))
+	e.release(Vector2(1000, 0), false)
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "a closed triangle opens no sheet")
+	var wall: Dictionary = e.doc.data.walls[0]
+	check(not wall.has("closed") and wall.points == [[1000, 1000], [0, 0]], "the triangle opens at once: %s" % [wall])
