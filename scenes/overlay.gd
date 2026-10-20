@@ -40,16 +40,27 @@ func _unhandled_input(event: InputEvent) -> void:
 		close()
 
 
-## A wrapped paragraph in the body.
-func paragraph(text: String, size := 22, color := Style.INK) -> Label:
+## A wrapped paragraph in the body, or inside a card when `parent` is given.
+func paragraph(text: String, size := 22, color := Style.INK, parent: Node = null) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	label.custom_minimum_size.x = WIDTH
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", color)
-	body.add_child(label)
+	(parent if parent != null else body).add_child(label)
 	return label
+
+
+## A panelled card in the body that groups one setting with its explanation.
+func card() -> VBoxContainer:
+	var panel := PanelContainer.new()
+	panel.custom_minimum_size.x = WIDTH
+	body.add_child(panel)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	panel.add_child(box)
+	return box
 
 
 func heading(text: String) -> Label:

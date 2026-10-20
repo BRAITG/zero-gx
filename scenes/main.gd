@@ -59,25 +59,16 @@ func _ready() -> void:
 
 func _open_settings() -> void:
 	var o := Overlay.open(self, "Settings")
-	var arrow := CheckButton.new()
-	arrow.text = "Show the velocity arrow in levels"
-	arrow.add_theme_font_size_override("font_size", 26)
-	arrow.button_pressed = Settings.show_velocity
-	arrow.toggled.connect(func(on: bool): Settings.show_velocity = on)
-	arrow.toggled.connect(func(_on: bool): Sfx.play("tap"))
-	o.body.add_child(arrow)
-	o.paragraph("The arrow points where your ship is going; its length shows how fast. The training stages always show it.", 20, Style.INK_DIM)
-	var fields := CheckButton.new()
-	fields.text = "Show gravity fields"
-	fields.add_theme_font_size_override("font_size", 26)
-	fields.button_pressed = Settings.show_gravity
-	fields.toggled.connect(func(on: bool): Settings.show_gravity = on)
-	fields.toggled.connect(func(_on: bool): Sfx.play("tap"))
-	o.body.add_child(fields)
-	o.paragraph("Faint discs show how far each planet, black hole and star pulls.", 20, Style.INK_DIM)
+	_setting(o, "Show the velocity arrow in levels",
+		"The arrow points where your ship is going; its length shows how fast. The training stages always show it.",
+		Settings.show_velocity, func(on: bool): Settings.show_velocity = on)
+	_setting(o, "Show gravity fields",
+		"Faint discs show how far each planet, black hole and star pulls.",
+		Settings.show_gravity, func(on: bool): Settings.show_gravity = on)
+	var sound := o.card()
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
-	o.body.add_child(row)
+	sound.add_child(row)
 	var label := Label.new()
 	label.add_theme_font_size_override("font_size", 26)
 	label.custom_minimum_size.x = 260
@@ -87,6 +78,7 @@ func _open_settings() -> void:
 	slider.step = 0.05
 	slider.value = Settings.volume
 	slider.custom_minimum_size = Vector2(520, 48)
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(slider)
 	var show := func(v: float): label.text = "Sound: %d%%" % roundi(v * 100.0)
 	show.call(slider.value)
@@ -96,6 +88,34 @@ func _open_settings() -> void:
 	var controls := _button("Controls")
 	controls.pressed.connect(func(): ControlsScreen.open(self))
 	o.body.add_child(controls)
+
+
+## One panelled card: an enlarged toggle over a dim explanation of what it does.
+func _setting(o: Overlay, title: String, description: String, on: bool, set_on: Callable) -> void:
+	var box := o.card()
+	var toggle := CheckButton.new()
+	toggle.text = title
+	toggle.add_theme_font_size_override("font_size", 26)
+	toggle.button_pressed = on
+	toggle.toggled.connect(set_on)
+	toggle.toggled.connect(func(_on: bool): Sfx.play("tap"))
+	_big_switch(toggle)
+	box.add_child(toggle)
+	o.paragraph(description, 20, Style.INK_DIM, box)
+
+
+const SWITCH_SCALE := 1.6
+## The engine's default switch graphic is tiny next to 26 px text; redraw it larger.
+func _big_switch(toggle: CheckButton) -> void:
+	for icon_name in ["checked", "unchecked", "checked_disabled", "unchecked_disabled", "checked_mirrored", "unchecked_mirrored"]:
+		var icon: Texture2D = toggle.get_theme_icon(icon_name)
+		if icon == null:
+			continue
+		var image := icon.get_image()
+		if image == null:
+			continue
+		image.resize(int(image.get_width() * SWITCH_SCALE), int(image.get_height() * SWITCH_SCALE), Image.INTERPOLATE_LANCZOS)
+		toggle.add_theme_icon_override(icon_name, ImageTexture.create_from_image(image))
 
 
 func _list_levels() -> void:
