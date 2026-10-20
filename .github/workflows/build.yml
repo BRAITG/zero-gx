@@ -126,7 +126,7 @@ jobs:
           packageName: dev.braitg.zerogx
           releaseFiles: build/zero-gx.aab
           releaseName: r${{ github.run_number }}
-          track: internal
+          tracks: internal
           status: completed
 
       - name: Register official levels with the community server
