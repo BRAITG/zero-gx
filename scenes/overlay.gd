@@ -8,20 +8,36 @@ const WIDTH := 1000.0
 ## Add rows to this.
 var body: VBoxContainer
 
+var _close: Button
+var _prior_focus: Control  # what had focus before the overlay opened
 
-## Shows a new overlay titled `title` on its own top layer under `parent`.
+
+## Shows a new overlay titled `title` on its own top layer under `parent`, with focus on Close.
 static func open(parent: Node, title: String) -> Overlay:
 	var layer := CanvasLayer.new()
 	layer.layer = 10
 	var overlay := Overlay.new()
+	overlay._prior_focus = parent.get_viewport().gui_get_focus_owner()
 	overlay._build(title)
 	layer.add_child(overlay)
 	parent.add_child(layer)
+	overlay._close.grab_focus(true)
 	return overlay
 
 
+## Closes, handing focus back to what had it before.
 func close() -> void:
+	if is_instance_valid(_prior_focus) and _prior_focus.is_visible_in_tree():
+		_prior_focus.grab_focus(true)
 	get_parent().queue_free()
+
+
+## Esc and B close it. `_unhandled_input`: events a control already used (a key capture) never get here.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"ui_cancel"):
+		get_viewport().set_input_as_handled()
+		Sfx.play("tap")
+		close()
 
 
 ## A wrapped paragraph in the body.
@@ -57,12 +73,12 @@ func _build(title: String) -> void:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 24)
 	column.add_child(top)
-	var close_button := Button.new()
-	close_button.text = "Close"
-	close_button.custom_minimum_size = Vector2(160, 56)
-	close_button.pressed.connect(Sfx.play.bind("tap"))
-	close_button.pressed.connect(close)
-	top.add_child(close_button)
+	_close = Button.new()
+	_close.text = "Close"
+	_close.custom_minimum_size = Vector2(160, 56)
+	_close.pressed.connect(Sfx.play.bind("tap"))
+	_close.pressed.connect(close)
+	top.add_child(_close)
 	var heading_label := Label.new()
 	heading_label.text = title
 	heading_label.add_theme_font_override("font", Style.display_font)
@@ -71,6 +87,7 @@ func _build(title: String) -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true  # keys and pads reach the rows below the fold
 	column.add_child(scroll)
 	body = VBoxContainer.new()
 	body.add_theme_constant_override("separation", 14)

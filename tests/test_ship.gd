@@ -74,19 +74,6 @@ func test_destroyed_once() -> void:
 	check(destroyed.count == 1, "destroyed emitted %d times" % destroyed.count)
 
 
-func test_held_finger_keeps_steering_as_the_camera_follows() -> void:
-	var ship = spawn(SHIP, Vector2.ZERO)
-	await frames(2)
-	var press := InputEventMouseButton.new()
-	press.button_index = MOUSE_BUTTON_LEFT
-	press.pressed = true
-	press.position = Vector2(940, 360)  # Right of screen centre; the finger then stays still.
-	ship._unhandled_input(press)
-	await frames(150)
-	check(ship.position.x > 400, "ship should keep flying right, at %s" % ship.position)
-	check(abs(wrapf(ship.rotation, -PI, PI)) < 0.3, "ship turned to %f rad instead of following the held finger" % ship.rotation)
-
-
 func test_engine_waits_until_aligned() -> void:
 	var ship = spawn(SHIP, Vector2.ZERO, {"thrusting": true, "aim_point": Vector2(-1000, 0)})
 	await frames(6)  # a 180° turn at 15 rad/s takes about 13 frames
@@ -110,6 +97,27 @@ func test_engine_stays_on_while_dragging() -> void:
 	ship.thrusting = true  # a new press behind the ship must wait for the turn again
 	await frames(2)
 	check(not ship.firing, "a new press must not fire before the nose catches up")
+
+
+
+func test_steering_turns_without_firing() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO, {"steering": true, "aim_point": Vector2(0, 1000)})
+	await frames(30)
+	check(abs(wrapf(ship.rotation - PI / 2, -PI, PI)) < 0.05, "rotation %f, expected PI/2" % ship.rotation)
+	check(not ship.firing and ship.fuel == Ship.MAX_FUEL, "steering alone must not fire")
+
+
+func test_ungated_engine_fires_while_turning() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO, {"thrusting": true, "steering": true, "align_gate": false, "aim_point": Vector2(-1000, 0)})
+	await frames(2)
+	check(ship.firing, "a fire button must fire before the nose is aligned")
+
+
+func test_ungated_thrust_without_steering_holds_heading() -> void:
+	var ship = spawn(SHIP, Vector2.ZERO, {"thrusting": true, "align_gate": false, "aim_point": Vector2(0, 1000)})
+	await frames(30)
+	check(abs(wrapf(ship.rotation, -PI, PI)) < 0.01, "fire alone turned the ship to %f" % ship.rotation)
+	check(ship.linear_velocity.x > 0, "fire alone must push along the current heading")
 
 
 func test_shake_kicks_then_settles() -> void:

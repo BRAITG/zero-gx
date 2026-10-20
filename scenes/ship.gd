@@ -41,6 +41,10 @@ const VELOCITY_ARROW_SCALE := 0.25  # px of arrow per px/s
 const VELOCITY_ARROW_MAX := 200.0  # px
 
 var thrusting := false
+## Turn toward aim_point without thrust (a ship that steers while its engine is on a separate button).
+var steering := false
+## Engine waits until the nose has pointed within Tuning.align_degrees of the finger.
+var align_gate := true
 var aim_point := Vector2.ZERO
 ## Starting fuel; a level can give less than a full tank.
 @export var fuel := MAX_FUEL
@@ -78,13 +82,13 @@ var _previous_velocity := Vector2.ZERO
 ## Falls toward the tuned cap at OVERSPEED_DECEL, so neither thrust nor gravity can hold the
 ## ship above the cap while it slows down.
 var _allowed_speed := TUNNEL_LIMIT
-## Where the finger rests on screen; null when no touch is held. Re-projected every step,
-## because the camera follows the ship and a still finger sends no new events.
-var _touch_screen: Variant = null
+## Where the finger or cursor aims on screen (set by ShipInput); null when none. Re-projected every
+## step, because the camera follows the ship and a still finger sends no new events.
+var touch_screen: Variant = null
 var _effect_left := 0.0  # s of power effect or boost remaining
 var _wobble_phase := 0.0
 var _spin := 0.0  # rad/s left from the last glancing hit; decays with Tuning.spin_decay
-## False while a tutorial step owns the controls: touches are ignored.
+## False while a tutorial step owns the controls: ShipInput leaves the ship alone.
 var accept_input := true
 var _respawn: Variant = null  # [position, velocity] to apply on the next physics step
 var _lookahead := Vector2.ZERO
@@ -172,11 +176,11 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		_respawn = null
 		return
 	var step := state.step
-	if _touch_screen != null:
-		aim_point = get_canvas_transform().affine_inverse() * (_touch_screen as Vector2)
+	if touch_screen != null:
+		aim_point = get_canvas_transform().affine_inverse() * (touch_screen as Vector2)
 	var to_aim := aim_point - state.transform.origin
 	var aligned := true
-	if thrusting and to_aim.length() > 1.0:  # finger up: hold heading and coast
+	if (steering or (thrusting and align_gate)) and to_aim.length() > 1.0:  # finger up: hold heading and coast
 		var turn := wrapf(to_aim.angle() - state.transform.get_rotation(), -PI, PI)
 		var rate := Tuning.boost_turn_rate if boosting else Tuning.turn_rate
 		state.angular_velocity = clampf(turn / step, -rate, rate)
@@ -187,7 +191,7 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 		_spin *= exp(-step / Tuning.spin_decay)
 	var forward := Vector2.RIGHT.rotated(state.transform.get_rotation())
 	_press_aligned = thrusting and (_press_aligned or aligned)
-	firing = boosting or (thrusting and _press_aligned and fuel > 0.0)
+	firing = boosting or (thrusting and fuel > 0.0 and (_press_aligned or not align_gate))
 	if boosting:
 		state.angular_velocity += _wobble()
 		state.apply_central_force(forward * Tuning.thrust)
@@ -328,18 +332,6 @@ func _process(delta: float) -> void:
 			_trail.remove_point(0)
 	if _flash > 0.0 or _heat > 0.0 or show_velocity:
 		queue_redraw()
-
-
-func _unhandled_input(event: InputEvent) -> void:
-	if not accept_input:
-		return
-	# Touches arrive as emulated left-mouse events; GUI controls consume theirs first.
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
-		thrusting = event.pressed
-		_touch_screen = event.position if event.pressed else null
-		aim_point = get_canvas_transform().affine_inverse() * event.position
-	elif event is InputEventMouseMotion and _touch_screen != null:
-		_touch_screen = event.position
 
 
 ## Bring the ship back whole at `at` with `velocity` and `with_fuel` (tutorial retries).

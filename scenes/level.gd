@@ -9,6 +9,7 @@ const MENU := "res://scenes/main.tscn"
 var ship: Ship
 var goal: Goal
 var hud: Hud
+var input: ShipInput
 ## Shown on the intro card until the first thrust: what this level teaches, in a few words.
 @export var title := ""
 @export var hint := ""
@@ -52,6 +53,8 @@ func _ready() -> void:
 	ship.show_velocity = show_velocity or Settings.show_velocity
 	hud.goal = goal
 	add_child(hud)
+	input = ShipInput.new(ship)
+	add_child(input)
 	if Tuning.tours and not testing and has_node("Tour") and Progress.best_points(level_id) < 0 and not Progress.toured.has(level_id):
 		Progress.toured[level_id] = true
 		hud.visible = false

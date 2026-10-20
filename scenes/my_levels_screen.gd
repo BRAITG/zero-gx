@@ -4,6 +4,7 @@ extends Control
 
 const MENU := "res://scenes/main.tscn"
 
+var _column: VBoxContainer
 var _list: VBoxContainer
 
 
@@ -12,13 +13,13 @@ func _ready() -> void:
 	add_child(Starfield.new())
 	var ui := CanvasLayer.new()
 	add_child(ui)
-	var column := VBoxContainer.new()
-	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 24)
-	column.add_theme_constant_override("separation", 16)
-	ui.add_child(column)
+	_column = VBoxContainer.new()
+	_column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 24)
+	_column.add_theme_constant_override("separation", 16)
+	ui.add_child(_column)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 24)
-	column.add_child(top)
+	_column.add_child(top)
 	_button(top, "Back", func() -> void: get_tree().change_scene_to_file(MENU))
 	var title := Label.new()
 	title.text = "My levels"
@@ -30,12 +31,14 @@ func _ready() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	column.add_child(scroll)
+	scroll.follow_focus = true  # keys and pads reach the rows below the fold
+	_column.add_child(scroll)
 	_list = VBoxContainer.new()
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_list.add_theme_constant_override("separation", 12)
 	scroll.add_child(_list)
 	_fill()
+	Style.focus_first.call_deferred(_column)  # after layout
 
 
 func _fill() -> void:
@@ -88,7 +91,8 @@ func _confirm_delete(id: String, title: String) -> void:
 	_button(o.body, "Delete", func() -> void:
 		MyLevels.delete(id)
 		o.close()
-		_fill())
+		_fill()
+		Style.focus_first(_column))  # the Delete button that had focus is gone
 
 
 func _import() -> void:
@@ -140,7 +144,13 @@ func _button(parent: Control, text: String, action: Callable) -> Button:
 	return button
 
 
-## Android's back gesture returns to the menu.
+## Android's back gesture, Esc and B return to the menu.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		get_tree().change_scene_to_file(MENU)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"ui_cancel"):
+		get_viewport().set_input_as_handled()
 		get_tree().change_scene_to_file(MENU)

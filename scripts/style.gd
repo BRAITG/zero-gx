@@ -23,6 +23,15 @@ func _ready() -> void:
 	add_child(_bloom())
 
 
+## Gives keyboard and gamepad focus to the first enabled button under `root`, if any, with the
+## ring hidden until the player navigates (a phone never shows it).
+func focus_first(root: Node) -> void:
+	for button: Button in root.find_children("*", "Button", true, false):
+		if button.is_visible_in_tree() and not button.disabled and button.focus_mode == Control.FOCUS_ALL:
+			button.grab_focus(true)
+			return
+
+
 ## Bright things (lasers, flames, the ship) glow. Only the game world blooms: HUD and menus sit
 ## on canvas layers above `background_canvas_max_layer` and stay crisp.
 func _bloom() -> WorldEnvironment:
@@ -52,7 +61,7 @@ func _theme() -> Theme:
 	theme.set_stylebox("hover", "Button", _box(Color(0.07, 0.12, 0.22, 0.92), ACCENT, 10))
 	theme.set_stylebox("pressed", "Button", _box(Color(0.1, 0.2, 0.36, 0.95), ACCENT, 10))
 	theme.set_stylebox("disabled", "Button", _box(Color(0.03, 0.04, 0.08, 0.7), Color(BORDER, 0.5), 10))
-	theme.set_stylebox("focus", "Button", StyleBoxEmpty.new())
+	theme.set_stylebox("focus", "Button", _focus_ring(10))
 	theme.set_stylebox("panel", "PanelContainer", _box(PANEL, BORDER, 14, 18))
 	theme.set_stylebox("background", "ProgressBar", _box(Color(0.06, 0.09, 0.16, 0.9), Color(BORDER, 0.6), 6, 0))
 	return theme
@@ -65,6 +74,17 @@ static func _box(fill: Color, border: Color, radius: int, margin := 12) -> Style
 	box.set_border_width_all(2)
 	box.set_corner_radius_all(radius)
 	box.set_content_margin_all(margin)
+	return box
+
+
+## An outline just outside a button's own border, so the focused one shows for keyboard and gamepad.
+static func _focus_ring(radius: int) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.draw_center = false
+	box.border_color = INK
+	box.set_border_width_all(3)
+	box.set_corner_radius_all(radius + 3)
+	box.set_expand_margin_all(3)
 	return box
 
 

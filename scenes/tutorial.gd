@@ -10,6 +10,14 @@ extends Level
 const RING_DISTANCE := 300.0  # px on screen from the ship
 const RING_RADIUS := 56.0
 const SCREEN_MARGIN := 90.0
+const RING_AIM_DEGREES := 30.0  # how near the ring a stick, key or cursor must point to hold it
+## Ring captions for sticks, keys and the mouse, applied in order.
+const RING_WORDS := {
+	"Touch and hold the ring": "Point at the ring and hold fire",
+	"tap and hold the ring": "point at the ring and hold fire",
+	"Hold the ring": "Point at the ring and hold fire",
+	"hold the ring": "point at the ring and hold fire",
+}
 const BITS := 48  # pixels the ship breaks into for the rescue
 const BIT_SIZE := 4.0
 const SCATTER := 0.35  # s the pixels burst apart before they travel
@@ -63,6 +71,7 @@ func say(text: String) -> void:
 	ship.freeze = true
 	_card_label.text = text
 	_card.show()
+	Style.focus_first(_card)
 	_ok_pressed = false
 	while not _ok_pressed:
 		await get_tree().physics_frame
@@ -85,6 +94,9 @@ func touch_target(direction: Variant, done: Callable, text := "", wait := false)
 	_step_waits = wait
 	if wait:
 		_hold_still()
+	if not input.touches_rings():
+		for touch_words in RING_WORDS:
+			text = text.replace(touch_words, RING_WORDS[touch_words])
 	await until(done, text)
 	_step_waits = false
 	_ring.hide()
@@ -164,14 +176,22 @@ func _physics_process(delta: float) -> void:
 	var top := _caption.get_global_rect().end.y + RING_RADIUS if _caption.visible else SCREEN_MARGIN  # never under the caption
 	var centre := (at + direction.normalized() * RING_DISTANCE).clamp(Vector2(SCREEN_MARGIN, top), screen - Vector2.ONE * SCREEN_MARGIN)
 	_ring.position = centre - _ring.size / 2.0
-	ship.thrusting = _ring.held
-	if _ring.held and waiting():  # the first touch lets the ship go on
+	var holding := _ring.held
+	if not (holding or input.touches_rings()):
+		holding = aims_at(input.steer_direction(), get_viewport().canvas_transform.affine_inverse() * centre - ship.global_position) and input.fire_held()
+	ship.thrusting = holding
+	if holding and waiting():  # the first touch lets the ship go on
 		ship.freeze = false
 		ship.linear_velocity = _paused_velocity
 		_paused_velocity = null
-	if _ring.held:
+	if holding:
 		held_time += delta
 		ship.aim_point = get_viewport().canvas_transform.affine_inverse() * centre
+
+
+## Whether a steering direction points within RING_AIM_DEGREES of the way to the ring.
+static func aims_at(steer: Vector2, to_ring: Vector2) -> bool:
+	return steer != Vector2.ZERO and absf(steer.angle_to(to_ring)) <= deg_to_rad(RING_AIM_DEGREES)
 
 
 func _ship_lost() -> void:

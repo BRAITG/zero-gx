@@ -37,17 +37,41 @@ Zero-GX is a 2D physics game for Android, built with Godot. Fly a ship from star
 
 Every push to `master` publishes a debug-signed APK as a prerelease on the [Releases page](https://github.com/BRAITG/zero-gx/releases). Open the latest one on the phone, download `zero-gx.apk`, allow installs from the browser, and open the file. Builds share one signing key, so a newer APK installs over an older one.
 
-Controls: touch and hold anywhere. The ship turns toward your finger and thrusts while you hold; release to coast.
+Controls: touch and hold anywhere. The ship turns toward your finger and thrusts while you hold; release to coast. Other touch layouts, a keyboard, a mouse and a gamepad also work; see [Controls](#controls).
 
 ## Play or edit on a computer
 
 1. Install [Godot 4.7.2](https://godotengine.org/download/archive/4.7.2-stable/).
 2. Open `project.godot`.
-3. Press F5. The mouse stands in for a finger.
+3. Press F5. The mouse aims the ship and left click fires.
 
 Levels live in `levels/` as level files (see [Level files](#level-files)). Build your own in the app: **My levels** in the main menu opens the level editor (`scenes/editor.gd`). Pick a tool from the bottom palette (walls, planets, black holes, stars, asteroids, pickups, start and goal); one finger places or drags, two fingers pan and pinch-zoom. Walls, the start and the goal snap to a 10 m grid; turn on **Fine grid** for 1 m steps, which also shows the 1 m grid. Everything else goes exactly where you put it, and pressing on something already placed picks it up instead of adding another. **Select** then tap opens a thing's sheet, with sliders kept within its kind's limits; **Settings** sets the title, hint, fuel, hull and velocity arrow. **Test** flies the level: finishing it marks the level completed until its next change, and returning keeps your undo history. Your levels are saved on the device in `user://levels/` (`scripts/my_levels.gd`); the editor's model with undo is `scripts/level_doc.gd`.
 
 **Import and export.** **Import** in My levels reads a level file (`.json` or `.json.gz`, including the official levels in `levels/`) as a new draft; a file that is not a Zero-GX level, or is malformed, is refused with the reasons. **Export** writes the level as plain `.json`, in the stable layout. Both use the system's file dialog; on Android that is the system picker, which lists Downloads, USB and local storage. In the editor on a computer, the left mouse button acts like a finger, the right or middle button drags the view, the wheel zooms at the cursor (on a Mac trackpad, pinch to zoom and swipe to pan), Ctrl/Cmd+Z undoes, Ctrl/Cmd+S saves, and T test-flies. These shortcuts are off while a sheet or Settings is open.
+
+## Controls
+
+The last device you use drives the ship. Every binding can be changed in **Settings → Controls**, which saves them with the other settings.
+
+| Action | Keyboard | Mouse | Gamepad (preset A) | Gamepad (preset B) |
+|---|---|---|---|---|
+| Steer | WASD or arrow keys | cursor | left stick | right stick |
+| Fire | Space | left button | A | D-pad up |
+| Pause | Esc | | Start | Start |
+
+Keys and sticks point the ship in the direction you press, and it holds that heading when you let go. With the mouse, the nose follows the cursor and a button fires; turn off **Mouse cursor aims** to aim and fire with a click instead.
+
+Menus work with the keyboard and a gamepad: the D-pad, left stick or arrow keys move the focus, Enter or A selects, and Esc or B closes an overlay (the level editor's sheets too) or goes back (the main menu ignores it). In a level, Esc or Start opens the pause card, and Esc, Start or B closes it.
+
+On a touchscreen, **Controls** offers three layouts, with a diagram of the one you choose:
+
+- **One finger** (default): touch and hold to turn toward your finger and thrust.
+- **Stick + button**: a floating stick appears where your thumb lands on one half of the screen; the other half is the fire button.
+- **Finger + button**: a finger anywhere aims the ship, and a round fire button sits in a bottom corner.
+
+In the last two you choose which side holds the fire button. **Change** replaces a binding of the same kind (key, mouse button or gamepad button) and **Add** gives the action one more; Esc cancels. Stick axes are set by the gamepad preset. **Reset to defaults** restores everything on the screen.
+
+While a thumb holds the virtual stick, a second finger cannot press the HUD buttons (Restart, Menu, Tune): Godot turns only the first touch into the clicks buttons need, so lift the thumb first.
 
 ## Tests
 

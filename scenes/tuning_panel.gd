@@ -8,6 +8,7 @@ const SLIDER_WIDTH := 520.0
 var _labels := {}
 var _sliders := {}
 var _overlays: CheckButton
+var _prior_focus: Control
 
 
 ## Shows the panel on its own top canvas layer under `parent` and pauses the tree.
@@ -16,6 +17,7 @@ static func open(parent: Node) -> TuningPanel:
 	layer.layer = 10
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	var panel := TuningPanel.new()
+	panel._prior_focus = parent.get_viewport().gui_get_focus_owner()
 	layer.add_child(panel)
 	parent.add_child(layer)
 	parent.get_tree().paused = true
@@ -24,7 +26,16 @@ static func open(parent: Node) -> TuningPanel:
 
 func close() -> void:
 	get_tree().paused = false
+	if is_instance_valid(_prior_focus) and _prior_focus.is_visible_in_tree():
+		_prior_focus.grab_focus(true)
 	get_parent().queue_free()
+
+
+## Esc and B close it. Handled here: unpaused by this very event, ShipInput would open the pause card.
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed(&"ui_cancel"):
+		get_viewport().set_input_as_handled()
+		close()
 
 
 ## A scene change (Android back) can free an open panel; never leave the next scene paused.
@@ -43,6 +54,7 @@ func _ready() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 24)
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true  # keys and pads reach the rows below the fold
 	add_child(scroll)
 	var rows := VBoxContainer.new()
 	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -51,7 +63,7 @@ func _ready() -> void:
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 16)
 	rows.add_child(buttons)
-	_button(buttons, "Close", close)
+	_button(buttons, "Close", close).grab_focus(true)
 	_button(buttons, "Reset", _reset)
 	_overlays = CheckButton.new()
 	_overlays.text = "Debug overlays"
@@ -118,7 +130,7 @@ func _reset() -> void:
 	_overlays.set_pressed_no_signal(Tuning.show_overlays)
 
 
-func _button(parent: Control, text: String, action: Callable) -> void:
+func _button(parent: Control, text: String, action: Callable) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(160, 56)
@@ -126,3 +138,4 @@ func _button(parent: Control, text: String, action: Callable) -> void:
 	button.pressed.connect(Sfx.play.bind("tap"))
 	button.pressed.connect(action)
 	parent.add_child(button)
+	return button
