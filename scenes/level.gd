@@ -46,6 +46,8 @@ func _ready() -> void:
 	hud = Hud.new()
 	hud.ship = ship
 	hud.menu_text = "Edit" if testing else "Menu"
+	if _ends_training():
+		hud.next_text = "End training"
 	hud.can_replay = demo != null
 	ship.show_velocity = show_velocity or Settings.show_velocity
 	hud.goal = goal
@@ -61,7 +63,7 @@ func _ready() -> void:
 	hud.retry_requested.connect(func(): Progress.open(level_id, testing))
 	hud.menu_requested.connect(_to_menu)
 	hud.replay_requested.connect(_replay)
-	hud.next_requested.connect(func(): Progress.open(Progress.next_level(level_id)))
+	hud.next_requested.connect(_next)
 	goal.reached.connect(finish.bind(true))
 	ship.destroyed.connect(_ship_lost)
 	ship.stranded.connect(_ship_stranded)
@@ -119,6 +121,18 @@ static func leave_to(tree: SceneTree, level_id: String, testing: bool) -> void:
 		tree.change_scene_to_file(MENU)
 
 
+## The last training stage: its Next ends the training and returns to the main menu.
+func _ends_training() -> bool:
+	return level_id.begins_with("tutorial_") and Progress.next_level(level_id) == ""
+
+
+func _next() -> void:
+	if _ends_training():
+		get_tree().change_scene_to_file(MENU)
+	else:
+		Progress.open(Progress.next_level(level_id))
+
+
 func _replay() -> void:
 	get_tree().change_scene_to_node(DemoViewer.create(level_data, demo, leave_to.bind(get_tree(), level_id, testing)))
 
@@ -158,5 +172,5 @@ func _score() -> Dictionary:
 		"hull_points": roundi(hull * Tuning.points_hull),
 		"time_points": roundi(seconds * Tuning.points_per_second),
 		"new_best": level_id != "" and not testing and Progress.record_win(level_id, points, seconds),
-		"has_next": level_id != "" and Progress.next_level(level_id) != "",
+		"has_next": level_id != "" and (Progress.next_level(level_id) != "" or _ends_training()),
 	}

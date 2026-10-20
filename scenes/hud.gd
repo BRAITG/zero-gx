@@ -18,6 +18,8 @@ const GOAL_GREEN := Color(0.4, 1.0, 0.6)
 
 ## The label of the buttons that leave the level ("Edit" on a test flight).
 var menu_text := "Menu"
+## The label of the button that goes on after a win ("End training" after the last training stage).
+var next_text := "Next"
 var ship: Ship
 var goal: Node2D
 var restart_button: Button
@@ -181,7 +183,7 @@ func _ready() -> void:
 	_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_detail.add_theme_font_size_override("font_size", 24)
 	column.add_child(_detail)
-	_next = _button(column, "Next", next_requested.emit)
+	_next = _button(column, next_text, next_requested.emit)
 	_button(column, "Retry", retry_requested.emit)
 	_replay = _button(column, "Replay", replay_requested.emit)
 	_button(column, menu_text, menu_requested.emit)

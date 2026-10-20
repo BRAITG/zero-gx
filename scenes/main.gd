@@ -31,7 +31,7 @@ func _ready() -> void:
 	title.add_theme_color_override("font_outline_color", Color(Style.ACCENT, 0.35))
 	title.add_theme_constant_override("outline_size", 14)
 	_column.add_child(title)
-	var top := _button("Back" if training else "Training")
+	var top := _button("Back" if training else ("Training · ✓ completed" if Progress.training_completed() else "Training"))
 	top.pressed.connect(func(): get_tree().change_scene_to_node(menu(not training)))
 	_column.add_child(top)
 	_levels = GridContainer.new()

@@ -123,6 +123,11 @@ func is_unlocked(id: String) -> bool:
 	return unlock_all or index <= 0 or best_points(ids[index - 1]) >= 0
 
 
+## Whether every training stage has been finished.
+func training_completed() -> bool:
+	return Array(trainings()).all(func(id: String) -> bool: return best_points(id) >= 0)
+
+
 ## The stage after `id` on its own track, or "" for the last one.
 func next_level(id: String) -> String:
 	var ids := _track(id)

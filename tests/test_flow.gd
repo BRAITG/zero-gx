@@ -231,3 +231,42 @@ func test_velocity_arrow_setting() -> void:
 	Settings.show_velocity = true
 	lvl = level(Vector2(3000, 0))
 	check(lvl.ship.show_velocity, "the setting must turn the arrow on in levels")
+
+
+## A training stage built without its lesson script, so no lesson coroutine outlives the test.
+func training_stage(id: String) -> Level:
+	var lvl := LevelFormat.build(LevelFormat.read(Progress.TUTORIALS_DIR + id + LevelFormat.EXTENSION))
+	lvl.level_id = id
+	world.add_child(lvl)
+	return lvl
+
+
+func test_the_last_training_stage_ends_the_training() -> void:
+	var lvl := training_stage(Progress.trainings()[-1])
+	await frames(2)
+	lvl.finish(true)
+	await frames(2)
+	var shown: Array = lvl.hud.find_children("*", "Button", true, false).filter(func(b: Button): return b.is_visible_in_tree()).map(func(b: Button): return b.text)
+	check("End training" in shown and not "Next" in shown, "end panel of the last training stage: %s" % [shown])
+	lvl.free()
+	var other := training_stage(Progress.trainings()[0])
+	await frames(2)
+	other.finish(true)
+	await frames(2)
+	shown = other.hud.find_children("*", "Button", true, false).filter(func(b: Button): return b.is_visible_in_tree()).map(func(b: Button): return b.text)
+	check("Next" in shown and not "End training" in shown, "end panel of an earlier training stage: %s" % [shown])
+	other.free()
+
+
+func test_main_menu_marks_completed_training() -> void:
+	var training_button := func() -> String:
+		var main: Control = load("res://scenes/main.tscn").instantiate()
+		world.add_child(main)
+		var text: String = main.find_children("*", "Button", true, false).filter(func(b: Button): return b.text.begins_with("Training"))[0].text
+		main.free()
+		return text
+	for id in Progress.trainings().slice(0, -1):
+		Progress.record_win(id, 1000, 10.0)
+	check(training_button.call() == "Training", "not all training done: %s" % training_button.call())
+	Progress.record_win(Progress.trainings()[-1], 1000, 10.0)
+	check(training_button.call().contains("completed"), "all training done: %s" % training_button.call())
