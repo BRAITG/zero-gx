@@ -19,7 +19,7 @@ Zero-GX is a physics puzzle-racer about flying a small spaceship from start to g
 
 Zero-GX is free software, released under the GNU Affero General Public License v3.
 
-**Category**: Game → Arcade (alternative: Racing or Puzzle)
+**Category**: Game → Puzzle (alternative: Arcade)
 
 **Tags**: physics, space, gravity, arcade
 
