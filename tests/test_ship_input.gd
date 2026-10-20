@@ -54,6 +54,29 @@ func screen_centre() -> Vector2:
 	return tree.root.get_visible_rect().size / 2.0
 
 
+## A finger `index` pressing or lifting at `at`, in viewport coordinates.
+func touch(index: int, at: Vector2, down: bool) -> void:
+	var event := InputEventScreenTouch.new()
+	event.index = index
+	event.position = at
+	event.pressed = down
+	tree.root.push_input(event, true)
+
+
+func drag(index: int, at: Vector2) -> void:
+	var event := InputEventScreenDrag.new()
+	event.index = index
+	event.position = at
+	tree.root.push_input(event, true)
+
+
+## A ShipInput in a two-handed touch scheme, with its fire button on `side`.
+func two_handed(touch_scheme: String, side := "right") -> ShipInput:
+	Settings.touch_scheme = touch_scheme
+	Settings.fire_side = side
+	return controlled()
+
+
 func test_keys_steer_to_heading_and_fire_ungated() -> void:
 	var input := controlled()
 	var ship := input.ship
@@ -172,3 +195,82 @@ func test_idle_input_leaves_scripted_controls_alone() -> void:
 	lvl.ship.thrusting = true
 	await frames(10)
 	check(lvl.ship.thrusting and lvl.ship.align_gate, "an idle ShipInput overwrote the scripted controls")
+
+
+func test_virtual_stick_anchors_where_the_thumb_lands() -> void:
+	var input := two_handed("stick")
+	await frames(1)
+	touch(0, Vector2(300, 500), true)
+	drag(0, Vector2(300 + 110, 500))
+	check(input.scheme == "stick", "scheme %s after a touch, expected stick" % input.scheme)
+	check(input.touch.direction.is_equal_approx(Vector2(1, 0)), "direction %s at the stick's rim, expected (1, 0)" % input.touch.direction)
+	drag(0, Vector2(300 + 10, 500))
+	check(input.touch.direction == Vector2.ZERO, "direction %s inside the deadzone, expected zero" % input.touch.direction)
+	drag(0, Vector2(300 + 400, 500))
+	check(is_equal_approx(input.touch.direction.length(), 1.0), "direction %s past the rim, expected length 1" % input.touch.direction)
+	touch(0, Vector2(300 + 400, 500), false)
+
+
+func test_stick_and_button_together() -> void:
+	var input := two_handed("stick")
+	var ship := input.ship
+	await frames(1)
+	var width := input.touch.size.x
+	touch(0, Vector2(300, 500), true)
+	drag(0, Vector2(300, 500 - 110))
+	touch(1, Vector2(width - 300, 500), true)
+	await frames(2)
+	check(ship.steering and ship.thrusting, "both thumbs must steer and fire (steering %s, thrusting %s)" % [ship.steering, ship.thrusting])
+	check(not ship.align_gate, "the fire button must fire ungated")
+	touch(1, Vector2(width - 300, 500), false)
+	await frames(2)
+	check(ship.steering and not ship.thrusting, "lifting the fire thumb must keep steering (steering %s, thrusting %s)" % [ship.steering, ship.thrusting])
+	touch(0, Vector2(300, 500 - 110), false)
+
+
+func test_sides_swap() -> void:
+	var input := two_handed("stick", "left")
+	await frames(1)
+	touch(0, Vector2(300, 500), true)
+	drag(0, Vector2(300 + 110, 500))
+	await frames(2)
+	check(input.touch.fire and input.ship.thrusting, "a touch on the left half must fire with the button on the left")
+	check(input.touch.direction == Vector2.ZERO, "a touch on the fire half anchored the stick")
+	touch(0, Vector2(300 + 110, 500), false)
+
+
+func test_finger_button_aims_anywhere_but_the_button() -> void:
+	var input := two_handed("finger_button")
+	var ship := input.ship
+	await frames(1)
+	var finger := screen_centre() + Vector2(300, 0)  # the camera centres the ship
+	touch(0, finger, true)
+	await frames(2)
+	check(ship.steering and not ship.thrusting, "a touch off the button must aim without firing (steering %s, thrusting %s)" % [ship.steering, ship.thrusting])
+	check(ship.aim_point.is_equal_approx(ship.get_canvas_transform().affine_inverse() * finger), "aim_point %s, expected under the finger" % ship.aim_point)
+	touch(0, finger, false)
+	await frames(2)
+	var aim := ship.aim_point
+	var size := input.touch.size
+	var button := Vector2(size.x - TouchControls.MARGIN - TouchControls.BUTTON_RADIUS, size.y - TouchControls.MARGIN - TouchControls.BUTTON_RADIUS)
+	touch(1, button, true)
+	await frames(2)
+	check(ship.thrusting and not ship.align_gate, "a touch on the button must fire ungated")
+	check(ship.aim_point == aim, "the fire button moved aim_point from %s to %s" % [aim, ship.aim_point])
+	touch(1, button, false)
+
+
+func test_touch_on_hud_button_is_ignored() -> void:
+	var input := two_handed("stick")
+	var hud := Hud.new()
+	hud.ship = input.ship
+	world.add_child(hud)
+	input.touch.hud = hud
+	await frames(2)
+	var on_button := hud.restart_button.get_global_rect().get_center()
+	touch(0, on_button, true)
+	drag(0, on_button + Vector2(110, 0))
+	await frames(2)
+	check(not input.touch.fire and not input.ship.thrusting, "a touch on Restart fired")
+	check(input.touch.direction == Vector2.ZERO, "a touch on Restart anchored the stick")
+	touch(0, on_button + Vector2(110, 0), false)

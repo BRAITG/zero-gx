@@ -276,6 +276,11 @@ func result_text() -> String:
 	return "\n".join(lines)
 
 
+## Whether a visible HUD button holds `screen_pos`, so a touch there is the button's, not the ship's.
+func blocks(screen_pos: Vector2) -> bool:
+	return find_children("", "Button", true, false).any(func(b: Button) -> bool: return b.is_visible_in_tree() and b.get_global_rect().has_point(screen_pos))
+
+
 ## Where the off-screen goal arrow sits: `target` (screen px) pulled in to the screen edge,
 ## `margin` px inside it, along the line from the screen centre.
 static func edge_point(target: Vector2, screen: Vector2, margin: float) -> Vector2:

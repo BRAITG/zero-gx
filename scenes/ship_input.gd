@@ -6,10 +6,14 @@ extends Node
 const AIM_REACH := 1000.0  # px ahead of the ship that a stick or key direction aims at
 ## One press aims and fires, the engine waiting for the nose (today's touch); rings are touched.
 const GATED := ["finger", "mouse_click"]
+## Touch with a stick or aiming finger and a fire button, read from `touch`.
+const TWO_HANDED := ["stick", "finger_button"]
 
 var ship: Ship
 ## "finger", "mouse_click", "mouse_aim", "keys", "pad", "stick" or "finger_button".
 var scheme: String
+## The stick or aiming finger and fire button of the two-handed touch schemes.
+var touch: TouchControls
 var _fire := false
 ## Screen point that aims: a held finger or click, or the cursor once the mouse aims; else null.
 var _pointer: Variant = null
@@ -23,12 +27,24 @@ func _init(for_ship: Ship) -> void:
 	scheme = Settings.touch_scheme if DisplayServer.is_touchscreen_available() else _mouse_scheme()
 
 
+func _ready() -> void:
+	var layer := CanvasLayer.new()
+	layer.layer = 2  # above the HUD's
+	add_child(layer)
+	touch = TouchControls.new()
+	touch.hud = get_parent().get("hud")
+	layer.add_child(touch)
+	touch.visible = scheme in TWO_HANDED
+
+
 ## Where the player steers, in world space; Vector2.ZERO when not steering.
 func steer_direction() -> Vector2:
 	if _pointer != null:
 		return (ship.get_canvas_transform().affine_inverse() * (_pointer as Vector2) - ship.global_position).normalized()
 	if scheme in ["keys", "pad"]:
 		return Input.get_vector(&"steer_left", &"steer_right", &"steer_up", &"steer_down").normalized()
+	if scheme == "stick":
+		return touch.direction.normalized()
 	return Vector2.ZERO
 
 
@@ -42,6 +58,9 @@ func touches_rings() -> bool:
 
 func _unhandled_input(event: InputEvent) -> void:
 	# GUI controls consume their own events first, so a tap on a HUD button never reaches here.
+	if event is InputEventScreenTouch or event is InputEventScreenDrag:
+		_use(Settings.touch_scheme)  # `touch` read it in _input already
+		return
 	if event is InputEventMouse and event.device == InputEvent.DEVICE_ID_EMULATION:
 		_use(Settings.touch_scheme)
 		if scheme == "finger":
@@ -69,6 +88,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if scheme in TWO_HANDED:
+		_pointer = touch.aim_screen
+		_fire = touch.fire
 	var direction := steer_direction()
 	var active := ship.accept_input and (direction != Vector2.ZERO or _fire or _pointer != null)
 	if not (active or _applied):
@@ -87,6 +109,7 @@ func _use(new_scheme: String) -> void:
 	if new_scheme != scheme:
 		scheme = new_scheme
 		_pointer = null
+		touch.visible = scheme in TWO_HANDED
 
 
 func _mouse_scheme() -> String:
