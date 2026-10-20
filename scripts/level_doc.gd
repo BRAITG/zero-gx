@@ -6,7 +6,7 @@ extends RefCounted
 
 const FINE_SNAP := 10.0  # px: 1 m
 const COARSE_SNAP := 100.0  # px: 10 m
-const CLOSE_DISTANCE := 40.0  # px: tapping this near a wall's first point closes it
+const CLOSE_DISTANCE := 20.0  # screen px: the editor divides it by the zoom; tapping this near a wall's first point closes it
 const HIT_SLOP := 40.0  # screen px of finger tolerance when picking things; the editor scales it by zoom
 const ORBIT_SPEED := 0.8  # rad/s for a new orbiting asteroid
 const UNDO_LIMIT := 50
@@ -55,14 +55,14 @@ func place(kind: String, at: Vector2) -> Dictionary:
 
 ## Add a point to the wall being drawn, starting a new wall of `kind` if none is. Tapping near
 ## the first point of a wall with three or more points closes it and ends the wall.
-func add_wall_point(at: Vector2, kind := "blue") -> void:
+func add_wall_point(at: Vector2, kind := "blue", close := CLOSE_DISTANCE) -> void:
 	_remember()
 	if drawing < 0:
 		data.get_or_add("walls", []).append({"kind": kind, "points": [_p(at)]})
 		drawing = data.walls.size() - 1
 		return
 	var wall: Dictionary = data.walls[drawing]
-	if wall.points.size() >= 3 and _v(wall.points[0]).distance_to(at) <= CLOSE_DISTANCE:
+	if wall.points.size() >= 3 and _v(wall.points[0]).distance_to(at) <= close:
 		wall.closed = true
 		drawing = -1
 		return

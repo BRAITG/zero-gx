@@ -48,17 +48,44 @@ func test_things_go_where_they_are_put_and_walls_snap() -> void:
 	e.select_tool("wall")
 	e.press(Vector2(3049, 951))
 	e.release(Vector2(3049, 951), false)
-	check(LevelDoc._v(e.doc.data.walls[1].points[0]) == Vector2(3050, 950), "wall points snap to 1 m: %s" % [e.doc.data.walls[1].points])
+	check(LevelDoc._v(e.doc.data.walls[1].points[0]) == Vector2(3000, 1000), "wall points snap to 10 m by default: %s" % [e.doc.data.walls[1].points])
 
 
-func test_ten_metre_toggle_restores_the_coarse_snap() -> void:
+func test_fine_grid_toggle_snaps_to_one_metre() -> void:
 	var e := editor()
 	await frames(1)
-	e.fine_snap = false
+	var toggle: CheckButton
+	for button: CheckButton in e.find_children("*", "CheckButton", true, false):
+		if button.text == "Fine grid":
+			toggle = button
+	check(toggle != null, "the editor has a Fine grid toggle")
+	toggle.button_pressed = true
 	e.select_tool("wall")
 	e.press(Vector2(3049, 951))
 	e.release(Vector2(3049, 951), false)
-	check(LevelDoc._v(e.doc.data.walls[0].points[0]) == Vector2(3000, 1000), "10 m snap: %s" % [e.doc.data.walls[0].points])
+	check(LevelDoc._v(e.doc.data.walls[0].points[0]) == Vector2(3050, 950), "Fine grid snaps to 1 m: %s" % [e.doc.data.walls[0].points])
+
+
+func test_closing_a_wall_scales_with_zoom() -> void:
+	var e := editor()
+	await frames(1)
+	e.fine_snap = true
+	e.select_tool("wall")
+	e._camera.zoom = Vector2.ONE * 0.2
+	for at: Vector2 in [Vector2(5000, 3000), Vector2(6000, 3000), Vector2(6000, 4000)]:
+		e.press(at)
+		e.release(at, false)
+	e.press(Vector2(5080, 3000))  # 16 screen px from the first point at zoom 0.2
+	e.release(Vector2(5080, 3000), false)
+	check(e.doc.data.walls.size() == 1 and e.doc.data.walls[0].get("closed", false), "16 screen px closes at zoom 0.2: %s" % [e.doc.data.walls])
+	e._camera.zoom = Vector2.ONE
+	for at: Vector2 in [Vector2(5000, 6000), Vector2(6000, 6000), Vector2(6000, 7000)]:
+		e.press(at)
+		e.release(at, false)
+	e.press(Vector2(5030, 6000))  # 30 screen px from the first point at zoom 1.0
+	e.release(Vector2(5030, 6000), false)
+	var second: Dictionary = e.doc.data.walls[1]
+	check(not second.get("closed", false) and second.points.size() == 4, "30 screen px does not close at zoom 1.0: %s" % [second])
 
 
 func test_zoomed_out_press_near_a_wall_point_moves_only_the_point() -> void:
