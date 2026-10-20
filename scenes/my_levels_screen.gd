@@ -1,6 +1,6 @@
 class_name MyLevelsScreen
 extends Control
-## The player's own levels: make a new one, edit, play or delete.
+## The player's own levels: make a new one, import or export one, edit, play or delete.
 
 const MENU := "res://scenes/main.tscn"
 
@@ -26,6 +26,7 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 36)
 	top.add_child(title)
 	_button(top, "New level", func() -> void: _edit(MyLevels.new_id()))
+	_button(top, "Import", _import)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -56,7 +57,7 @@ func _fill() -> void:
 		var best := Progress.best_points(id)
 		label.text = "%s%s · %s" % ["✓ " if MyLevels.is_completed(id) else "", data.get("title", "?"), "—" if best < 0 else str(best)]
 		label.add_theme_font_size_override("font_size", 24)
-		label.custom_minimum_size.x = 460  # room for Watch beside Edit, Play and Delete
+		label.custom_minimum_size.x = 300  # room for Watch, Edit, Play, Export and Delete
 		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		row.add_child(label)
 		_button(row, "Edit", _edit.bind(id))
@@ -64,6 +65,7 @@ func _fill() -> void:
 			_button(row, "Watch", _watch.bind(id, data))
 		var play := _button(row, "Play", func() -> void: Progress.open(id))
 		play.disabled = data.is_empty() or not LevelFormat.validate(data).is_empty()
+		_button(row, "Export", _export.bind(id, data.get("title", "level")))
 		_button(row, "Delete", _confirm_delete.bind(id, data.get("title", "?")))
 
 
@@ -87,6 +89,39 @@ func _confirm_delete(id: String, title: String) -> void:
 		MyLevels.delete(id)
 		o.close()
 		_fill())
+
+
+func _import() -> void:
+	_file_dialog(FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.json, *.json.gz ; Zero-GX levels"]), "", func(path: String) -> void:
+		var errors := MyLevels.import_file(path)
+		if errors.is_empty():
+			_fill()
+			return
+		var o := Overlay.open(self, "Cannot import")
+		for error in errors:
+			o.paragraph(error))
+
+
+func _export(id: String, title: String) -> void:
+	_file_dialog(FileDialog.FILE_MODE_SAVE_FILE, PackedStringArray(["*.json ; Zero-GX level"]), title + ".json", func(path: String) -> void:
+		if MyLevels.export_file(id, path) != OK:
+			Overlay.open(self, "Cannot export").paragraph("The file could not be written."))
+
+
+## A native file dialog; `on_pick` gets the chosen path. The dialog frees itself on pick or cancel.
+func _file_dialog(mode: FileDialog.FileMode, filters: PackedStringArray, current: String, on_pick: Callable) -> void:
+	var dialog := FileDialog.new()
+	dialog.use_native_dialog = true
+	dialog.access = FileDialog.ACCESS_FILESYSTEM
+	dialog.file_mode = mode
+	dialog.filters = filters
+	dialog.current_file = current
+	add_child(dialog)
+	dialog.file_selected.connect(func(path: String) -> void:
+		on_pick.call(path)
+		dialog.queue_free())
+	dialog.canceled.connect(dialog.queue_free)
+	dialog.popup_file_dialog()
 
 
 func _button(parent: Control, text: String, action: Callable) -> Button:

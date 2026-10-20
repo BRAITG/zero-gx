@@ -52,8 +52,8 @@ static func read(path: String) -> Dictionary:
 	var file := FileAccess.open_compressed(path, FileAccess.READ, FileAccess.COMPRESSION_GZIP) if path.ends_with(".gz") else FileAccess.open(path, FileAccess.READ)
 	if file == null:
 		return {}
-	var data: Variant = JSON.parse_string(file.get_as_text())
-	return data if data is Dictionary else {}
+	var json := JSON.new()  # unlike parse_string, the instance parse does not log every bad file
+	return json.data if json.parse(file.get_as_text()) == OK and json.data is Dictionary else {}
 
 
 ## Writes a level file: gzip when the path ends in `.gz`, otherwise in the stable `to_json` layout.

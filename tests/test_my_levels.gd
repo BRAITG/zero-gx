@@ -48,3 +48,66 @@ func test_test_flight_leaves_through_edit() -> void:
 	await frames(1)
 	var labels: Array = lvl.hud.find_children("*", "Button", true, false).map(func(b: Button): return b.text)
 	check("Edit" in labels and not "Menu" in labels, "test flight buttons: %s" % [labels])
+
+
+func test_official_level_round_trips_through_import_and_export() -> void:
+	var source := "res://levels/level_05.json"
+	var original := FileAccess.get_file_as_string(source)
+	check(MyLevels.import_file(source).is_empty(), "official level must import")
+	var ids := MyLevels.ids()
+	check(ids.size() == 1 and ids[0].begins_with(MyLevels.PREFIX), "one new user level: %s" % ids)
+	var out := "user://test_export.json"
+	check(MyLevels.export_file(ids[0], out) == OK, "export must succeed")
+	check(FileAccess.get_file_as_string(out) == original, "export must be byte-identical to the official file")
+	check(FileAccess.get_file_as_string(source) == original, "source untouched")
+	DirAccess.remove_absolute(out)
+
+
+func test_import_never_overwrites() -> void:
+	MyLevels.import_file("res://levels/level_05.json")
+	MyLevels.import_file("res://levels/level_05.json")
+	check(MyLevels.ids().size() == 2, "two imports, two levels: %s" % MyLevels.ids())
+
+
+func test_import_rejects_bad_files() -> void:
+	var cases := {
+		"user://bad_empty.json": "",
+		"user://bad_text.json": "not json",
+		"user://bad_array.json": "[1, 2]",
+		"user://bad_format.json": '{"format": "other-game", "version": 1}',
+		"user://bad_version.json": '{"format": "zero-gx-level", "version": 999}',
+		"user://bad_big.json": "x".repeat(LevelFormat.MAX_BYTES + 1),
+	}
+	for path: String in cases:
+		var f := FileAccess.open(path, FileAccess.WRITE)
+		f.store_string(cases[path])
+		f.close()
+		check(not MyLevels.import_file(path).is_empty(), "%s must be rejected" % path)
+		DirAccess.remove_absolute(path)
+	check(MyLevels.ids().is_empty(), "nothing saved: %s" % MyLevels.ids())
+
+
+func test_import_accepts_an_unfinished_draft() -> void:
+	var draft := LevelFormat.read("res://levels/level_05.json")
+	draft.title = ""  # fails validation, as a half-built level may
+	LevelFormat.write("user://draft.json", draft)
+	check(MyLevels.import_file("user://draft.json").is_empty(), "a draft must import")
+	check(MyLevels.ids().size() == 1 and not LevelFormat.validate(MyLevels.load_level(MyLevels.ids()[0])).is_empty(), "saved as the invalid draft it is")
+	DirAccess.remove_absolute("user://draft.json")
+
+
+func test_export_adds_json_extension() -> void:
+	MyLevels.import_file("res://levels/level_05.json")
+	check(MyLevels.export_file(MyLevels.ids()[0], "user://my level") == OK, "export")
+	check(FileAccess.file_exists("user://my level.json"), "`.json` appended")
+	DirAccess.remove_absolute("user://my level.json")
+
+
+func test_my_levels_screen_offers_import_and_export() -> void:
+	MyLevels.save(MyLevels.new_id(), LevelDoc.new().data)
+	var screen := MyLevelsScreen.new()
+	world.add_child(screen)
+	await frames(2)
+	var labels: Array = screen.find_children("*", "Button", true, false).map(func(b: Button): return b.text)
+	check("Import" in labels and "Export" in labels, "buttons: %s" % [labels])
+	screen.queue_free()
