@@ -17,7 +17,7 @@ Status: the build side is ready; the Play Console account is being set up. The f
 | Feature graphic | `store/feature-graphic.png` (1024 × 500) |
 | Screenshots | `store/screenshots/` (four 1920 × 1080 landscape shots) |
 | Listing text | `store/listing.md` (draft) |
-| Privacy policy | `PRIVACY.md` (the game collects no data today), published at `https://braitg.dev/zero-gx/privacy/` from the `BRAITG/braitg.github.io` repository. Update both copies together. |
+| Privacy policy | `PRIVACY.md`, published at `https://braitg.dev/zero-gx/privacy/` from the `BRAITG/braitg.github.io` repository. Update both copies together. |
 | License | AGPL-3.0-or-later (`LICENSE`) with an additional permission under section 7 for Google Play's client libraries (`LICENSE-EXCEPTION`); third-party assets in `assets/LICENSES.md` |
 
 ## Building the bundle locally
@@ -38,9 +38,33 @@ The export installs the Gradle template in `android/` (ignored by git). It needs
 1. **Create the app:** name Zero-GX, game, free, default language English.
 2. **App signing:** keep "Google-generated app signing key" (Play App Signing). Our upload key signs uploads only.
 3. **Internal testing:** create a release, upload the latest `zero-gx.aab` from the GitHub prerelease, and add testers by email (up to 100). Testers join through the opt-in link and install from the Play Store.
-4. **App content forms:** privacy policy URL (above), app access (no login), ads (none), content rating questionnaire, target audience (13+), data safety (no data collected or shared), government apps (no), financial features (none), health (none).
+4. **App content forms:** privacy policy URL (above), app access (see below), ads (none), content rating questionnaire (see below), target audience (13+), data safety (see below), government apps (no), financial features (none), health (none).
 5. **Store listing:** text from `store/listing.md`, icon, feature graphic and screenshots from `store/`.
 6. **Closed testing:** a personal account created after 13 November 2023 must run a closed test with **at least 12 testers opted in for 14 consecutive days** before it can apply for production. Start it as soon as the forms pass review.
+
+## App content answers with community features
+
+These match `PRIVACY.md` from the community release on. Play counts data as collected when it leaves the device; data handled only in memory (the Play Integrity verdict, the IP address for rate limits) is processed ephemerally and is not declared. Transfers to our own service providers (Cloudflare, GitHub, jsDelivr) are not sharing.
+
+**Data safety**
+
+| Question | Answer |
+|---|---|
+| Does the app collect or share any of the required user data types? | Yes |
+| Is all collected data encrypted in transit? | Yes (HTTPS only) |
+| Do you provide a way for users to request that their data is deleted? | Yes: in the app (Community → Delete my community account) and by email |
+| Account deletion URL | `https://braitg.dev/zero-gx/privacy/#deleting-your-data` |
+| Personal info → **Name** (Play Games display name) | Collected, not shared, optional, purposes: App functionality, Account management |
+| Personal info → **User IDs** (Play Games player ID, Zero-GX player ID) | Collected, not shared, optional, purposes: App functionality, Account management, Fraud prevention, security and compliance |
+| App activity → **Other user-generated content** (submitted levels, report reasons) | Collected, not shared, optional, purposes: App functionality |
+| App activity → **Other actions** (scores with run recordings, likes) | Collected, not shared, optional, purposes: App functionality, Fraud prevention, security and compliance |
+| Every other data type (location, contacts, email, device IDs, diagnostics, …) | Not collected |
+
+"Optional" is right because every community feature is opt-in: the game is fully playable without signing in.
+
+**App access:** "All functionality is available without special access". Community features sign in with Play Games, which works with any Google account, including the reviewer's; there is no Zero-GX account or password.
+
+**Content rating:** answer yes to users interacting or sharing content (players publish levels and appear on leaderboards; submissions are reviewed by a moderator before they are published). No location sharing, no purchases, no unrestricted internet access, no chat.
 
 ## Automatic uploads
 
@@ -53,5 +77,4 @@ When the repository secret `PLAY_SERVICE_ACCOUNT` holds a service-account JSON k
 
 ## Later
 
-- Revisit the data safety form, privacy policy and content rating (user-generated content) before community levels and rankings ship.
 - `sensorLandscape` (both landscape directions regardless of the rotation lock) is now possible through the Gradle template if wanted.

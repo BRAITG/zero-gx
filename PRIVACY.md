@@ -1,6 +1,6 @@
 # Zero-GX Privacy Policy
 
-Last updated: 19 October 2026
+Last updated: 20 October 2026
 
 Zero-GX is made by Andre Brait under the name BRAITG. This policy explains what data the game and its community service handle, who can see it, and how to have it deleted.
 
@@ -10,9 +10,11 @@ Zero-GX has no advertising, no analytics and no tracking. We never sell your dat
 
 You can play the official levels and the training stages, and use the level editor, without signing in. When you play this way, Zero-GX sends nothing about you anywhere.
 
-Everything the game saves stays on your device, in the game's private storage: your best scores, recordings of your runs, the levels you build in the level editor, and your settings. Android does not back this data up, and it is deleted when you uninstall the game.
+Zero-GX is also available for Windows, macOS and Linux. Those versions have no community features: they never sign in and never connect to our servers. Levels you import or export there are files you choose, and they go only where you put them.
 
-The game asks for two permissions: vibration, for feedback when your ship is hit or destroyed, and internet access, which only the community features use.
+Everything the game saves stays on your device, in the game's private storage: your best scores, recordings of your runs, the levels you build in the level editor, and your settings. On Android the system does not back this data up, and it is deleted when you uninstall the game. On a computer it stays in the game's user data folder until you delete it.
+
+On Android, the game asks for two permissions: vibration, for feedback when your ship is hit or destroyed, and internet access, which only the community features use.
 
 ## Community features
 
@@ -29,7 +31,7 @@ Leaderboards, the player ranking, shared levels, likes and reports are online fe
 | Levels you submit: the level with its title and hint, and a recording of you finishing it | To review the level and share it with other players. |
 | Your likes and reports, including the reason you write in a report | To rank community levels and to moderate them. |
 
-When you sign in, we also do two checks that store nothing:
+When you sign in, submit a level or post a score, we also do checks that store nothing:
 
 - Google Play Integrity confirms that the request comes from the genuine Zero-GX app on a genuine Android device. This stops cheating. We read the result and discard it.
 - Our hosting provider uses your IP address to limit how often anyone can try to sign in. This stops abuse. We do not store your IP address.
@@ -58,6 +60,7 @@ Rejected submissions stay visible there too. Submitted levels are shared under t
 - **Cloudflare** hosts the community server, its database and the stored run recordings.
 - **Google** provides the Play Games sign-in and the Play Integrity check, and distributes the game through Google Play.
 - **GitHub** hosts the public levels repository, where submissions are reviewed.
+- **jsDelivr** delivers the shared level files to the game. Like any website, it receives your IP address when the game downloads a level; see the [jsDelivr privacy policy](https://www.jsdelivr.com/terms/privacy-policy-jsdelivr-net).
 
 We share your data with no one else.
 
