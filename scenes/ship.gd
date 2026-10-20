@@ -94,6 +94,8 @@ var _spin := 0.0  # rad/s left from the last glancing hit; decays with Tuning.sp
 ## False while a tutorial's rings own a one-finger ship: ShipInput leaves it alone. The schemes
 ## that aim freely (keys, pad, mouse, sticks) steer and fire regardless.
 var accept_input := true
+## While true, no input scheme steers or fires; tutorials use it for scripted moments.
+var controls_locked := false
 ## Where a tutorial's `wait` ring holds the ship: motionless there, still free to turn; null lets it fly.
 var anchor: Variant = null
 var _respawn: Variant = null  # [position, velocity] to apply on the next physics step

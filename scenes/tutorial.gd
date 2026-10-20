@@ -36,6 +36,7 @@ var _ring_direction: Variant = null  # Vector2 or Callable -> Vector2
 var _goal_shown := false
 var _paused_velocity: Variant = null  # Vector2 while a `wait` ring holds the ship, for a touch on the ring
 var _step_waits := false  # the current ring pauses the ship until it is touched
+var _ring_delay := 0.0  # s a free-aim fire waits after its first hold on a ring: the turn a touch player would need
 
 
 ## The lesson's steps. Override in each tutorial.
@@ -90,6 +91,7 @@ func touch_target(direction: Variant, done: Callable, text := "", wait := false)
 	_step_waits = wait
 	if wait:
 		_hold_still()
+	_ring_delay = _turn_gap() / Tuning.turn_rate
 	if not input.touches_rings():
 		for touch_words in RING_WORDS:
 			text = text.replace(touch_words, RING_WORDS[touch_words])
@@ -114,6 +116,14 @@ func motion() -> Vector2:
 func _hold_still() -> void:
 	_paused_velocity = ship.linear_velocity
 	ship.anchor = ship.global_position
+
+func _ring_vector() -> Vector2:
+	return _ring_direction.call() if _ring_direction is Callable else _ring_direction
+
+
+## How far the nose points from the ring, in radians.
+func _turn_gap() -> float:
+	return absf(wrapf(_ring_vector().angle() - ship.global_rotation, -PI, PI))
 
 
 func until(done: Callable, text := "") -> void:
@@ -184,8 +194,9 @@ func _physics_process(delta: float) -> void:
 			aim = Vector2.from_angle(ship.global_rotation)  # not steering: the nose is the aim
 		assisted = aims_at(aim, ring_world - ship.global_position)
 	var holding := _ring.held or assisted
+	var engine := holding and (input.touches_rings() or held_time + delta >= _ring_delay)  # a free-aim fire waits out the turn a touch player would make
 	if holding or waiting() or input.touches_rings():  # otherwise ShipInput's fire stands
-		ship.thrusting = holding
+		ship.thrusting = engine
 	if holding and waiting():  # the first touch lets the ship go on
 		ship.anchor = null
 		ship.linear_velocity = _paused_velocity
