@@ -107,3 +107,56 @@ func test_tutorial_restores_after_lethal_touch() -> void:
 	check(lvl.retries == 1, "the ship must fall in once, not %d times" % lvl.retries)
 	check(not lvl.ship.freeze and lvl.ship.visible, "the respawned ship must fly again")
 	check(lvl.ship.global_position.distance_to(start) < 150.0, "the ship must be back near the step's start, not at %s" % lvl.ship.global_position.round())
+
+
+func test_aims_at_boundary() -> void:
+	check(Tutorial.aims_at(Vector2.RIGHT, Vector2.RIGHT.rotated(deg_to_rad(29))), "29 degrees off must still aim at the ring")
+	check(not Tutorial.aims_at(Vector2.RIGHT, Vector2.RIGHT.rotated(deg_to_rad(31))), "31 degrees off must not aim at the ring")
+	check(not Tutorial.aims_at(Vector2.ZERO, Vector2.RIGHT), "no steering aims at nothing")
+
+
+func key(code: Key, down: bool) -> void:
+	var event := InputEventKey.new()
+	event.physical_keycode = code
+	event.pressed = down
+	Input.parse_input_event(event)
+	Input.flush_buffered_events()
+
+
+## Training 1 on the keyboard, past its first card, with the first ring showing.
+func keys_training() -> Tutorial:
+	var lvl: Tutorial = Progress.build(Progress.trainings()[0])
+	world.add_child(lvl)
+	await frames(5)
+	lvl.press_ok()
+	await frames(3)
+	lvl.input.scheme = "keys"
+	return lvl
+
+
+func test_keyboard_player_completes_the_first_ring() -> void:
+	var lvl := await keys_training()
+	check(lvl.ring_active(), "the first ring must show")
+	key(KEY_D, true)
+	key(KEY_SPACE, true)
+	var caption := ""
+	for i in 90:
+		await frames(1)
+		if i == 5:
+			caption = lvl._caption_label.text
+		if not lvl.ring_active():
+			break
+	key(KEY_SPACE, false)
+	key(KEY_D, false)
+	check(caption == "Point at the ring and hold fire.", "caption read '%s'" % caption)
+	check(not lvl.ring_active(), "aiming at the ring and holding fire must complete the step")
+
+
+func test_fire_without_aim_does_not_hold_the_ring() -> void:
+	var lvl := await keys_training()
+	key(KEY_A, true)
+	key(KEY_SPACE, true)
+	await frames(60)
+	key(KEY_SPACE, false)
+	key(KEY_A, false)
+	check(lvl.ring_active(), "firing away from the ring must not complete the step")
