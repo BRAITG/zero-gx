@@ -10,7 +10,7 @@ Zero-GX has no advertising, no analytics and no tracking. We never sell your dat
 
 You can play the official levels and the training stages, and use the level editor, without signing in. When you play this way, Zero-GX's servers receive nothing about you.
 
-On Android, Google Play Games may sign you in to Play Games automatically when the game starts. That is Google's own service, and Google's privacy policy applies to it. Zero-GX's servers receive nothing from it until you open Community.
+On Android, Google Play Games may sign you in to Play Games automatically when the game starts. That is Google's own service, and Google's privacy policy applies to it. Zero-GX's servers receive nothing from it until you sign in to Zero-GX's community features, by opening Community or by submitting a level.
 
 Zero-GX is also available for Windows, macOS and Linux. Those versions have no community features: they never sign in and never connect to our servers. Levels you import or export there are files you choose, and they go only where you put them.
 
@@ -20,7 +20,7 @@ On Android, the game asks for two permissions: vibration, for feedback when your
 
 ## Community features
 
-Leaderboards, the player ranking, shared levels, likes and reports are online features. To use them you sign in with Google Play Games. Opening Community is what first sends anything to Zero-GX's servers; if Google Play Games has already signed you in to Play Games when the game started (see above), that sign-in happened between you and Google only.
+Leaderboards, the player ranking, shared levels, likes and reports are online features. To use them you sign in with Google Play Games. Signing in, by opening Community or by submitting a level, is what first sends anything to Zero-GX's servers; if Google Play Games has already signed you in to Play Games when the game started (see above), that sign-in happened between you and Google only.
 
 ### What we collect
 
