@@ -495,3 +495,90 @@ func test_my_levels_shows_submitted_for_an_unchanged_draft_until_it_is_edited() 
 	world.add_child(screen)
 	await frames(2)
 	check(_buttons(screen, "Submit").size() == 1 and not _texts(screen).has("Submitted"), "an edited draft offers Submit again: %s" % [_texts(screen)])
+
+
+func test_the_community_button_says_signing_in_and_is_off_while_it_waits() -> void:
+	var net := _fake()
+	net.answer("GET", "/nonce", 200, {"nonce": "n1"})
+	net.answer("POST", "/session", 200, SESSION)
+	net.answer("GET", "/levels", 200, [])
+	net.held = true
+	var main := _menu()
+	var button: Button = _buttons(main, "Community")[0]
+	button.pressed.emit()
+	check(button.text == "Signing in…" and button.disabled, "while it waits: %s, disabled %s" % [button.text, button.disabled])
+	net.release()
+	await frames(2)
+	check(button.text == "Community" and not button.disabled, "afterwards the button is as before: %s" % button.text)
+	check(tree.current_scene is CommunityScreen, "Community must open: %s" % tree.current_scene)
+	_leave_scene()
+
+
+func test_submit_says_submitting_and_is_off_while_it_waits_then_comes_back_after_a_refusal() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_finished_draft()
+	var screen := MyLevelsScreen.new()
+	world.add_child(screen)
+	await frames(2)
+	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
+	net.answer("POST", "/submissions", 429, {"error": "At most 5 submissions are accepted per day."})
+	net.held = true
+	var submit: Button = _buttons(screen, "Submit")[0]
+	submit.pressed.emit()
+	check(submit.text == "Submitting…" and submit.disabled, "while it waits: %s, disabled %s" % [submit.text, submit.disabled])
+	net.release()
+	await frames(2)
+	check(submit.text == "Submit" and not submit.disabled, "a refused submission gives the button back: %s" % submit.text)
+
+
+func test_play_says_loading_and_is_off_while_the_level_downloads() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var bytes := _bytes()
+	net.answer("GET", "/levels", 200, [_row(bytes)])
+	var screen := await _community()
+	net.answer("GET", "/index", 200, {"commit": "abc123"})
+	net.answer("GET", "/gh/", 200, bytes)
+	net.held = true
+	var play: Button = _buttons(screen, "Play")[0]
+	play.pressed.emit()
+	check(play.text == "Loading…" and play.disabled, "while it waits: %s, disabled %s" % [play.text, play.disabled])
+	net.release()
+	await frames(2)
+	check(play.text == "Play" and not play.disabled, "afterwards the button is as before: %s" % play.text)
+	check(tree.current_scene is Level, "the level must open: %s" % tree.current_scene)
+	_leave_scene()
+
+
+func test_more_says_loading_and_is_off_while_the_next_page_arrives() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, _rows(50))
+	var screen := await _community()
+	net.answer("GET", "/levels", 200, [_row(_bytes(), "Page two")])
+	net.held = true
+	var more: Button = _buttons(screen, "More")[0]
+	more.pressed.emit()
+	check(more.text == "Loading…" and more.disabled, "while it waits: %s, disabled %s" % [more.text, more.disabled])
+	net.release()
+	await frames(2)
+	check(more.text == "More" and not more.disabled, "afterwards the button is as before: %s" % more.text)
+
+
+func test_delete_account_says_deleting_and_is_off_while_it_waits() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	var screen := await _community()
+	_buttons(screen, "Delete my community account")[0].pressed.emit()
+	await frames(1)
+	net.answer("DELETE", "/me", 204)
+	net.held = true
+	var confirm: Button = _buttons(screen.find_children("*", "Overlay", true, false)[0], "Delete account")[0]
+	confirm.pressed.emit()
+	check(confirm.text == "Deleting…" and confirm.disabled, "while it waits: %s, disabled %s" % [confirm.text, confirm.disabled])
+	net.release()
+	await frames(3)
+	check(not Community.signed_in(), "the account must be deleted")
+	_leave_scene()

@@ -56,7 +56,7 @@ func _ready() -> void:
 	_rows = VBoxContainer.new()
 	_rows.add_theme_constant_override("separation", 12)
 	content.add_child(_rows)
-	_more = _button(content, "More", func() -> void: _load(_sort, _page + 1))
+	_more = _button(content, "More", func() -> void: await _load(_sort, _page + 1), "Loading…")
 	_more.hide()
 	_delete = _button(_column, "Delete my community account", _confirm_delete)
 	_delete.visible = Community.signed_in()
@@ -108,7 +108,7 @@ func _add_row(row: Dictionary) -> Button:
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	line.add_child(label)
-	return _button(line, "Play", _play.bind(row))
+	return _button(line, "Play", _play.bind(row), "Loading…")
 
 
 func _play(row: Dictionary) -> void:
@@ -130,7 +130,7 @@ func _play(row: Dictionary) -> void:
 func _confirm_delete() -> void:
 	var o := Overlay.open(self, "Delete community account?")
 	o.paragraph("This removes your scores, likes, reports and your name from Zero-GX's servers. Levels you shared stay, shown as by Deleted player.")
-	_button(o.body, "Delete account", _delete_account.bind(o))
+	_button(o.body, "Delete account", _delete_account.bind(o), "Deleting…")
 
 
 func _delete_account(o: Overlay) -> void:
@@ -153,13 +153,14 @@ func _to_menu() -> void:
 	get_tree().change_scene_to_file(MENU)
 
 
-func _button(parent: Control, text: String, action: Callable) -> Button:
+## `busy`, if given, is what the button says (and it stays off) while `action`, a coroutine, runs.
+func _button(parent: Control, text: String, action: Callable, busy := "") -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(160, 56)
 	button.add_theme_font_size_override("font_size", 22)
 	button.pressed.connect(Sfx.play.bind("tap"))
-	button.pressed.connect(action)
+	button.pressed.connect(action if busy == "" else Style.busy.bind(button, busy, action))
 	parent.add_child(button)
 	return button
 

@@ -99,7 +99,7 @@ func _submission_line(card: VBoxContainer, id: String) -> void:
 	label.custom_minimum_size.x = 300  # lines up with the title above
 	line.add_child(label)
 	if offer:
-		_button(line, "Submit", _submit.bind(id))
+		_button(line, "Submit", _submit.bind(id), "Submitting…")
 
 
 func _status_text(community_id: String) -> String:
@@ -208,13 +208,14 @@ func _file_dialog(save: bool, filters: PackedStringArray, current: String, on_pi
 	dialog.popup_file_dialog()
 
 
-func _button(parent: Control, text: String, action: Callable) -> Button:
+## `busy`, if given, is what the button says (and it stays off) while `action`, a coroutine, runs.
+func _button(parent: Control, text: String, action: Callable, busy := "") -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(160, 56)
 	button.add_theme_font_size_override("font_size", 22)
 	button.pressed.connect(Sfx.play.bind("tap"))
-	button.pressed.connect(action)
+	button.pressed.connect(action if busy == "" else Style.busy.bind(button, busy, action))
 	parent.add_child(button)
 	return button
 
