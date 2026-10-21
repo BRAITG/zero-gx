@@ -8,8 +8,6 @@ const SESSION_SECONDS := 6 * 24 * 60 * 60  # the server's sessions last 7 days; 
 const LEVEL_URL := "https://cdn.jsdelivr.net/gh/BRAITG/zero-gx-levels@%s/levels/%s/v%d.json"
 ## A downloaded level is played as stage `community_<sha256>`, built from its cached file.
 const STAGE_PREFIX := "community_"
-## A submission makes the server do about nine GitHub calls, so it gets longer than the usual 30 s.
-const SUBMISSION_SECONDS := 120.0
 
 var transport: CommunityTransport
 var platform: CommunityPlatform
@@ -208,8 +206,8 @@ func _nonce() -> Dictionary:
 
 
 ## One request. A 2xx answer is `{"status", "data"}` with `data` parsed as JSON of type `expect` (TYPE_NIL: no body; TYPE_PACKED_BYTE_ARRAY: the raw bytes); anything else is `{"status", "error"}` with the server's sentence.
-func _call(method: String, url: String, headers := PackedStringArray(), body := PackedByteArray(), expect := TYPE_DICTIONARY, timeout := CommunityTransport.TIMEOUT_SECONDS) -> Dictionary:
-	var reply: Dictionary = await transport.send(method, url, headers, body, timeout)
+func _call(method: String, url: String, headers := PackedStringArray(), body := PackedByteArray(), expect := TYPE_DICTIONARY) -> Dictionary:
+	var reply: Dictionary = await transport.send(method, url, headers, body)
 	var status: int = reply.status
 	if status == 0:
 		return {"status": 0, "error": NO_CONNECTION}
@@ -221,7 +219,7 @@ func _call(method: String, url: String, headers := PackedStringArray(), body := 
 	return {"status": status, "data": data} if typeof(data) == expect else {"status": status, "error": BAD_ANSWER}
 
 
-## `_call` to the community server with the session. A 401 clears the token that was sent; with `resign` it then signs in again once and retries once. `build` is an optional coroutine that makes `{"headers", "body"}` and optionally `"timeout"` (or `{"error"}`) afresh for each attempt.
+## `_call` to the community server with the session. A 401 clears the token that was sent; with `resign` it then signs in again once and retries once. `build` is an optional coroutine that makes `{"headers", "body"}` afresh for each attempt (or `{"error"}`).
 func _authed(method: String, path: String, expect := TYPE_DICTIONARY, build := Callable(), resign := true) -> Dictionary:
 	var reply := await _send(method, path, expect, build)
 	if reply.status == 401:
@@ -247,17 +245,15 @@ func _send(method: String, path: String, expect: int, build: Callable) -> Dictio
 			return {"status": 0, "error": error}
 	var headers := PackedStringArray()
 	var body := PackedByteArray()
-	var timeout := CommunityTransport.TIMEOUT_SECONDS
 	if build.is_valid():
 		var made: Dictionary = await build.call()
 		if made.has("error"):
 			return {"status": 0, "error": made.error}
 		headers = made.headers
 		body = made.body
-		timeout = made.get("timeout", timeout)
 	var token := _token()
 	headers.append("Authorization: Bearer " + token)
-	var reply := await _call(method, api_url + path, headers, body, expect, timeout)
+	var reply := await _call(method, api_url + path, headers, body, expect)
 	reply["token"] = token
 	return reply
 
@@ -275,5 +271,4 @@ func _submission(level: PackedByteArray, demo: PackedByteArray, level_id: String
 	return {
 		"headers": PackedStringArray(["Content-Type: multipart/form-data; boundary=" + boundary, "X-Nonce: " + nonce.nonce, "X-Integrity: " + proof.token]),
 		"body": CommunityWire.multipart({"level_id": level_id} if level_id != "" else {}, {"level": ["level.json", level], "demo": ["demo.gz", demo]}, boundary),
-		"timeout": SUBMISSION_SECONDS,
 	}
