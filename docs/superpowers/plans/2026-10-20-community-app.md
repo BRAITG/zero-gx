@@ -153,9 +153,9 @@
 
 ### Task 5: Device proof (the author)
 
-Needs `docs/release/play-games-setup.md` done and the three public values filled in `project.godot` and the preset (one commit: `chore(community): Play Games and Cloud project ids`).
+Needs `docs/release/play-games-setup.md` done and the three public values filled in `project.godot` and the preset (one commit: `chore(community): Play Games and Cloud project ids`). Community exists only in the Play build (custom feature `community` on the `Android Play` preset), and only a Play install is recognised by Play Integrity: a sideloaded debug APK gets `UNRECOGNIZED_VERSION`, and the server requires `PLAY_RECOGNIZED` (`server/src/verify.ts`). So the proof runs on the internal-testing install, not on a sideloaded APK.
 
-- [ ] **Step 1:** Install the CI APK on a phone registered as a tester. Sign in from Community.
+- [ ] **Step 1:** Upload the CI bundle to internal testing (the build workflow does it with `PLAY_SERVICE_ACCOUNT`) and install it from the Play Store on a phone registered as a tester. Sign in from Community.
 - [ ] **Step 2:** Submit a completed draft; check the pull request in `BRAITG/zero-gx-levels` and merge it.
 - [ ] **Step 3:** Within about 10 minutes the level appears under New. Play it.
 - [ ] **Step 4:** Turn networking off and play it again from Community.

@@ -31,7 +31,8 @@ Play Games accepts sign-in only from an app whose signing certificate it knows. 
 |---|---|---|
 | App signing key | Play Console → **Test and release → App integrity → App signing** | Builds installed from Google Play, including internal testing. |
 | Upload key | Same page, upload key certificate | Bundles signed in CI before Google re-signs them; add it to be safe. |
-| Debug keystore | `keytool -list -v -keystore debug.keystore -alias androiddebugkey -storepass android` on the keystore in the `ANDROID_DEBUG_KEYSTORE_B64` secret | The debug APK attached to each prerelease. |
+
+Community exists only in the Play build, so the debug keystore of the sideload APK needs no credential: Play Integrity would not recognise a sideloaded install and the server would refuse its sign-in. Test on the Play internal-testing install.
 
 ## 4. Add testers
 
