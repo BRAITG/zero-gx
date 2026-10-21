@@ -218,6 +218,17 @@ func test_can_submit_needs_a_matching_demo_and_an_available_platform() -> void:
 	check(not Community.can_submit(finished), "no submitting where community is unavailable")
 
 
+func test_can_submit_needs_a_demo_that_decodes_not_just_a_matching_header() -> void:
+	_fake()
+	var id := _draft_with_demo()
+	var raw := FileAccess.get_file_as_bytes(MyLevels.demo_path(id)).decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
+	var cut := FileAccess.open(MyLevels.demo_path(id), FileAccess.WRITE)  # the header names the draft, the frames are gone
+	cut.store_buffer(raw.slice(0, 42).compress(FileAccess.COMPRESSION_GZIP))
+	cut.close()
+	check(MyLevels.demo(id) == null, "control: the cut demo does not decode")
+	check(not Community.can_submit(id), "a demo that does not decode cannot be submitted")
+
+
 func test_submit_sends_the_draft_and_its_demo_bound_to_a_fresh_nonce_and_remembers_the_level_id() -> void:
 	var net := _fake()
 	await _signed_in(net)

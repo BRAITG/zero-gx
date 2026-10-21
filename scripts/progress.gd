@@ -1,6 +1,6 @@
 extends Node
 ## Saved best results per stage, the points formula, and stage unlocking.
-## Autoloaded as `Progress`. A stage id is its file stem, e.g. "tutorial_1" or "level_01".
+## Autoloaded as `Progress`. A stage id is its file stem, e.g. "tutorial_1" or "level_01"; "user_…" is one of the player's own levels and "community_<sha256>" a downloaded one.
 
 signal changed
 
@@ -48,6 +48,8 @@ func build(id: String, testing := false) -> Level:
 	var script: Script = LevelFormat.LEVEL_SCRIPT
 	if id.begins_with(MyLevels.PREFIX):
 		data = MyLevels.load_level(id)
+	elif id.begins_with(Community.STAGE_PREFIX):
+		data = LevelFormat.read(Community.level_path(id.trim_prefix(Community.STAGE_PREFIX)))
 	elif id.begins_with("tutorial_"):
 		data = LevelFormat.read(TUTORIALS_DIR + id + LevelFormat.EXTENSION)
 		script = load(TUTORIALS_DIR + id + ".gd")

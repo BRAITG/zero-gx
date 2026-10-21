@@ -6,6 +6,8 @@ const BAD_ANSWER := "The server's answer could not be read."
 const NOT_SUBMITTABLE := "This level cannot be submitted."
 const SESSION_SECONDS := 6 * 24 * 60 * 60  # the server's sessions last 7 days; sign in again a day early
 const LEVEL_URL := "https://cdn.jsdelivr.net/gh/BRAITG/zero-gx-levels@%s/levels/%s/v%d.json"
+## A downloaded level is played as stage `community_<sha256>`, built from its cached file.
+const STAGE_PREFIX := "community_"
 
 var transport: CommunityTransport
 var platform: CommunityPlatform
@@ -99,7 +101,7 @@ func download(row: Dictionary) -> String:
 
 ## Whether the draft `id` can go to the server: a platform with Play Games, and a finishing demo that still matches the draft.
 func can_submit(id: String) -> bool:
-	return available() and MyLevels.has_demo(id)
+	return available() and MyLevels.demo(id) != null
 
 
 ## Coroutine: sends draft `id` with its demo; `""` once the server took it, else its sentence. The returned level id is kept for the draft, so a later submission becomes the next version of the same level.

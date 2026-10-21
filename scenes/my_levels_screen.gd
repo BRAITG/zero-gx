@@ -6,6 +6,8 @@ const MENU := "res://scenes/main.tscn"
 
 var _column: VBoxContainer
 var _list: VBoxContainer
+var _statuses := {}  # community level id → {status, version, comment}
+var _busy := false  # a submission is on its way
 
 
 func _ready() -> void:
@@ -38,6 +40,7 @@ func _ready() -> void:
 	_list.add_theme_constant_override("separation", 12)
 	scroll.add_child(_list)
 	_fill()
+	_refresh_statuses()
 	Style.focus_first.call_deferred(_column)  # after layout
 
 
@@ -53,9 +56,12 @@ func _fill() -> void:
 		_list.add_child(empty)
 	for id in ids:
 		var data := MyLevels.load_level(id)
+		var card := VBoxContainer.new()  # the row, and under it the submission line
+		card.add_theme_constant_override("separation", 4)
+		_list.add_child(card)
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
-		_list.add_child(row)
+		card.add_child(row)
 		var label := Label.new()
 		var best := Progress.best_points(id)
 		label.text = "%s%s · %s" % ["✓ " if MyLevels.is_completed(id) else "", data.get("title", "?"), "—" if best < 0 else str(best)]
@@ -70,6 +76,72 @@ func _fill() -> void:
 		play.disabled = data.is_empty() or not LevelFormat.validate(data).is_empty()
 		_button(row, "Export", _export.bind(id, str(data.get("title", "level"))))
 		_button(row, "Delete", _confirm_delete.bind(id, str(data.get("title", "?"))))
+		if Community.available():
+			_submission_line(card, id)
+
+
+## Under a row: the status of its submission and, for a finished draft, Submit.
+func _submission_line(card: VBoxContainer, id: String) -> void:
+	var text := _status_text(Community.level_id_of(id))
+	var offer := MyLevels.is_completed(id) and Community.can_submit(id)
+	if text == "" and not offer:
+		return
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 12)
+	card.add_child(line)
+	var label := Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 20)
+	label.add_theme_color_override("font_color", Style.INK_DIM)
+	label.custom_minimum_size.x = 300  # lines up with the title above
+	line.add_child(label)
+	if offer:
+		_button(line, "Submit", _submit.bind(id))
+
+
+func _status_text(community_id: String) -> String:
+	var status: Dictionary = _statuses.get(community_id, {})
+	match status.get("status"):
+		"open":
+			return "Pending"
+		"approved":
+			return "Approved v%d" % int(status.get("version", 1))
+		"rejected":
+			return "Rejected: " + status.comment if status.get("comment", "") != "" else "Rejected"
+	return ""
+
+
+## Refreshes the statuses from the server where the player is signed in; Community falls back to the last known ones.
+func _refresh_statuses() -> void:
+	if not Community.available():
+		return
+	var fresh: Dictionary = await Community.statuses()
+	if not is_inside_tree() or fresh == _statuses:
+		return
+	_statuses = fresh
+	_refill()
+
+
+func _submit(id: String) -> void:
+	if _busy:
+		return
+	_busy = true
+	var error: String = await Community.submit(id)
+	_busy = false
+	if not is_inside_tree():
+		return
+	if error != "":
+		Overlay.open(self, "Cannot submit").paragraph(error)
+		return
+	_statuses[Community.level_id_of(id)] = {"status": "open"}  # until the server's own word at the next refresh
+	_refill.call_deferred()  # not from inside the Submit button's own signal
+
+
+## Rebuilds the rows after a change that is not theirs; focus goes to the first button when the rows that held it are gone.
+func _refill() -> void:
+	_fill()
+	if get_viewport().gui_get_focus_owner() == null:
+		Style.focus_first(_column)
 
 
 func _edit(id: String) -> void:

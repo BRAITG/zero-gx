@@ -11,6 +11,7 @@ var training := false
 
 var _levels: GridContainer
 var _column: VBoxContainer
+var _signing_in := false
 
 ## Set once per run: the menu scene is entered again on every return to it.
 static var _sized := false
@@ -47,14 +48,33 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 12)
 	_column.add_child(row)
 	row.visible = not training
-	for entry in [["My levels", func(): get_tree().change_scene_to_node(MyLevelsScreen.new())], ["Settings", _open_settings], ["Credits", func(): Credits.open(self)], ["Tune", func(): TuningPanel.open(self)]]:
+	var entries := [["My levels", func(): get_tree().change_scene_to_node(MyLevelsScreen.new())], ["Settings", _open_settings], ["Credits", func(): Credits.open(self)], ["Tune", func(): TuningPanel.open(self)]]
+	if Community.available():
+		entries.insert(1, ["Community", _open_community])
+	for entry in entries:  # all share the grid's width
 		var button := _button(entry[0])
-		button.custom_minimum_size.x = 0  # four share the grid's width
+		button.custom_minimum_size.x = 0
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(entry[1])
 		row.add_child(button)
 	Progress.changed.connect(_list_levels)
 	_list_levels()
+
+
+## The first tap signs in; if that fails, the reason shows and the menu stays.
+func _open_community() -> void:
+	if _signing_in:
+		return
+	if not Community.signed_in():
+		_signing_in = true
+		var error: String = await Community.sign_in()
+		_signing_in = false
+		if not is_inside_tree():  # the player went elsewhere meanwhile
+			return
+		if error != "":
+			Overlay.open(self, "Cannot sign in").paragraph(error)
+			return
+	get_tree().change_scene_to_node(CommunityScreen.new())
 
 
 func _open_settings() -> void:

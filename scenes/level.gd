@@ -94,7 +94,7 @@ func _show_intro() -> void:
 ## just the title of one of the player's own levels.
 func display_name() -> String:
 	var kind: String = {"level": "Level", "tutorial": "Training"}.get(level_id.get_slice("_", 0), "")
-	var number := level_id.get_slice("_", 1).to_int()
+	var number := level_id.get_slice("_", 1).to_int() if kind != "" else 0  # a community id's hash is too long to be a number
 	return "%s %d · %s" % [kind, number, title] if kind != "" and number > 0 else title
 
 
@@ -120,6 +120,8 @@ static func leave_to(tree: SceneTree, level_id: String, testing: bool) -> void:
 		tree.change_scene_to_node(LevelEditor.create(level_id))
 	elif level_id.begins_with(MyLevels.PREFIX):
 		tree.change_scene_to_node(MyLevelsScreen.new())
+	elif level_id.begins_with(Community.STAGE_PREFIX):
+		tree.change_scene_to_node(CommunityScreen.new())
 	elif level_id.begins_with("tutorial_"):
 		tree.change_scene_to_node(load("res://scenes/main.gd").menu(true))
 	else:
