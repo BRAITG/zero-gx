@@ -34,7 +34,7 @@ All requests go to `community/api_url` in `project.godot` (default `https://zero
 3. `POST /session` with the nonce, the auth code and the token returns a session token valid for 7 days, stored in `user://community.cfg` with its expiry.
 4. Every later request sends the session token. A `401` clears the token that was sent (not a newer one that a sign-in saved meanwhile), signs in again silently once and retries the request once. The status refresh never signs in: its `401` only clears the local session.
 5. One sign-in runs at a time; a caller that comes while one is under way waits for it and gets its result.
-6. A nonce is used up when the server checks it, even when the request fails, so every call that needs one fetches a new one. A submission may take up to 120 s to answer; every other call 30 s.
+6. A nonce is used up when the server checks it, even when the request fails, so every call that needs one fetches a new one. Every call waits at most 30 s for an answer.
 
 **Bound nonces.** Submissions send an integrity token for the bound nonce `base64url(SHA-256(nonce as UTF-8 ‖ SHA-256(level bytes) ‖ SHA-256(demo bytes)))`, without padding, as `boundNonce` in `server/src/session.ts` computes it. A shared fixture, `fixtures/bound_nonce.json` (inputs and the expected result), is checked by both the Godot tests and the server tests, so the two implementations agree.
 

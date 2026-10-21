@@ -11,9 +11,8 @@ const SIGN_IN_CANCELLED := "Play Games sign-in was cancelled"
 const NO_CODE := "Play Games gave no sign-in code."
 const INTEGRITY_FAILED := "Play Integrity could not check this device."
 const INTEGRITY_SILENT := "Play Integrity did not answer."
-## The Play Games plugin answers a failed `request_server_side_access` with nothing, and the player may take a while over its prompt.
-const CODE_SECONDS := 120.0
-const INTEGRITY_SECONDS := 60.0
+## The Play Games plugin answers a failed `request_server_side_access` with nothing, so the race needs its own timer.
+const WAIT_SECONDS := 30.0  # we never wait longer than a request's own timeout
 
 var _host: Node
 var _client: PlayGamesSignInClient
@@ -45,7 +44,7 @@ func sign_in() -> Dictionary:
 	_client.sign_in()
 	if not await _client.user_authenticated:
 		return {"error": SIGN_IN_CANCELLED}
-	var race := _race([_client.server_side_access_requested], CODE_SECONDS)
+	var race := _race([_client.server_side_access_requested], WAIT_SECONDS)
 	_client.request_server_side_access(web_client, false)
 	var answer: Array = await race.result()
 	return {"auth_code": answer[1]} if answer[0] == 0 and answer[1] != "" else {"error": NO_CODE}
@@ -56,7 +55,7 @@ func integrity(nonce: String) -> Dictionary:
 		return {"error": UNAVAILABLE}
 	var project: int = ProjectSettings.get_setting("community/cloud_project_number", 0)
 	var plugin := Engine.get_singleton(INTEGRITY)
-	var race := _race([Signal(plugin, "integrity_token"), Signal(plugin, "integrity_failed")], INTEGRITY_SECONDS)
+	var race := _race([Signal(plugin, "integrity_token"), Signal(plugin, "integrity_failed")], WAIT_SECONDS)
 	plugin.request(nonce, project)
 	var answer: Array = await race.result()
 	match answer[0]:

@@ -4,7 +4,7 @@ extends CommunityTransport
 
 ## Each entry answers one request: {method, path_prefix, status, body}.
 var queue: Array[Dictionary] = []
-## Every request made, in order: {method, url, headers, body, timeout}.
+## Every request made, in order: {method, url, headers, body}.
 var requests: Array[Dictionary] = []
 ## While true, `send` records a request and then waits for `release()` before it answers.
 var held := false
@@ -27,8 +27,8 @@ func count(method: String, path_prefix: String) -> int:
 	return requests.filter(func(r: Dictionary) -> bool: return r.method == method and _path(r.url).begins_with(path_prefix)).size()
 
 
-func send(method: String, url: String, headers: PackedStringArray, body: PackedByteArray, timeout := CommunityTransport.TIMEOUT_SECONDS) -> Dictionary:
-	requests.append({"method": method, "url": url, "headers": headers, "body": body, "timeout": timeout})
+func send(method: String, url: String, headers: PackedStringArray, body: PackedByteArray) -> Dictionary:
+	requests.append({"method": method, "url": url, "headers": headers, "body": body})
 	if held:
 		await released
 	var path := _path(url)

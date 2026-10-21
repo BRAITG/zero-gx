@@ -366,17 +366,6 @@ func test_statuses_never_sign_in_a_401_clears_the_session_and_keeps_the_last_kno
 	check(net.requests.size() == 1, "no sign-in, no retry: %s" % [net.requests.map(func(r: Dictionary) -> String: return r.url)])
 
 
-func test_a_submission_may_take_longer_than_the_other_calls() -> void:
-	var net := _fake()
-	await _signed_in(net)
-	var id := _draft_with_demo()
-	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
-	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
-	check(await Community.submit(id) == "", "the submission must succeed")
-	check(net.requests[0].timeout == CommunityTransport.TIMEOUT_SECONDS, "the nonce keeps the usual timeout: %s" % net.requests[0].timeout)
-	check(net.requests[1].timeout == 120.0, "POST /submissions must wait 120 s: %s" % net.requests[1].timeout)
-
-
 func test_statuses_make_no_request_when_signed_out() -> void:
 	var net := _fake()
 	check(await Community.statuses() == {} and net.requests.is_empty(), "signed out: nothing known and no request")
