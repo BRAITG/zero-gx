@@ -8,8 +8,9 @@ Status: the build side is ready; the Play Console account is being set up. The f
 |---|---|
 | Package name | `dev.braitg.zerogx` (permanent once uploaded to Play) |
 | Target API | 36 (Android 16), from Godot 4.7.2. Meets the rule that new apps target API 36 from 31 August 2026. Min API 24. |
-| Permissions | `VIBRATE` only |
-| App bundle | The `Android Play` export preset builds `build/zero-gx.aab` with Gradle. CI builds it on every push to `master` and attaches it to the prerelease next to the sideload APK. |
+| Permissions | `VIBRATE`, and `INTERNET` for the community features |
+| App bundle | Both Android presets build with Gradle: `Android Play` makes `build/zero-gx.aab`, `Android` makes the sideload `build/zero-gx.apk`. CI builds them on every push to `master` and attaches them to the prerelease. |
+| Android plugins | Sign-in is the vendored `addons/GodotPlayGameServices/` (MIT, v3.4.0, unchanged). Play Integrity is our own `addons/zero_gx_integrity/`; its prebuilt AARs in `bin/` come from `android/plugins/integrity/` (rebuild instructions at the top of its `build.gradle`). Both are added to Android exports only; desktop builds carry no AAR. CI fails a build that lacks them. |
 | Version code | CI sets `version/code` to the workflow run number, so every bundle is higher than the last. `version/name` stays `0.1.0` until we tag versions. |
 | Upload key | An RSA 4096 keystore, alias `upload`, valid 10,000 days. CI reads it from the secrets `ANDROID_UPLOAD_KEYSTORE_B64` and `ANDROID_UPLOAD_KEYSTORE_PASSWORD`. The original lives outside the repository in `~/.zero-gx/` on the maintainer's Mac; keep a backup in a password manager. Upload certificate SHA-256: `BB:D0:06:DA:67:BC:DA:49:B7:5D:EA:E6:5A:5D:2A:4A:DA:BF:DD:57:F2:B7:22:14:15:2A:62:01:FF:70:FB:21`. |
 | App icon | `assets/icon.svg`, with adaptive foreground and background layers for Android launchers |
@@ -31,7 +32,7 @@ export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=<password from ~/.zero-gx/upload.
 godot --headless --path . --install-android-build-template --export-release "Android Play" build/zero-gx.aab
 ```
 
-The export installs the Gradle template in `android/` (ignored by git). It needs `android_source.zip` in Godot's export templates.
+The export installs the Gradle template in `android/build/` (ignored by git; `android/plugins/` holds the tracked plugin sources). It needs `android_source.zip` in Godot's export templates. Without the Play Games project id (`godot_play_game_services/game_id` in the export presets) the build still succeeds, but Play Games sign-in fails on the device; see `play-games-setup.md`.
 
 ## Steps in the Play Console
 

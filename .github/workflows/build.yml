@@ -81,10 +81,16 @@ jobs:
               -storepass android -keypass android -keyalg RSA -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
           mkdir -p build
-          ~/godot/godot --headless --path . --export-debug "Android" build/zero-gx.apk
+          ~/godot/godot --headless --path . --install-android-build-template --export-debug "Android" build/zero-gx.apk
           apksigner=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner
           "$apksigner" verify --print-certs build/zero-gx.apk | head -3
           unzip -l build/zero-gx.apk | grep -q 'lib/arm64-v8a/libgodot_android.so'
+          # The community plugins and permission must be in the APK: an export that skips a plugin still succeeds.
+          unzip -p build/zero-gx.apk 'classes*.dex' | grep -aq 'Ldev/braitg/zerogx/integrity/IntegrityPlugin;'
+          unzip -p build/zero-gx.apk 'classes*.dex' | grep -aq 'Lcom/google/android/gms/games/PlayGames;'
+          aapt2="${apksigner%/*}/aapt2"
+          "$aapt2" dump badging build/zero-gx.apk | grep -q "uses-permission: name='android.permission.INTERNET'"
+          "$aapt2" dump xmltree --file AndroidManifest.xml build/zero-gx.apk | grep -q 'com.google.android.gms.games.APP_ID'
           ls -lh build/zero-gx.apk
 
       - name: Export Play bundle
@@ -103,6 +109,10 @@ jobs:
           sed -i "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" export_presets.cfg
           ~/godot/godot --headless --path . --install-android-build-template --export-release "Android Play" build/zero-gx.aab
           jarsigner -verify build/zero-gx.aab
+          unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Ldev/braitg/zerogx/integrity/IntegrityPlugin;'
+          unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Lcom/google/android/gms/games/PlayGames;'
+          unzip -p build/zero-gx.aab base/manifest/AndroidManifest.xml | grep -aq 'android.permission.INTERNET'
+          unzip -p build/zero-gx.aab base/manifest/AndroidManifest.xml | grep -aq 'com.google.android.gms.games.APP_ID'
           ls -lh build/zero-gx.aab
 
       - name: Export desktop builds
@@ -111,6 +121,8 @@ jobs:
           ~/godot/godot --headless --path . --export-release "Linux" build/zero-gx-linux.x86_64
           ~/godot/godot --headless --path . --export-release "macOS" build/zero-gx-macos.zip
           ls -lh build/zero-gx-windows.exe build/zero-gx-linux.x86_64 build/zero-gx-macos.zip
+          # The plugins' Android libraries belong to Android builds only.
+          if unzip -p build/zero-gx-macos.zip '*/Zero-GX.pck' | strings -a | grep -qi '\.aar'; then echo "An AAR is in the macOS build."; exit 1; fi
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:

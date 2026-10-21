@@ -27,7 +27,7 @@ func _ready() -> void:
 ## The real transport and this device's platform; what tests restore after swapping in fakes.
 func use_defaults() -> void:
 	transport = _http
-	platform = CommunityPlatform.new()
+	platform = CommunityAndroid.new(self) if OS.has_feature("android") else CommunityPlatform.new()
 
 
 ## Whether this device can use community at all (Android with Play Games).

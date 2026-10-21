@@ -17,6 +17,13 @@ Settings="*res://scripts/settings.gd"
 Community="*res://scripts/community.gd"
 Sfx="*res://scripts/sfx.gd"
 Style="*res://scripts/style.gd"
+GodotPlayGameServices="*res://addons/GodotPlayGameServices/scripts/autoloads/godot_play_game_services.gd"
+
+[community]
+
+api_url="https://zerogx.braitg.dev"
+google_web_client_id=""
+cloud_project_number=0
 
 [display]
 
@@ -24,6 +31,10 @@ window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
 window/handheld/orientation=4
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/GodotPlayGameServices/plugin.cfg", "res://addons/zero_gx_integrity/plugin.cfg")
 
 [input]
 

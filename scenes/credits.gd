@@ -11,6 +11,7 @@ const LICENSE_FILES := [
 	["SIL Open Font License 1.1 (Exo 2)", "res://assets/fonts/Exo2-OFL.txt"],
 	["CC0 1.0 (Kenney Sci-fi Sounds)", "res://assets/sounds/Kenney-SciFi-License.txt"],
 	["CC0 1.0 (Kenney Interface Sounds)", "res://assets/sounds/Kenney-Interface-License.txt"],
+	["MIT License (Godot Play Game Services)", "res://addons/GodotPlayGameServices/LICENSE"],
 ]
 
 
@@ -23,6 +24,8 @@ static func open(parent: Node) -> Overlay:
 	o.paragraph("Exo 2. Copyright 2013 The Exo 2 Project Authors (https://github.com/googlefonts/Exo-2.0). Licensed under the SIL Open Font License 1.1.")
 	o.heading("Sound effects")
 	o.paragraph("Sci-fi Sounds and Interface Sounds by Kenney (https://kenney.nl), dedicated to the public domain under CC0 1.0. The ambient drone is synthesized by the game.")
+	o.heading("Play Games sign-in")
+	o.paragraph("Godot Play Game Services 3.4.0, Copyright (c) 2023 Jacob Ibáñez Sánchez (https://github.com/godot-sdk-integrations/godot-play-game-services). Licensed under the MIT License.")
 	o.heading("Engine")
 	o.paragraph("Made with Godot Engine (https://godotengine.org).")
 	o.paragraph(Engine.get_license_text(), 16, Style.INK_DIM)

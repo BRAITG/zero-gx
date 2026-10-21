@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- Godot finds the plugin by this prefix plus the name getPluginName() returns. -->
+        <meta-data
+            android:name="org.godotengine.plugin.v2.ZeroGxIntegrity"
+            android:value="dev.braitg.zerogx.integrity.IntegrityPlugin" />
+    </application>
+
+</manifest>

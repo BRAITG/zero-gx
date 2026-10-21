@@ -221,6 +221,7 @@ func test_credits_carry_the_licenses() -> void:
 		text += label.text + "\n"
 	check(text.contains("GNU AFFERO GENERAL PUBLIC LICENSE"), "credits must carry the AGPL text")
 	check(text.contains("SIL OPEN FONT LICENSE"), "credits must carry the font license text")
+	check(text.contains("Permission is hereby granted, free of charge") and text.contains("Jacob Ibáñez Sánchez"), "credits must carry the Play Games plugin's MIT license")
 	check(text.contains(Engine.get_license_text().substr(0, 40)), "credits must carry Godot's license")
 
 
