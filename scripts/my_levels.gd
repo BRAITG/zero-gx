@@ -108,6 +108,18 @@ static func set_level_id(id: String, community_id: String) -> void:
 	index.save(dir + "index.cfg")
 
 
+## Whether draft `id` was submitted and is still as it was then; editing it makes it a new version.
+static func is_submitted(id: String) -> bool:
+	return _index().get_value(id, "submitted_hash", "") == LevelFormat.sha256(load_level(id))
+
+
+## Record that `id` went to the server as the level with content hash `hash` (`LevelFormat.sha256`); "" forgets it.
+static func set_submitted(id: String, hash: String) -> void:
+	var index := _index()
+	index.set_value(id, "submitted_hash", hash if hash != "" else null)
+	index.save(dir + "index.cfg")
+
+
 static func _index() -> ConfigFile:
 	var index := ConfigFile.new()
 	index.load(dir + "index.cfg")  # missing means nothing completed yet

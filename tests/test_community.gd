@@ -305,11 +305,26 @@ func test_a_rejected_submission_returns_the_servers_sentence_and_the_next_try_ge
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/submissions", 429, {"error": "At most 5 submissions are accepted per day."})
 	check(await Community.submit(id) == "At most 5 submissions are accepted per day.", "the server's sentence must come back as it is")
-	check(Community.level_id_of(id) == "", "a failed submission stores no level id")
+	check(Community.level_id_of(id) == "" and not MyLevels.is_submitted(id), "a failed submission stores no level id and marks nothing submitted")
 	net.answer("GET", "/nonce", 200, {"nonce": "n3"})
 	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
 	check(await Community.submit(id) == "", "the retry must succeed")
 	check(net.count("GET", "/nonce") == 2 and _header(net.requests[-1], "X-Nonce") == "n3", "each try needs a new nonce: %s" % [net.requests.map(func(r): return r.url)])
+
+
+func test_a_submitted_draft_counts_as_submitted_until_it_is_edited() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := _draft_with_demo()
+	check(not MyLevels.is_submitted(id), "never submitted")
+	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
+	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
+	check(await Community.submit(id) == "", "the submission must succeed")
+	check(MyLevels.is_submitted(id), "an unchanged draft counts as submitted")
+	var edited := MyLevels.load_level(id)
+	edited.title = "Edited"
+	MyLevels.save(id, edited)
+	check(not MyLevels.is_submitted(id), "an edited draft is a new version")
 
 
 func test_submit_refuses_a_draft_that_cannot_be_submitted() -> void:
@@ -372,13 +387,14 @@ func test_delete_account_clears_the_session_statuses_and_level_ids() -> void:
 	await _signed_in(net)
 	var id := _draft_with_demo()
 	MyLevels.set_level_id(id, LEVEL_ID)
+	MyLevels.set_submitted(id, LevelFormat.sha256(MyLevels.load_level(id)))
 	net.answer("GET", "/me/submissions", 200, [{"level_id": LEVEL_ID, "version": 1, "status": "open", "comment": null}])
 	await Community.statuses()
 	net.requests.clear()
 	net.answer("DELETE", "/me", 204)
 	check(await Community.delete_account() == "", "deleting the account must succeed")
 	check(net.requests.size() == 1 and _header(net.requests[0], "Authorization") == "Bearer tok1", "one DELETE /me with the session: %s" % [net.requests])
-	check(not Community.signed_in() and Community.level_id_of(id) == "", "session and level ids must be gone")
+	check(not Community.signed_in() and Community.level_id_of(id) == "" and not MyLevels.is_submitted(id), "session, level ids and submitted marks must be gone")
 	check(await Community.statuses() == {}, "the last known statuses must be gone")
 
 

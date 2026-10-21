@@ -80,10 +80,13 @@ func _fill() -> void:
 			_submission_line(card, id)
 
 
-## Under a row: the status of its submission and, for a finished draft, Submit.
+## Under a row: the status of its submission and, for a finished draft that was not submitted as it is now, Submit.
 func _submission_line(card: VBoxContainer, id: String) -> void:
+	var submitted := MyLevels.is_submitted(id)
 	var text := _status_text(Community.level_id_of(id))
-	var offer := MyLevels.is_completed(id) and Community.can_submit(id)
+	if text == "" and submitted:
+		text = "Submitted"  # the server's word has not come yet, or cannot be reached
+	var offer := not submitted and MyLevels.is_completed(id) and Community.can_submit(id)
 	if text == "" and not offer:
 		return
 	var line := HBoxContainer.new()

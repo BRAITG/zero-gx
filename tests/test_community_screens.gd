@@ -37,15 +37,19 @@ func _rows(count: int) -> Array:
 	return range(count).map(func(i: int) -> Dictionary: return {"level_id": "lvl_%010d" % i, "title": "Loop %d" % i, "author": "Nova", "latest": 1, "sha256": "%064x" % i, "likes": 0, "players": 0})
 
 
-## A completed draft with its finishing demo, as a won test flight leaves it.
-func _finished_draft() -> String:
-	var id := MyLevels.new_id()
-	MyLevels.save(id, LevelDoc.blank())
+## Finishes draft `id` as it is saved now: its winning demo and the completed mark, as a won test flight leaves them.
+func _finish(id: String) -> void:
 	var run := Demo.new()
 	run.add_frame({"position": Vector2(100, 100), "rotation": 0.0, "firing": false, "fuel": 10.0, "hull": 10.0}, {})
 	run.level_sha256 = LevelFormat.sha256(MyLevels.load_level(id))
 	MyLevels.save_demo(id, run)
 	MyLevels.mark_completed(id)
+
+
+func _finished_draft() -> String:
+	var id := MyLevels.new_id()
+	MyLevels.save(id, LevelDoc.blank())
+	_finish(id)
 	return id
 
 
@@ -405,6 +409,7 @@ func test_submit_sends_the_draft_and_the_row_then_shows_pending() -> void:
 	await frames(2)
 	check(net.count("POST", "/submissions") == 1 and Community.level_id_of(id) == LEVEL_ID, "the draft must be sent and its level id kept")
 	check(_texts(screen).has("Pending"), "the row must show Pending: %s" % [_texts(screen)])
+	check(_buttons(screen, "Submit").is_empty(), "a submitted draft offers no second Submit")
 
 
 func test_submit_signs_in_first_when_signed_out() -> void:
@@ -471,3 +476,22 @@ func test_my_levels_shows_the_last_known_status_offline() -> void:
 	world.add_child(screen)
 	await frames(2)
 	check("Approved v3" in _texts(screen), "offline must show the last known status: %s" % [_texts(screen)])
+
+
+func test_my_levels_shows_submitted_for_an_unchanged_draft_until_it_is_edited() -> void:
+	_fake()
+	var id := _finished_draft()
+	MyLevels.set_submitted(id, LevelFormat.sha256(MyLevels.load_level(id)))
+	var screen := MyLevelsScreen.new()
+	world.add_child(screen)
+	await frames(2)
+	check(_buttons(screen, "Submit").is_empty() and _texts(screen).has("Submitted"), "an unchanged submitted draft shows Submitted and no Submit: %s" % [_texts(screen)])
+	screen.free()
+	var edited := MyLevels.load_level(id)
+	edited.title = "Edited"
+	MyLevels.save(id, edited)
+	_finish(id)  # tested and won again
+	screen = MyLevelsScreen.new()
+	world.add_child(screen)
+	await frames(2)
+	check(_buttons(screen, "Submit").size() == 1 and not _texts(screen).has("Submitted"), "an edited draft offers Submit again: %s" % [_texts(screen)])

@@ -121,7 +121,7 @@ func can_submit(id: String) -> bool:
 	return available() and MyLevels.demo(id) != null
 
 
-## Coroutine: sends draft `id` with its demo; `""` once the server took it, else its sentence. The returned level id is kept for the draft, so a later submission becomes the next version of the same level.
+## Coroutine: sends draft `id` with its demo; `""` once the server took it, else its sentence. The returned level id is kept for the draft, so a later submission becomes the next version of the same level; the sent content's hash too, which marks the draft as submitted until it changes.
 func submit(id: String) -> String:
 	if not can_submit(id):
 		return NOT_SUBMITTABLE
@@ -132,6 +132,7 @@ func submit(id: String) -> String:
 		return reply.error
 	if reply.data.get("level_id") is String:
 		MyLevels.set_level_id(id, reply.data.level_id)
+	MyLevels.set_submitted(id, CommunityWire.sha256_hex(level))  # the bytes that were sent, not what the draft is by now
 	return ""
 
 
@@ -158,7 +159,7 @@ func statuses() -> Dictionary:
 	return fresh
 
 
-## Coroutine: deletes the player's community account on the server; `""` once it is gone and the session, statuses and draft level ids are cleared here too, else the sentence.
+## Coroutine: deletes the player's community account on the server; `""` once it is gone and the session, statuses, draft level ids and submitted marks are cleared here too, else the sentence.
 func delete_account() -> String:
 	var reply := await _authed("DELETE", "/me", TYPE_NIL)
 	if reply.has("error"):
@@ -166,6 +167,7 @@ func delete_account() -> String:
 	DirAccess.remove_absolute(session_path)  # holds the session and the statuses
 	for id in MyLevels.ids():
 		MyLevels.set_level_id(id, "")
+		MyLevels.set_submitted(id, "")
 	return ""
 
 
