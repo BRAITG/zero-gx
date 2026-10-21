@@ -1,13 +1,15 @@
 class_name CommunityAndroid
 extends CommunityPlatform
-## This device's Play Games sign-in (the `godot-play-game-services` plugin, initialized here on first use) and Play Integrity (our plugin, `android/plugins/integrity/`). Available only in an Android build that carries both plugins.
+## This device's Play Games sign-in (the `godot-play-game-services` plugin) and Play Integrity (our plugin, `android/plugins/integrity/`). Available only in the Play build with both plugins and the setup values.
+## The Play Games SDK itself starts at every launch (its init provider cannot be removed) and may then sign the player in to Play Games, under Google's privacy policy. Only the sign-in to our server below waits for the player to open Community.
 
 const PLAY_GAMES := "GodotPlayGameServices"
 const INTEGRITY := "ZeroGxIntegrity"
-const NOT_SET_UP := "Community is not set up in this build."
+## The custom export feature only the "Android Play" preset sets. A sideloaded APK is not `PLAY_RECOGNIZED` by Play Integrity, so the server refuses its sign-in.
+const FEATURE := "community"
 const SIGN_IN_CANCELLED := "Play Games sign-in was cancelled"
 const NO_CODE := "Play Games gave no sign-in code."
-const INTEGRITY_FAILED := "Play Integrity failed: %s"
+const INTEGRITY_FAILED := "Play Integrity could not check this device."
 const INTEGRITY_SILENT := "Play Integrity did not answer."
 ## The Play Games plugin answers a failed `request_server_side_access` with nothing, and the player may take a while over its prompt.
 const CODE_SECONDS := 120.0
@@ -23,15 +25,18 @@ func _init(host: Node) -> void:
 
 
 func available() -> bool:
-	return Engine.has_singleton(PLAY_GAMES) and Engine.has_singleton(INTEGRITY)
+	return OS.has_feature(FEATURE) and Engine.has_singleton(PLAY_GAMES) and Engine.has_singleton(INTEGRITY) and configured()
+
+
+## Whether the project carries the setup values: the Play Games web client id and the Cloud project number.
+static func configured() -> bool:
+	return ProjectSettings.get_setting("community/google_web_client_id", "") != "" and int(ProjectSettings.get_setting("community/cloud_project_number", 0)) != 0
 
 
 func sign_in() -> Dictionary:
 	if not available():
 		return {"error": UNAVAILABLE}
 	var web_client: String = ProjectSettings.get_setting("community/google_web_client_id", "")
-	if web_client == "":
-		return {"error": NOT_SET_UP}
 	if _client == null:
 		if GodotPlayGameServices.initialize() != GodotPlayGameServices.PlayGamesPluginError.OK:
 			return {"error": UNAVAILABLE}
@@ -47,11 +52,9 @@ func sign_in() -> Dictionary:
 
 
 func integrity(nonce: String) -> Dictionary:
-	if not available():
+	if not Engine.has_singleton(INTEGRITY):  # not `available()`: callers have checked it, and this call never touches Play Games
 		return {"error": UNAVAILABLE}
 	var project: int = ProjectSettings.get_setting("community/cloud_project_number", 0)
-	if project == 0:
-		return {"error": NOT_SET_UP}
 	var plugin := Engine.get_singleton(INTEGRITY)
 	var race := _race([Signal(plugin, "integrity_token"), Signal(plugin, "integrity_failed")], INTEGRITY_SECONDS)
 	plugin.request(nonce, project)
@@ -60,7 +63,8 @@ func integrity(nonce: String) -> Dictionary:
 		0:
 			return {"token": answer[1]}
 		1:
-			return {"error": INTEGRITY_FAILED % answer[1]}
+			push_warning("Play Integrity failed: %s" % answer[1])  # the raw text is for the log, not for the player
+			return {"error": INTEGRITY_FAILED}
 	return {"error": INTEGRITY_SILENT}
 
 
