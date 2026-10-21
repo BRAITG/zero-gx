@@ -32,6 +32,17 @@ func focus_first(root: Node) -> void:
 			return
 
 
+## Coroutine: runs `work` while `button` says `label` and cannot be tapped again, so the player sees the wait; afterwards the button is as it was, if it is still on screen.
+func busy(button: Button, label: String, work: Callable) -> void:
+	var text := button.text
+	button.text = label
+	button.disabled = true
+	await work.call()
+	if is_instance_valid(button) and button.is_inside_tree():
+		button.text = text
+		button.disabled = false
+
+
 ## Bright things (lasers, flames, the ship) glow. Only the game world blooms: HUD and menus sit
 ## on canvas layers above `background_canvas_max_layer` and stay crisp.
 func _bloom() -> WorldEnvironment:

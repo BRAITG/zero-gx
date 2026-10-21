@@ -1,6 +1,6 @@
 # Zero-GX Privacy Policy
 
-Last updated: 20 October 2026
+Last updated: 21 October 2026
 
 Zero-GX is made by Andre Brait under the name BRAITG. This policy explains what data the game and its community service handle, who can see it, and how to have it deleted.
 
@@ -8,7 +8,9 @@ Zero-GX has no advertising, no analytics and no tracking. We never sell your dat
 
 ## Playing without signing in
 
-You can play the official levels and the training stages, and use the level editor, without signing in. When you play this way, Zero-GX sends nothing about you anywhere.
+You can play the official levels and the training stages, and use the level editor, without signing in. When you play this way, Zero-GX's servers receive nothing about you.
+
+On Android, Google Play Games may sign you in to Play Games automatically when the game starts. That is Google's own service, and Google's privacy policy applies to it. Zero-GX's servers receive nothing from it until you sign in to Zero-GX's community features, by opening Community or by submitting a level.
 
 Zero-GX is also available for Windows, macOS and Linux. Those versions have no community features: they never sign in and never connect to our servers. Levels you import or export there are files you choose, and they go only where you put them.
 
@@ -18,7 +20,7 @@ On Android, the game asks for two permissions: vibration, for feedback when your
 
 ## Community features
 
-Leaderboards, the player ranking, shared levels, likes and reports are online features. To use them you sign in with Google Play Games.
+Leaderboards, the player ranking, shared levels, likes and reports are online features. To use them you sign in with Google Play Games. Signing in, by opening Community or by submitting a level, is what first sends anything to Zero-GX's servers; if Google Play Games has already signed you in to Play Games when the game started (see above), that sign-in happened between you and Google only.
 
 ### What we collect
 
@@ -58,7 +60,7 @@ Rejected submissions stay visible there too. Submitted levels are shared under t
 ### Services that process the data
 
 - **Cloudflare** hosts the community server, its database and the stored run recordings.
-- **Google** provides the Play Games sign-in and the Play Integrity check, and distributes the game through Google Play.
+- **Google** provides the Play Games sign-in and the Play Integrity check, and distributes the game through Google Play. Google's own sign-in to Play Games at the start of the game is covered by Google's privacy policy, not by this one.
 - **GitHub** hosts the public levels repository, where submissions are reviewed.
 - **jsDelivr** delivers the shared level files to the game. Like any website, it receives your IP address when the game downloads a level; see the [jsDelivr privacy policy](https://www.jsdelivr.com/terms/privacy-policy-jsdelivr-net).
 

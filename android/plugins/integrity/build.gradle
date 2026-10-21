@@ -1,0 +1,33 @@
+// The Play Integrity plugin for Godot (Android plugin v2). Needs JDK 17. From this directory:
+//   ./gradlew assembleRelease assembleDebug
+//   cp build/outputs/aar/zero_gx_integrity-*.aar ../../../addons/zero_gx_integrity/bin/
+// and commit the two AARs: the game build does not compile this project.
+// Plugin versions match the Gradle template Godot 4.7.2 installs (android/build/config.gradle).
+plugins {
+    id 'com.android.library' version '8.6.1'
+    id 'org.jetbrains.kotlin.android' version '2.1.21'
+}
+
+base {
+    archivesName = 'zero_gx_integrity'
+}
+
+android {
+    namespace 'dev.braitg.zerogx.integrity'
+    compileSdk 36
+
+    defaultConfig {
+        minSdk 24
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    compileOnly 'org.godotengine:godot:4.7.2.stable'
+    // Also listed in addons/zero_gx_integrity/export_plugin.gd: an AAR does not carry its dependencies.
+    implementation 'com.google.android.play:integrity:1.4.0'
+}

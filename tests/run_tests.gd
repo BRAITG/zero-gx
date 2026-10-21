@@ -52,6 +52,13 @@ func _run() -> void:
 			settings.path = "user://test_settings.cfg"  # never touch the player's real settings
 			settings.show_velocity = false
 			settings.reset_controls()  # a test that rebinds a key must not leak it
+			var community := root.get_node("Community")
+			community.dir = "user://test_community/"  # never touch the player's session or downloads
+			community.session_path = "user://test_community.cfg"
+			community.use_defaults()  # a test that swaps in fakes must not leak them
+			DirAccess.remove_absolute(community.session_path)
+			for leftover in DirAccess.get_files_at(community.dir) if DirAccess.dir_exists_absolute(community.dir) else PackedStringArray():
+				DirAccess.remove_absolute(community.dir + leftover)
 			var my_levels = load("res://scripts/my_levels.gd")
 			my_levels.dir = "user://test_levels/"  # never touch the player's own levels
 			for id in my_levels.ids():
