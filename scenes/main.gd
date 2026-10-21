@@ -61,7 +61,7 @@ func _ready() -> void:
 	_list_levels()
 
 
-## The first tap signs in; if that fails, the reason shows and the menu stays.
+## The first tap signs in; if that fails, the reason shows and the menu stays. Offline it opens anyway: the screen shows what is cached.
 func _open_community() -> void:
 	if _signing_in:
 		return
@@ -71,7 +71,7 @@ func _open_community() -> void:
 		_signing_in = false
 		if not is_inside_tree():  # the player went elsewhere meanwhile
 			return
-		if error != "":
+		if error != "" and error != Community.NO_CONNECTION:
 			Overlay.open(self, "Cannot sign in").paragraph(error)
 			return
 	get_tree().change_scene_to_node(CommunityScreen.new())

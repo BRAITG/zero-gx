@@ -8,6 +8,8 @@ var sign_in_error := ""
 var integrity_error := ""
 ## Every nonce `integrity` was asked to sign.
 var nonces: Array[String] = []
+## How many times `sign_in` was called.
+var sign_ins := 0
 
 
 func available() -> bool:
@@ -15,6 +17,7 @@ func available() -> bool:
 
 
 func sign_in() -> Dictionary:
+	sign_ins += 1
 	return {"error": sign_in_error} if sign_in_error != "" else {"auth_code": "test:p1:Pilot"}
 
 

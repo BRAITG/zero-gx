@@ -86,13 +86,35 @@ func test_an_expired_session_is_not_signed_in() -> void:
 func test_a_failed_play_games_or_integrity_step_stops_sign_in_with_its_sentence() -> void:
 	var net := _fake()
 	pilot.sign_in_error = "Play Games sign-in was cancelled"
+	net.answer("GET", "/nonce", 200, {"nonce": "n1"})
 	check(await Community.sign_in() == "Play Games sign-in was cancelled", "the sign-in sentence must come back")
-	check(net.requests.is_empty(), "a cancelled sign-in must not touch the server")
+	check(net.count("POST", "/session") == 0 and not Community.signed_in(), "a cancelled sign-in must not post a session")
 	pilot.sign_in_error = ""
 	pilot.integrity_error = "Play Integrity is unavailable"
 	net.answer("GET", "/nonce", 200, {"nonce": "n1"})
 	check(await Community.sign_in() == "Play Integrity is unavailable", "the integrity sentence must come back")
 	check(net.count("POST", "/session") == 0 and not Community.signed_in(), "no session may be posted without a token")
+
+
+func test_an_offline_sign_in_fails_fast_with_no_connection_before_asking_play_games() -> void:
+	var net := _fake()
+	net.answer("GET", "/nonce", 0)
+	check(await Community.sign_in() == Community.NO_CONNECTION, "offline must read as no connection")
+	check(pilot.sign_ins == 0, "Play Games must not be asked first: %d prompts" % pilot.sign_ins)
+
+
+func test_overlapping_sign_ins_share_one_attempt() -> void:
+	var net := _fake()
+	net.answer("GET", "/nonce", 200, {"nonce": "n1"})
+	net.answer("POST", "/session", 200, SESSION)
+	net.held = true
+	var results := []
+	var attempt := func() -> void: results.append(await Community.sign_in())
+	attempt.call()
+	attempt.call()
+	net.release()
+	check(results == ["", ""], "both callers must get the one result: %s" % [results])
+	check(net.count("GET", "/nonce") == 1 and net.count("POST", "/session") == 1 and pilot.sign_ins == 1, "one attempt only: %s" % [net.requests.map(func(r: Dictionary) -> String: return r.url)])
 
 
 func test_a_server_refusal_of_the_session_comes_back_as_its_sentence() -> void:
@@ -127,6 +149,25 @@ func test_a_second_401_gives_up_without_a_third_request() -> void:
 	var listed: Dictionary = await Community.list("top", 0)
 	check(listed.get("error") == "Sign in again." and listed.rows.is_empty(), "the second 401 must end the call: %s" % [listed])
 	check(net.requests.size() == 4 and net.count("GET", "/levels") == 2, "exactly one retry: %d requests" % net.requests.size())
+
+
+func test_a_401_does_not_expire_a_token_a_concurrent_sign_in_just_saved() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 401, UNAUTHORIZED)
+	net.answer("GET", "/levels", 200, [{"level_id": LEVEL_ID}])
+	net.held = true
+	var listed := []
+	var run := func() -> void: listed.append(await Community.list("top", 0))
+	run.call()  # goes out with tok1
+	var file := ConfigFile.new()  # meanwhile another sign-in saves a new token
+	file.set_value("session", "token", "tok2")
+	file.set_value("session", "expires", int(Time.get_unix_time_from_system()) + 1000)
+	file.save(Community.session_path)
+	net.release()
+	check(listed.size() == 1 and not listed[0].has("error"), "the retry must succeed: %s" % [listed])
+	check(net.count("POST", "/session") == 0 and Community.signed_in(), "the fresh token must survive the old one's 401")
+	check(net.requests.size() == 2 and _header(net.requests[1], "Authorization") == "Bearer tok2", "the retry must carry the fresh token: %s" % [net.requests])
 
 
 func test_an_unexpected_answer_is_an_error_not_a_crash() -> void:
@@ -295,6 +336,30 @@ func test_statuses_map_my_submissions_and_fall_back_to_the_last_known_offline() 
 	check(fresh == expected, "newest row of each level: %s" % [fresh])
 	net.answer("GET", "/me/submissions", 0)
 	check(await Community.statuses() == expected, "offline must show the last known statuses")
+
+
+func test_statuses_never_sign_in_a_401_clears_the_session_and_keeps_the_last_known() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/me/submissions", 200, [{"level_id": LEVEL_ID, "version": 1, "status": "open", "comment": null}])
+	var known: Dictionary = await Community.statuses()
+	check(not known.is_empty(), "control: a status is known")
+	net.requests.clear()
+	net.answer("GET", "/me/submissions", 401, UNAUTHORIZED)
+	check(await Community.statuses() == known, "the last known statuses must come back")
+	check(not Community.signed_in(), "the rejected session must be cleared")
+	check(net.requests.size() == 1, "no sign-in, no retry: %s" % [net.requests.map(func(r: Dictionary) -> String: return r.url)])
+
+
+func test_a_submission_may_take_longer_than_the_other_calls() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := _draft_with_demo()
+	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
+	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
+	check(await Community.submit(id) == "", "the submission must succeed")
+	check(net.requests[0].timeout == CommunityTransport.TIMEOUT_SECONDS, "the nonce keeps the usual timeout: %s" % net.requests[0].timeout)
+	check(net.requests[1].timeout == 120.0, "POST /submissions must wait 120 s: %s" % net.requests[1].timeout)
 
 
 func test_statuses_make_no_request_when_signed_out() -> void:

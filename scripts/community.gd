@@ -8,6 +8,8 @@ const SESSION_SECONDS := 6 * 24 * 60 * 60  # the server's sessions last 7 days; 
 const LEVEL_URL := "https://cdn.jsdelivr.net/gh/BRAITG/zero-gx-levels@%s/levels/%s/v%d.json"
 ## A downloaded level is played as stage `community_<sha256>`, built from its cached file.
 const STAGE_PREFIX := "community_"
+## A submission makes the server do about nine GitHub calls, so it gets longer than the usual 30 s.
+const SUBMISSION_SECONDS := 120.0
 
 var transport: CommunityTransport
 var platform: CommunityPlatform
@@ -18,6 +20,9 @@ var session_path := "user://community.cfg"
 var api_url: String = ProjectSettings.get_setting("community/api_url", "https://zerogx.braitg.dev")
 
 var _http: CommunityTransport
+var _signing_in := false  # one sign-in at a time; `_sign_in_done` hands its result to the callers that came meanwhile
+
+signal _sign_in_done(error: String)
 
 
 func _ready() -> void:
@@ -41,14 +46,26 @@ func signed_in() -> bool:
 	return _token() != ""
 
 
-## Coroutine: `""` once signed in, else why not.
+## Coroutine: `""` once signed in, else why not. A call that comes while a sign-in is under way waits for that one and gets its result.
 func sign_in() -> String:
+	if _signing_in:
+		return await _sign_in_done
+	_signing_in = true
+	var error := await _sign_in()
+	_signing_in = false
+	_sign_in_done.emit(error)
+	return error
+
+
+func _sign_in() -> String:
+	if not platform.available():
+		return CommunityPlatform.UNAVAILABLE  # a device without Play Games makes no request at all
+	var nonce := await _nonce()  # before Play Games: offline must fail at once, not after a prompt
+	if nonce.has("error"):
+		return nonce.error
 	var auth: Dictionary = await platform.sign_in()
 	if auth.has("error"):
 		return auth.error
-	var nonce := await _nonce()
-	if nonce.has("error"):
-		return nonce.error
 	var proof: Dictionary = await platform.integrity(nonce.nonce)
 	if proof.has("error"):
 		return proof.error
@@ -123,19 +140,19 @@ func level_id_of(id: String) -> String:
 	return MyLevels.level_id(id)
 
 
-## Coroutine: level id → `{status, version, comment}` of the player's newest submission of it. Refreshed while signed in (never signs in just for this); otherwise, or when the refresh fails, the last known ones.
+## Coroutine: level id → `{status, version, comment}` of the player's newest submission of it. Refreshed while signed in; otherwise, or when the refresh fails, the last known ones. It never signs in: a 401 only clears the local session.
 func statuses() -> Dictionary:
 	var known: Variant = _session().get_value("statuses", "last", {})
 	if not signed_in():
 		return known if known is Dictionary else {}
-	var reply := await _authed("GET", "/me/submissions", TYPE_ARRAY)
+	var reply := await _authed("GET", "/me/submissions", TYPE_ARRAY, Callable(), false)
 	if reply.has("error"):
 		return known if known is Dictionary else {}
 	var fresh := {}
 	for row: Variant in reply.data:  # newest first: a level's first row is where it stands
 		if row is Dictionary and row.get("level_id") is String and not fresh.has(row.level_id):
 			fresh[row.level_id] = {"status": row.get("status"), "version": int(row.get("version", 0)), "comment": row.get("comment") if row.get("comment") is String else ""}
-	var file := _session()  # a silent sign-in may have rewritten it
+	var file := _session()  # read afresh: a sign-in may have rewritten it meanwhile
 	file.set_value("statuses", "last", fresh)
 	file.save(session_path)
 	return fresh
@@ -189,8 +206,8 @@ func _nonce() -> Dictionary:
 
 
 ## One request. A 2xx answer is `{"status", "data"}` with `data` parsed as JSON of type `expect` (TYPE_NIL: no body; TYPE_PACKED_BYTE_ARRAY: the raw bytes); anything else is `{"status", "error"}` with the server's sentence.
-func _call(method: String, url: String, headers := PackedStringArray(), body := PackedByteArray(), expect := TYPE_DICTIONARY) -> Dictionary:
-	var reply: Dictionary = await transport.send(method, url, headers, body)
+func _call(method: String, url: String, headers := PackedStringArray(), body := PackedByteArray(), expect := TYPE_DICTIONARY, timeout := CommunityTransport.TIMEOUT_SECONDS) -> Dictionary:
+	var reply: Dictionary = await transport.send(method, url, headers, body, timeout)
 	var status: int = reply.status
 	if status == 0:
 		return {"status": 0, "error": NO_CONNECTION}
@@ -202,17 +219,25 @@ func _call(method: String, url: String, headers := PackedStringArray(), body := 
 	return {"status": status, "data": data} if typeof(data) == expect else {"status": status, "error": BAD_ANSWER}
 
 
-## `_call` to the community server with the session. A 401 signs in again once and retries once. `build` is an optional coroutine that makes `{"headers", "body"}` (or `{"error"}`) afresh for each attempt.
-func _authed(method: String, path: String, expect := TYPE_DICTIONARY, build := Callable()) -> Dictionary:
+## `_call` to the community server with the session. A 401 clears the token that was sent; with `resign` it then signs in again once and retries once. `build` is an optional coroutine that makes `{"headers", "body"}` and optionally `"timeout"` (or `{"error"}`) afresh for each attempt.
+func _authed(method: String, path: String, expect := TYPE_DICTIONARY, build := Callable(), resign := true) -> Dictionary:
 	var reply := await _send(method, path, expect, build)
 	if reply.status == 401:
-		var file := _session()
-		file.set_value("session", "expires", 0)  # the server no longer accepts this token
-		file.save(session_path)
-		reply = await _send(method, path, expect, build)
+		_forget(reply.token)
+		if resign:
+			reply = await _send(method, path, expect, build)
 	return reply
 
 
+## Drops the stored session when it still holds `token`, which the server no longer accepts. A token that a sign-in saved meanwhile stays.
+func _forget(token: String) -> void:
+	var file := _session()
+	if file.get_value("session", "token", "") == token:
+		file.erase_section("session")
+		file.save(session_path)
+
+
+## One authorized request; the answer carries the `token` it was sent with.
 func _send(method: String, path: String, expect: int, build: Callable) -> Dictionary:
 	if _token() == "":
 		var error := await sign_in()
@@ -220,14 +245,19 @@ func _send(method: String, path: String, expect: int, build: Callable) -> Dictio
 			return {"status": 0, "error": error}
 	var headers := PackedStringArray()
 	var body := PackedByteArray()
+	var timeout := CommunityTransport.TIMEOUT_SECONDS
 	if build.is_valid():
 		var made: Dictionary = await build.call()
 		if made.has("error"):
 			return {"status": 0, "error": made.error}
 		headers = made.headers
 		body = made.body
-	headers.append("Authorization: Bearer " + _token())
-	return await _call(method, api_url + path, headers, body, expect)
+		timeout = made.get("timeout", timeout)
+	var token := _token()
+	headers.append("Authorization: Bearer " + token)
+	var reply := await _call(method, api_url + path, headers, body, expect, timeout)
+	reply["token"] = token
+	return reply
 
 
 ## The headers and multipart body of one submission attempt: a fresh nonce, and an integrity token bound to this nonce and these exact bytes.
@@ -243,4 +273,5 @@ func _submission(level: PackedByteArray, demo: PackedByteArray, level_id: String
 	return {
 		"headers": PackedStringArray(["Content-Type: multipart/form-data; boundary=" + boundary, "X-Nonce: " + nonce.nonce, "X-Integrity: " + proof.token]),
 		"body": CommunityWire.multipart({"level_id": level_id} if level_id != "" else {}, {"level": ["level.json", level], "demo": ["demo.gz", demo]}, boundary),
+		"timeout": SUBMISSION_SECONDS,
 	}

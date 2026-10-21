@@ -114,12 +114,46 @@ func test_the_first_tap_on_community_signs_in_and_opens_it() -> void:
 func test_a_failed_sign_in_shows_why_and_the_menu_stays() -> void:
 	var net := _fake()
 	pilot.sign_in_error = "Play Games sign-in was cancelled"
+	net.answer("GET", "/nonce", 200, {"nonce": "n1"})
 	var main := _menu()
 	_buttons(main, "Community")[0].pressed.emit()
 	await frames(2)
 	var sheets := main.find_children("*", "Overlay", true, false)
 	check(sheets.size() == 1 and "Play Games sign-in was cancelled" in _texts(sheets[0]), "the reason must show in a sheet: %s" % [sheets.map(_texts)])
-	check(tree.current_scene == null and net.requests.is_empty(), "the menu must stay and the server be left alone")
+	check(tree.current_scene == null and net.count("POST", "/session") == 0, "the menu must stay and no session be posted")
+
+
+func test_offline_with_an_expired_session_opens_community_and_plays_from_the_cache() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var bytes := _bytes()
+	var row := _row(bytes)
+	net.answer("GET", "/levels", 200, [row])
+	await Community.list("top", 0)
+	net.answer("GET", "/index", 200, {"commit": "abc123"})
+	net.answer("GET", "/gh/", 200, bytes)
+	check(await Community.download(row) == "", "control: the level is cached")
+	var file := ConfigFile.new()  # six days on: the session has run out
+	file.set_value("session", "token", "old")
+	file.set_value("session", "expires", int(Time.get_unix_time_from_system()) - 1)
+	file.save(Community.session_path)
+	net.requests.clear()
+	net.answer("GET", "/nonce", 0)  # the menu's sign-in
+	net.answer("GET", "/nonce", 0)  # the screen's list
+	var main := _menu()
+	_buttons(main, "Community")[0].pressed.emit()
+	await frames(2)
+	var screen := tree.current_scene
+	check(screen is CommunityScreen, "offline must still open Community: %s" % screen)
+	if not screen is CommunityScreen:
+		return
+	check("You are offline" in _texts(screen) and _buttons(screen, "Play").size() == 1, "the cached page must show with the offline note: %s" % [_texts(screen)])
+	_buttons(screen, "Play")[0].pressed.emit()
+	await frames(2)
+	var stage := tree.current_scene
+	check(stage is Level and stage.level_id == "community_" + row.sha256, "Play must open the cached stage: %s" % stage)
+	check(net.count("GET", "/gh/") == 0 and net.count("GET", "/index") == 0, "the cached level needs no download")
+	_leave_scene()
 
 
 func test_community_lists_top_rows_with_title_version_author_and_likes() -> void:

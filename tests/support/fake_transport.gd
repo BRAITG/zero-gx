@@ -4,8 +4,17 @@ extends CommunityTransport
 
 ## Each entry answers one request: {method, path_prefix, status, body}.
 var queue: Array[Dictionary] = []
-## Every request made, in order: {method, url, headers, body}.
+## Every request made, in order: {method, url, headers, body, timeout}.
 var requests: Array[Dictionary] = []
+## While true, `send` records a request and then waits for `release()` before it answers.
+var held := false
+
+signal released
+
+
+func release() -> void:
+	held = false
+	released.emit()
 
 
 ## Queues the answer to the next `method` request whose path begins with `path_prefix`. `body` is bytes, text or JSON data.
@@ -18,8 +27,10 @@ func count(method: String, path_prefix: String) -> int:
 	return requests.filter(func(r: Dictionary) -> bool: return r.method == method and _path(r.url).begins_with(path_prefix)).size()
 
 
-func send(method: String, url: String, headers: PackedStringArray, body: PackedByteArray) -> Dictionary:
-	requests.append({"method": method, "url": url, "headers": headers, "body": body})
+func send(method: String, url: String, headers: PackedStringArray, body: PackedByteArray, timeout := CommunityTransport.TIMEOUT_SECONDS) -> Dictionary:
+	requests.append({"method": method, "url": url, "headers": headers, "body": body, "timeout": timeout})
+	if held:
+		await released
 	var path := _path(url)
 	for i in queue.size():
 		if queue[i].method == method and path.begins_with(queue[i].path_prefix):

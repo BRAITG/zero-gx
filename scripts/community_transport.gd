@@ -7,10 +7,10 @@ const TIMEOUT_SECONDS := 30.0  # a request that never answers must end as "no co
 # shortcut: answers are read into memory whole, uncapped; the server and the levels CDN are ours and the server limits levels to 64 KB, so cap `body_size_limit` if another host is ever called
 
 
-## Coroutine: `{"status": int, "body": PackedByteArray}`; status 0 means the request never got an answer.
-func send(method: String, url: String, headers: PackedStringArray, body: PackedByteArray) -> Dictionary:
+## Coroutine: `{"status": int, "body": PackedByteArray}`; status 0 means the request never got an answer within `timeout` seconds.
+func send(method: String, url: String, headers: PackedStringArray, body: PackedByteArray, timeout := TIMEOUT_SECONDS) -> Dictionary:
 	var http := HTTPRequest.new()
-	http.timeout = TIMEOUT_SECONDS
+	http.timeout = timeout
 	add_child(http)
 	var started := http.request_raw(url, headers, METHODS[method], body)
 	var answer := [HTTPRequest.RESULT_CANT_CONNECT, 0, PackedStringArray(), PackedByteArray()]
