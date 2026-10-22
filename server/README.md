@@ -154,6 +154,8 @@ Then add that level's `lvl_id` to `hidden.txt` in a pull request (the file `v<N>
 
 **Nonces.** A nonce is consumed as soon as it is checked, by `POST /session` and also by `POST /scores` and `POST /submissions` (their integrity check), even if the request then fails. After any failed request of these three the app must fetch a new nonce.
 
+Google's returned nonce is normalized to unpadded URL-safe Base64 before comparison. The Android SDK decodes the request nonce into bytes, so Google's response may use padding or the standard Base64 alphabet. A different nonce still fails; one-time consumption, freshness, app recognition and device integrity checks are unchanged.
+
 **Logs.** `npx wrangler tail` streams the Worker's logs; cron step failures appear as `cron: <step> failed`.
 
 **Integrity rejection.** `npx wrangler tail zero-gx --format pretty` shows an `integrity_rejected` event with a fixed reason code. `stage` distinguishes service-account authentication, Google's token decode API, and verdict checks. API failures include the HTTP status and an allowlisted Google reason (`unknown` otherwise). No tokens, nonces, keys, decoded verdicts or raw Google error messages are logged. The public response stays “The integrity check failed.” and all verification requirements remain unchanged. Integrity test-response groups in Play Console are optional and are not needed for genuine checks.

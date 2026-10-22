@@ -125,7 +125,11 @@ export class GoogleVerifier implements Verifier {
       const payload = decoded.tokenPayloadExternal;
       const request = payload?.requestDetails;
       if (request?.requestPackageName !== PACKAGE) throw new VerificationFailure("package_mismatch");
-      if (request.nonce !== nonce) throw new VerificationFailure("nonce_mismatch");
+      // The Android SDK sends decoded bytes; Google may return padded or standard Base64.
+      const returnedNonce = typeof request.nonce === "string" && /^[A-Za-z0-9+/_-]+={0,2}$/.test(request.nonce)
+        ? request.nonce.replace(/=+$/, "").replace(/\+/g, "-").replace(/\//g, "_")
+        : null;
+      if (returnedNonce !== nonce) throw new VerificationFailure("nonce_mismatch");
       if (!(Math.abs(Date.now() - Number(request.timestampMillis)) <= MAX_AGE_MS)) throw new VerificationFailure("stale");
       if (payload.appIntegrity?.appRecognitionVerdict !== "PLAY_RECOGNIZED") throw new VerificationFailure("app_unrecognized");
       const required = level === "strong" ? "MEETS_STRONG_INTEGRITY" : "MEETS_DEVICE_INTEGRITY";
