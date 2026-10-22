@@ -49,8 +49,8 @@ While the Play Games configuration is unpublished, only listed testers can sign 
 
 | Value | From | Stored in |
 |---|---|---|
-| Play Games project id | Step 1 | `export_presets.cfg`, option `godot_play_game_services/game_id` of both Android presets. Empty today: the build still succeeds, and sign-in fails on the device until the id is set. |
-| OAuth web client ID | Step 2 | `project.godot`: `community/google_web_client_id`. |
-| Cloud project number | Step 5 | `project.godot`: `community/cloud_project_number`. |
+| Play Games project id | Step 1 | `export_presets.cfg`, option `godot_play_game_services/game_id` of both Android presets: `171184149910`. |
+| OAuth web client ID | Step 2 | `project.godot`: `community/google_web_client_id`, configured for project `171184149910`. |
+| Cloud project number | Step 5 | `project.godot`: `community/cloud_project_number`: `171184149910`. |
 
 None of these three is secret. The client secret and the service account key stay in repository secrets only.
