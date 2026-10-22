@@ -4,6 +4,9 @@ extends Control
 
 const MENU := "res://scenes/main.tscn"
 
+## Set only by a won Publish test flight; opening the screen never submits it.
+var confirm_publish_id := ""
+
 var _column: VBoxContainer
 var _list: VBoxContainer
 var _statuses := {}  # community level id → {status, version, comment}
@@ -42,6 +45,8 @@ func _ready() -> void:
 	_fill()
 	_refresh_statuses()
 	Style.focus_first.call_deferred(_column)  # after layout
+	if confirm_publish_id != "" and Community.available():
+		_confirm_publish.call_deferred(confirm_publish_id)
 
 
 func _fill() -> void:
@@ -80,15 +85,12 @@ func _fill() -> void:
 			_submission_line(card, id)
 
 
-## Under a row: the status of its submission and, for a finished draft that was not submitted as it is now, Submit.
+## Under a row: review status and Publish for a draft not submitted as it is now.
 func _submission_line(card: VBoxContainer, id: String) -> void:
 	var submitted := MyLevels.is_submitted(id)
 	var text := _status_text(Community.level_id_of(id))
 	if text == "" and submitted:
 		text = "Submitted"  # the server's word has not come yet, or cannot be reached
-	var offer := not submitted and MyLevels.is_completed(id) and Community.can_submit(id)
-	if text == "" and not offer:
-		return
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
 	card.add_child(line)
@@ -98,8 +100,8 @@ func _submission_line(card: VBoxContainer, id: String) -> void:
 	label.add_theme_color_override("font_color", Style.INK_DIM)
 	label.custom_minimum_size.x = 300  # lines up with the title above
 	line.add_child(label)
-	if offer:
-		_button(line, "Submit", _submit.bind(id), "Submitting…")
+	if not submitted:
+		_button(line, "Publish", _publish.bind(id))
 
 
 func _status_text(community_id: String) -> String:
@@ -125,8 +127,38 @@ func _refresh_statuses() -> void:
 	_refill()
 
 
-func _submit(id: String) -> void:
-	if _busy:
+func _publish(id: String) -> void:
+	if not Community.available() or not _validate_publish(id):
+		return
+	var o := Overlay.open(self, "Publish level")
+	o.paragraph("A finishing recording proves this level can be completed.")
+	if MyLevels.demo(id) != null:
+		_button(o.body, "Use previous run", func() -> void:
+			o.close()
+			_confirm_publish(id))
+		_button(o.body, "Play again", Progress.open.bind(id, true, true))
+	else:
+		_button(o.body, "Play to prove it", Progress.open.bind(id, true, true))
+
+
+func _validate_publish(id: String) -> bool:
+	var problems := LevelFormat.validate(MyLevels.load_level(id))
+	if problems.is_empty():
+		return true
+	var o := Overlay.open(self, "Cannot publish")
+	for problem in problems:
+		o.paragraph(problem)
+	return false
+
+
+func _confirm_publish(id: String) -> void:
+	var o := Overlay.open(self, "Publish level")
+	o.paragraph("Submit this level and your finishing recording for moderator review. It will not be listed publicly until a moderator approves it.")
+	_button(o.body, "Submit for review", _submit.bind(id, o), "Submitting…")
+
+
+func _submit(id: String, confirmation: Overlay) -> void:
+	if _busy or not Community.available() or not _validate_publish(id):
 		return
 	_busy = true
 	var error: String = await Community.submit(id)
@@ -137,7 +169,9 @@ func _submit(id: String) -> void:
 		Overlay.open(self, "Cannot submit").paragraph(error)
 		return
 	_statuses[Community.level_id_of(id)] = {"status": "open"}  # until the server's own word at the next refresh
-	_refill.call_deferred()  # not from inside the Submit button's own signal
+	if is_instance_valid(confirmation):
+		confirmation.close()
+	_refill.call_deferred()  # not from inside the confirmation button's own signal
 
 
 ## Rebuilds the rows after a change that is not theirs; focus goes to the first button when the rows that held it are gone.
@@ -220,10 +254,14 @@ func _button(parent: Control, text: String, action: Callable, busy := "") -> But
 	return button
 
 
-## Android's back gesture, Esc and B return to the menu.
+## Back closes the top Publish sheet first; otherwise it returns to the menu.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		get_tree().change_scene_to_file(MENU)
+		var sheets := find_children("*", "Overlay", true, false)
+		if sheets.is_empty():
+			get_tree().change_scene_to_file(MENU)
+		else:
+			sheets.back().close()
 
 
 func _unhandled_input(event: InputEvent) -> void:

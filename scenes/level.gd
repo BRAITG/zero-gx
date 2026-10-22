@@ -20,6 +20,8 @@ var level_id := ""
 ## An author's test flight of their own level: Menu returns to the editor, a finish marks the
 ## level completed, and no score is recorded.
 var testing := false
+## A Test started from Publish: Retry keeps the intent; only a win offers confirmation.
+var publishing := false
 ## The running first-flight tour, or null.
 var tour: Tour
 ## Set by Progress.build for levels that record a demo (not tutorials): the level data this run
@@ -48,8 +50,10 @@ func _ready() -> void:
 		add_child(_recorder)
 	hud = Hud.new()
 	hud.ship = ship
-	hud.menu_text = "Edit" if testing else "Menu"
-	if _ends_training():
+	hud.menu_text = "Edit" if testing and not publishing else "Menu"
+	if publishing:
+		hud.next_text = "Publish"
+	elif _ends_training():
 		hud.next_text = "End training"
 	hud.can_replay = demo != null
 	ship.show_velocity = show_velocity or Settings.show_velocity
@@ -65,7 +69,7 @@ func _ready() -> void:
 		add_child(tour)
 	else:
 		_show_intro()
-	hud.retry_requested.connect(func(): Progress.open(level_id, testing))
+	hud.retry_requested.connect(func(): Progress.open(level_id, testing, publishing))
 	hud.menu_requested.connect(_to_menu)
 	hud.replay_requested.connect(_replay)
 	hud.next_requested.connect(_next)
@@ -111,12 +115,14 @@ func _notification(what: int) -> void:
 
 
 func _to_menu() -> void:
-	leave_to(get_tree(), level_id, testing)
+	leave_to(get_tree(), level_id, testing, publishing)
 
 
-## Where leaving stage `level_id` goes: the editor after a test flight, else the screen it came from.
-static func leave_to(tree: SceneTree, level_id: String, testing: bool) -> void:
-	if testing:
+## A Publish test returns to My levels; a normal test returns to its editor.
+static func leave_to(tree: SceneTree, level_id: String, testing: bool, publishing := false) -> void:
+	if publishing:
+		tree.change_scene_to_node(MyLevelsScreen.new())
+	elif testing:
 		tree.change_scene_to_node(LevelEditor.create(level_id))
 	elif level_id.begins_with(MyLevels.PREFIX):
 		tree.change_scene_to_node(MyLevelsScreen.new())
@@ -134,14 +140,18 @@ func _ends_training() -> bool:
 
 
 func _next() -> void:
-	if _ends_training():
+	if publishing:
+		var screen := MyLevelsScreen.new()
+		screen.confirm_publish_id = level_id
+		get_tree().change_scene_to_node(screen)
+	elif _ends_training():
 		get_tree().change_scene_to_file(MENU)
 	else:
 		Progress.open(Progress.next_level(level_id))
 
 
 func _replay() -> void:
-	get_tree().change_scene_to_node(DemoViewer.create(level_data, demo, leave_to.bind(get_tree(), level_id, testing)))
+	get_tree().change_scene_to_node(DemoViewer.create(level_data, demo, leave_to.bind(get_tree(), level_id, testing, publishing)))
 
 
 ## Ends the level once; later calls (a hit and the goal on one frame) are ignored.
@@ -179,5 +189,5 @@ func _score() -> Dictionary:
 		"hull_points": roundi(hull * Tuning.points_hull),
 		"time_points": roundi(seconds * Tuning.points_per_second),
 		"new_best": level_id != "" and not testing and Progress.record_win(level_id, points, seconds),
-		"has_next": level_id != "" and (Progress.next_level(level_id) != "" or _ends_training()),
+		"has_next": publishing or (level_id != "" and (Progress.next_level(level_id) != "" or _ends_training())),
 	}
