@@ -1,6 +1,6 @@
 class_name CommunityScreen
 extends Control
-## Levels other players shared: the Top and New lists, 50 a page, each with Play, which downloads the level first. Also where a player deletes their community account.
+## Levels other players shared: the Top and New lists, 50 a page, each with Play, which downloads the level first. Account actions live in Community settings.
 
 const MENU := "res://scenes/main.tscn"
 const PAGE_SIZE := 50  # the server's page size: a shorter page is the last one
@@ -9,7 +9,6 @@ var _column: VBoxContainer
 var _note: Label
 var _rows: VBoxContainer
 var _more: Button
-var _delete: Button
 var _sort := "top"
 var _page := 0  # the last page that arrived
 var _request := 0  # the newest list request; an older answer is dropped
@@ -40,6 +39,11 @@ func _ready() -> void:
 		tab.toggle_mode = true
 		tab.button_group = tabs
 		tab.button_pressed = sort == _sort
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(spacer)
+	_button(top, "Settings", _open_settings)
 	_note = Label.new()
 	_note.add_theme_font_size_override("font_size", 24)
 	_note.add_theme_color_override("font_color", Style.INK_DIM)
@@ -58,8 +62,6 @@ func _ready() -> void:
 	content.add_child(_rows)
 	_more = _button(content, "More", func() -> void: await _load(_sort, _page + 1), "Loading…")
 	_more.hide()
-	_delete = _button(_column, "Delete my community account", _confirm_delete)
-	_delete.visible = Community.signed_in()
 	_load(_sort, 0)
 	Style.focus_first.call_deferred(_column)  # after layout
 
@@ -92,7 +94,6 @@ func _load(sort: String, page: int) -> void:
 	if not (reply.has("error") and rows.is_empty()):  # a page that failed leaves the page and More as they were
 		_page = page
 		_more.visible = rows.size() >= PAGE_SIZE
-	_delete.visible = Community.signed_in()
 	var focus := get_viewport().gui_get_focus_owner()
 	if first and (focus == null or focus == _more):  # the button that had focus is gone or has been used
 		first.grab_focus(true)
@@ -125,6 +126,16 @@ func _play(row: Dictionary) -> void:
 		Overlay.open(self, "Cannot play").paragraph(error)
 		return
 	Progress.open(Community.STAGE_PREFIX + row.sha256)
+
+
+func _open_settings() -> void:
+	var o := Overlay.open(self, "Community settings")
+	o.heading("Account")
+	if Community.signed_in():
+		var deletion := _button(o.body, "Delete my community account", _confirm_delete)
+		deletion.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	else:
+		o.paragraph("Sign in to manage your community account.")
 
 
 func _confirm_delete() -> void:
@@ -165,10 +176,14 @@ func _button(parent: Control, text: String, action: Callable, busy := "") -> But
 	return button
 
 
-## Android's back gesture, Esc and B return to the menu.
+## Back closes the top account sheet first; without a sheet, it returns to the menu.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		_to_menu()
+		var sheets := find_children("*", "Overlay", true, false)
+		if sheets.is_empty():
+			_to_menu()
+		else:
+			sheets.back().close()
 
 
 func _unhandled_input(event: InputEvent) -> void:

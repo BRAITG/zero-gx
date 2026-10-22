@@ -68,6 +68,17 @@ func _community() -> CommunityScreen:
 	return screen
 
 
+func _settings(screen: CommunityScreen) -> Overlay:
+	var buttons := _buttons(screen, "Settings")
+	check(buttons.size() == 1, "Community must offer Settings")
+	if buttons.is_empty():
+		return null
+	buttons[0].grab_focus()
+	buttons[0].pressed.emit()
+	await frames(2)
+	return screen.find_children("*", "Overlay", true, false).back()
+
+
 func _menu() -> Control:
 	var main: Control = load("res://scenes/main.gd").menu(false)
 	world.add_child(main)
@@ -309,15 +320,50 @@ func test_the_community_screen_takes_focus_and_leaves_on_cancel() -> void:
 	_leave_scene()
 
 
-func test_delete_account_is_offered_only_when_signed_in() -> void:
+func test_account_deletion_is_in_settings_not_the_level_list() -> void:
 	var net := _fake()
-	var out := await _community()
-	check(_buttons(out, "Delete my community account").is_empty(), "signed out: no delete button")
-	out.free()
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [])
 	var screen := await _community()
-	check(_buttons(screen, "Delete my community account").size() == 1, "signed in: the delete button shows")
+	check(_buttons(screen, "Delete my community account").is_empty(), "the level list must not offer deletion")
+	var settings := await _settings(screen)
+	if settings == null:
+		return
+	check("Account" in _texts(settings), "settings must group the account action")
+	var deletion: Button = _buttons(settings, "Delete my community account")[0]
+	check(deletion.size.x < screen.get_viewport_rect().size.x / 2, "deletion must be a normal-sized action, not full width: %s" % deletion.size)
+	_send_action(&"ui_cancel")
+	await frames(2)
+	check(screen.is_inside_tree() and tree.current_scene == null, "closing settings must keep Community open")
+	check(screen.find_children("*", "Overlay", true, false).is_empty(), "settings must close")
+	check(tree.root.gui_get_focus_owner() == _buttons(screen, "Settings")[0], "focus must return to Settings")
+	check(net.count("DELETE", "/me") == 0, "opening and closing settings must not delete")
+
+
+func test_account_deletion_is_absent_from_settings_when_signed_out() -> void:
+	_fake()
+	var screen := await _community()
+	var settings := await _settings(screen)
+	if settings != null:
+		check(_buttons(settings, "Delete my community account").is_empty(), "signed out: no deletion in settings")
+
+
+func test_android_back_closes_confirmation_then_settings_without_deleting() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	var screen := await _community()
+	var settings := await _settings(screen)
+	_buttons(settings, "Delete my community account")[0].pressed.emit()
+	await frames(1)
+	screen._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await frames(2)
+	check(screen.find_children("*", "Overlay", true, false).size() == 1, "Back must close only the confirmation")
+	screen._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await frames(2)
+	check(screen.find_children("*", "Overlay", true, false).is_empty(), "Back must then close settings")
+	check(screen.is_inside_tree() and tree.current_scene == null, "Community must stay open")
+	check(Community.signed_in() and net.count("DELETE", "/me") == 0, "Back must not delete the account")
 
 
 func test_delete_account_asks_first_and_cancelling_sends_nothing() -> void:
@@ -325,14 +371,17 @@ func test_delete_account_asks_first_and_cancelling_sends_nothing() -> void:
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [])
 	var screen := await _community()
+	await _settings(screen)
+	_buttons(screen, "Delete my community account")[0].grab_focus()
 	_buttons(screen, "Delete my community account")[0].pressed.emit()
 	await frames(1)
 	var sheets := screen.find_children("*", "Overlay", true, false)
-	check(sheets.size() == 1 and DELETE_WARNING in _texts(sheets[0]), "the confirmation must carry the warning: %s" % [sheets.map(_texts)])
-	sheets[0].close()
+	check(sheets.size() == 2 and DELETE_WARNING in _texts(sheets.back()), "the confirmation must carry the warning: %s" % [sheets.map(_texts)])
+	sheets.back().close()
 	await frames(2)
 	check(net.count("DELETE", "/me") == 0 and Community.signed_in(), "cancelling must send nothing")
-	check(screen.find_children("*", "Overlay", true, false).is_empty(), "the sheet must close")
+	check(screen.find_children("*", "Overlay", true, false).size() == 1, "cancelling deletion must return to settings")
+	check(tree.root.gui_get_focus_owner() == _buttons(screen, "Delete my community account")[0], "focus must return to the account action")
 
 
 func test_confirming_deletes_the_account_and_returns_to_the_menu() -> void:
@@ -340,10 +389,11 @@ func test_confirming_deletes_the_account_and_returns_to_the_menu() -> void:
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [])
 	var screen := await _community()
+	await _settings(screen)
 	_buttons(screen, "Delete my community account")[0].pressed.emit()
 	await frames(1)
 	net.answer("DELETE", "/me", 204)
-	_buttons(screen.find_children("*", "Overlay", true, false)[0], "Delete account")[0].pressed.emit()
+	_buttons(screen, "Delete account")[0].pressed.emit()
 	await frames(3)
 	check(net.count("DELETE", "/me") == 1 and not Community.signed_in(), "the account must be deleted and the session cleared")
 	var scene := tree.current_scene
@@ -356,13 +406,14 @@ func test_a_failed_deletion_shows_the_sentence_and_stays() -> void:
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [])
 	var screen := await _community()
+	await _settings(screen)
 	_buttons(screen, "Delete my community account")[0].pressed.emit()
 	await frames(1)
 	net.answer("DELETE", "/me", 500, {"error": "Internal error."})
-	_buttons(screen.find_children("*", "Overlay", true, false)[0], "Delete account")[0].pressed.emit()
+	_buttons(screen, "Delete account")[0].pressed.emit()
 	await frames(3)
 	var sheets := screen.find_children("*", "Overlay", true, false)
-	check(sheets.size() == 1 and "Internal error." in _texts(sheets[0]), "the sentence must show: %s" % [sheets.map(_texts)])
+	check(sheets.size() == 2 and "Internal error." in _texts(sheets.back()), "the sentence must show above settings: %s" % [sheets.map(_texts)])
 	check(Community.signed_in() and tree.current_scene == null, "a failed deletion keeps the session and the screen")
 
 
@@ -571,11 +622,12 @@ func test_delete_account_says_deleting_and_is_off_while_it_waits() -> void:
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [])
 	var screen := await _community()
+	await _settings(screen)
 	_buttons(screen, "Delete my community account")[0].pressed.emit()
 	await frames(1)
 	net.answer("DELETE", "/me", 204)
 	net.held = true
-	var confirm: Button = _buttons(screen.find_children("*", "Overlay", true, false)[0], "Delete account")[0]
+	var confirm: Button = _buttons(screen, "Delete account")[0]
 	confirm.pressed.emit()
 	check(confirm.text == "Deleting…" and confirm.disabled, "while it waits: %s, disabled %s" % [confirm.text, confirm.disabled])
 	net.release()
