@@ -160,6 +160,10 @@ Google's returned nonce is normalized to unpadded URL-safe Base64 before compari
 
 **Integrity rejection.** `npx wrangler tail zero-gx --format pretty` shows an `integrity_rejected` event with a fixed reason code. `stage` distinguishes service-account authentication, Google's token decode API, and verdict checks. API failures include the HTTP status and an allowlisted Google reason (`unknown` otherwise). No tokens, nonces, keys, decoded verdicts or raw Google error messages are logged. The public response stays “The integrity check failed.” and all verification requirements remain unchanged. Integrity test-response groups in Play Console are optional and are not needed for genuine checks.
 
+**GitHub HTTP 525 only under the custom domain.** Check **SSL/TLS → Overview → Origin connection & post-quantum encryption** for `braitg.dev`. Cloudflare applies the zone's outbound key-exchange policy to Worker HTTPS `fetch()` calls, including calls to `api.github.com`. Turning off Automatic key exchange does not remove selected compliance requirements. Requiring both post-quantum hybrid and NIST/FIPS can prevent negotiation with GitHub even while the GitHub Pages site and a default Worker preview work.
+
+If neither compliance requirement is mandated, clear both and retain **Full (Strict)** certificate validation and HTTPS. Do not disable TLS checks or switch API calls to HTTP. In the 22 October 2026 incident, the same installation-token exchange under `zerogx.braitg.dev` changed from 525 to 201 after clearing these requirements, with no credential changes. Verify with a private, redacted token-exchange probe before retrying a level submission; failed submissions count toward the daily limit. See [Cloudflare's key-exchange scope and controls](https://developers.cloudflare.com/ssl/origin-configuration/automatic-key-exchange/).
+
 ## Local development
 
 ```sh
