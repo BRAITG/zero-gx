@@ -36,6 +36,19 @@ const MAX_AGE_MS = 5 * 60 * 1000;
 
 type GoogleSecrets = Pick<Env, "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "PLAY_SERVICE_ACCOUNT">;
 
+/** Only fixed codes and HTTP status may reach diagnostics, never tokens, keys or Google messages. */
+class VerificationFailure extends Error {
+  constructor(readonly reason: string, readonly details: { status?: number; googleReason?: string } = {}) {
+    super(reason);
+  }
+}
+
+const GOOGLE_REASONS: Record<string, true> = {
+  SERVICE_DISABLED: true, CONSUMER_INVALID: true, IAM_PERMISSION_DENIED: true, BILLING_DISABLED: true,
+  ACCESS_TOKEN_SCOPE_INSUFFICIENT: true, PERMISSION_DENIED: true, INVALID_ARGUMENT: true, UNAUTHENTICATED: true,
+  invalid_grant: true, invalid_client: true, unauthorized_client: true, invalid_scope: true,
+};
+
 export class GoogleVerifier implements Verifier {
   constructor(
     private readonly secrets: GoogleSecrets,
@@ -45,7 +58,23 @@ export class GoogleVerifier implements Verifier {
 
   private async json(input: string, init: RequestInit): Promise<any> {
     const response = await this.fetchFn(input, init);
-    if (!response.ok) throw new Error(`${input} answered ${response.status}.`);
+    if (!response.ok) {
+      const body: unknown = await response.json().catch(() => null);
+      let reason: unknown;
+      if (body && typeof body === "object" && "error" in body) {
+        const error = body.error;
+        reason = error;
+        if (error && typeof error === "object" && "details" in error && Array.isArray(error.details)) {
+          const info: unknown = error.details.find((detail: unknown) =>
+            detail && typeof detail === "object" && "@type" in detail && detail["@type"] === "type.googleapis.com/google.rpc.ErrorInfo");
+          if (info && typeof info === "object" && "reason" in info) reason = info.reason;
+        }
+      }
+      throw new VerificationFailure("google_api", {
+        status: response.status,
+        googleReason: typeof reason === "string" && Object.hasOwn(GOOGLE_REASONS, reason) ? reason : "unknown",
+      });
+    }
     return response.json();
   }
 
@@ -83,19 +112,31 @@ export class GoogleVerifier implements Verifier {
   }
 
   async integrity(token: string, nonce: string, level: DeviceLevel) {
-    const accessToken = await this.serviceAccountToken();
-    const decoded = await this.json(`https://playintegrity.googleapis.com/v1/${PACKAGE}:decodeIntegrityToken`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ integrity_token: token }),
-    });
-    const payload = decoded.tokenPayloadExternal;
-    const request = payload?.requestDetails;
-    if (request?.requestPackageName !== PACKAGE) throw new Error("Token is for another app.");
-    if (request.nonce !== nonce) throw new Error("Token is for another nonce.");
-    if (!(Math.abs(Date.now() - Number(request.timestampMillis)) <= MAX_AGE_MS)) throw new Error("Token is stale.");
-    if (payload.appIntegrity?.appRecognitionVerdict !== "PLAY_RECOGNIZED") throw new Error("App is not recognized by Play.");
-    const required = level === "strong" ? "MEETS_STRONG_INTEGRITY" : "MEETS_DEVICE_INTEGRITY";
-    if (!payload.deviceIntegrity?.deviceRecognitionVerdict?.includes(required)) throw new Error(`Device does not meet ${level} integrity.`);
+    let stage = "service_account";
+    try {
+      const accessToken = await this.serviceAccountToken();
+      stage = "decode";
+      const decoded = await this.json(`https://playintegrity.googleapis.com/v1/${PACKAGE}:decodeIntegrityToken`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ integrity_token: token }),
+      });
+      stage = "verdict";
+      const payload = decoded.tokenPayloadExternal;
+      const request = payload?.requestDetails;
+      if (request?.requestPackageName !== PACKAGE) throw new VerificationFailure("package_mismatch");
+      if (request.nonce !== nonce) throw new VerificationFailure("nonce_mismatch");
+      if (!(Math.abs(Date.now() - Number(request.timestampMillis)) <= MAX_AGE_MS)) throw new VerificationFailure("stale");
+      if (payload.appIntegrity?.appRecognitionVerdict !== "PLAY_RECOGNIZED") throw new VerificationFailure("app_unrecognized");
+      const required = level === "strong" ? "MEETS_STRONG_INTEGRITY" : "MEETS_DEVICE_INTEGRITY";
+      if (!payload.deviceIntegrity?.deviceRecognitionVerdict?.includes(required)) throw new VerificationFailure(`device_${level}`);
+    } catch (error) {
+      const known = error instanceof VerificationFailure;
+      console.warn(JSON.stringify({
+        event: "integrity_rejected", stage, reason: known ? error.reason : "verification_error",
+        ...(known ? error.details : {}),
+      }));
+      throw error;
+    }
   }
 }

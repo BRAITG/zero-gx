@@ -1,5 +1,5 @@
 import { env } from "cloudflare:workers";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Env } from "../../src/env";
 import { boundNonce, requireIntegrity, requirePlayer, signSession } from "../../src/session";
 import { GoogleVerifier, TestVerifier } from "../../src/verify";
@@ -354,5 +354,55 @@ describe("GoogleVerifier", () => {
   it("rejects a response without a payload", async () => {
     const { v } = await verifier({});
     await expect(v.integrity("itok", "n1", "device")).rejects.toThrow();
+  });
+
+  it.each([
+    ["IAM_PERMISSION_DENIED", "IAM_PERMISSION_DENIED"],
+    ["sensitive-unexpected-reason", "unknown"],
+  ])("reports a decode failure safely (%s)", async (googleReason, loggedReason) => {
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const v = new GoogleVerifier(
+        { GOOGLE_CLIENT_ID: "cid", GOOGLE_CLIENT_SECRET: "client-secret", PLAY_SERVICE_ACCOUNT: await serviceAccount() },
+        (async (input) => String(input) === "https://oauth2.googleapis.com/token"
+          ? Response.json({ access_token: "access-token-secret" })
+          : Response.json({ error: { message: "sensitive-google-message", details: [
+            { "@type": "type.googleapis.com/google.rpc.ErrorInfo", reason: googleReason },
+          ] } }, { status: 403 })) as typeof fetch,
+      );
+      await expect(v.integrity("integrity-token-secret", "nonce-secret", "device")).rejects.toThrow();
+      expect(log.mock.calls).toEqual([[JSON.stringify({
+        event: "integrity_rejected", stage: "decode", reason: "google_api",
+        status: 403, googleReason: loggedReason,
+      })]]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("reports an app recognition failure without logging the decoded verdict", async () => {
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { v } = await verifier(verdict({ appIntegrity: { appRecognitionVerdict: "UNRECOGNIZED_VERSION", secret: "hidden" } }));
+      await expect(v.integrity("token-secret", "n1", "device")).rejects.toThrow();
+      expect(log.mock.calls).toEqual([[JSON.stringify({
+        event: "integrity_rejected", stage: "verdict", reason: "app_unrecognized",
+      })]]);
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("does not log a malformed service-account secret from the parser error", async () => {
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const v = new GoogleVerifier({ GOOGLE_CLIENT_ID: "cid", GOOGLE_CLIENT_SECRET: "secret", PLAY_SERVICE_ACCOUNT: "private-key-secret" });
+      await expect(v.integrity("token-secret", "nonce-secret", "device")).rejects.toThrow();
+      expect(log.mock.calls).toEqual([[JSON.stringify({
+        event: "integrity_rejected", stage: "service_account", reason: "verification_error",
+      })]]);
+    } finally {
+      log.mockRestore();
+    }
   });
 });
