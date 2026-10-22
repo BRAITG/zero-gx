@@ -37,13 +37,13 @@ func trainings() -> PackedStringArray:
 
 
 ## Start stage `id`: build it from its level file. Tutorials add their lesson script.
-## `testing` is the author's test flight of one of their own levels.
-func open(id: String, testing := false) -> void:
-	get_tree().change_scene_to_node(build(id, testing))
+## `testing` is the author's test flight; `publishing` keeps its Publish intent through Retry.
+func open(id: String, testing := false, publishing := false) -> void:
+	get_tree().change_scene_to_node(build(id, testing, publishing))
 
 
 ## The scene of stage `id`, built from its level file: a tutorial, a level, or the player's own.
-func build(id: String, testing := false) -> Level:
+func build(id: String, testing := false, publishing := false) -> Level:
 	var data: Dictionary
 	var script: Script = LevelFormat.LEVEL_SCRIPT
 	if id.begins_with(MyLevels.PREFIX):
@@ -58,6 +58,7 @@ func build(id: String, testing := false) -> Level:
 	var level := LevelFormat.build(data, script)
 	level.level_id = id
 	level.testing = testing
+	level.publishing = testing and publishing and Community.available()
 	if not id.begins_with("tutorial_"):
 		level.level_data = data
 		level.level_sha256 = LevelFormat.sha256(data)

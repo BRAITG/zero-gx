@@ -53,6 +53,39 @@ func _finished_draft() -> String:
 	return id
 
 
+func _my_levels() -> MyLevelsScreen:
+	var screen := MyLevelsScreen.new()
+	world.add_child(screen)
+	await frames(2)
+	return screen
+
+
+func _sheets(node: Node) -> Array:
+	return node.find_children("*", "Overlay", true, false)
+
+
+## How many POSTs the fake server has seen: sign-in and submission are the only ones.
+func _posts(net: FakeTransport) -> int:
+	return net.requests.filter(func(r: Dictionary) -> bool: return r.method == "POST").size()
+
+
+## Publish, then Use previous run: the final confirmation, which only Submit for review leaves.
+func _confirmation(screen: MyLevelsScreen) -> void:
+	_buttons(screen, "Publish")[0].pressed.emit()
+	await frames(1)
+	_buttons(screen, "Use previous run")[0].pressed.emit()
+	await frames(2)
+
+
+## Publish, then `choice` ("Play to prove it" or "Play again"): the flight that replaces the screen, or null.
+func _fly_proof(screen: MyLevelsScreen, choice: String) -> Level:
+	_buttons(screen, "Publish")[0].pressed.emit()
+	await frames(1)
+	_buttons(screen, choice)[0].pressed.emit()
+	await frames(2)
+	return tree.current_scene as Level
+
+
 func _buttons(node: Node, text: String) -> Array:
 	return node.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == text and b.is_visible_in_tree())
 
@@ -417,20 +450,108 @@ func test_a_failed_deletion_shows_the_sentence_and_stays() -> void:
 	check(Community.signed_in() and tree.current_scene == null, "a failed deletion keeps the session and the screen")
 
 
-func test_my_levels_offers_submit_only_for_a_completed_draft_with_its_demo() -> void:
+func test_my_levels_offers_publish_for_a_draft_that_was_never_tested() -> void:
+	var net := _fake()
+	var id := MyLevels.new_id()
+	MyLevels.save(id, LevelDoc.blank())
+	var screen := await _my_levels()
+	check(not MyLevels.is_completed(id) and MyLevels.demo(id) == null, "control: the draft was never finished in Test")
+	check(_buttons(screen, "Publish").size() == 1, "a draft with no run must still offer Publish: %d" % _buttons(screen, "Publish").size())
+	check(_buttons(screen, "Submit").is_empty(), "the old Submit entry point must be gone")
+	check(_posts(net) == 0, "listing the drafts uploads nothing")
+
+
+func test_publish_sits_on_the_status_row_inside_the_screen() -> void:
 	_fake()
-	var bare := MyLevels.new_id()
-	MyLevels.save(bare, LevelDoc.blank())
-	var screen := MyLevelsScreen.new()
-	world.add_child(screen)
+	_finished_draft()  # the widest first row: Watch as well
+	var screen := await _my_levels()
+	var publish: Button = _buttons(screen, "Publish")[0]
+	var width := screen.get_viewport_rect().size.x
+	check(publish.global_position.y > _buttons(screen, "Edit")[0].global_position.y, "Publish belongs on the second row, under Edit")
+	check(publish.get_global_rect().end.x <= width and _buttons(screen, "Delete")[0].get_global_rect().end.x <= width, "no button may run off the screen")
+
+
+func test_publish_without_a_run_asks_for_a_proof_and_sends_nothing() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	MyLevels.save(MyLevels.new_id(), LevelDoc.blank())
+	var screen := await _my_levels()
+	_buttons(screen, "Publish")[0].pressed.emit()
 	await frames(2)
-	check(_buttons(screen, "Submit").is_empty(), "a draft without a demo has no Submit")
+	check(_sheets(screen).size() == 1 and _buttons(screen, "Play to prove it").size() == 1, "a draft with no run must be asked to prove it: %s" % [_sheets(screen).map(_texts)])
+	check(_buttons(screen, "Use previous run").is_empty() and _buttons(screen, "Play again").is_empty(), "there is no previous run to offer")
+	check(_posts(net) == 0, "opening Publish must upload nothing")
+
+
+func test_publish_offers_the_previous_run_only_while_it_matches_the_draft() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := _finished_draft()
+	var screen := await _my_levels()
+	_buttons(screen, "Publish")[0].pressed.emit()
+	await frames(2)
+	check(_buttons(screen, "Use previous run").size() == 1 and _buttons(screen, "Play again").size() == 1, "an unchanged draft with its run offers both")
+	check(_buttons(screen, "Play to prove it").is_empty(), "a current run needs no proof")
 	screen.free()
-	_finished_draft()
-	screen = MyLevelsScreen.new()
-	world.add_child(screen)
+	var edited := MyLevels.load_level(id)
+	edited.title = "Edited"
+	MyLevels.save(id, edited)  # the run was of the draft as it was
+	screen = await _my_levels()
+	_buttons(screen, "Publish")[0].pressed.emit()
 	await frames(2)
-	check(_buttons(screen, "Submit").size() == 1, "only the finished draft has Submit: %d" % _buttons(screen, "Submit").size())
+	check(_buttons(screen, "Play to prove it").size() == 1, "an edited draft must prove itself again")
+	check(_buttons(screen, "Use previous run").is_empty() and _buttons(screen, "Play again").is_empty(), "the stale run must not be offered")
+	check(_posts(net) == 0, "choosing nothing uploads nothing")
+
+
+func test_publish_requires_a_decodable_previous_run_not_just_its_header() -> void:
+	var net := _fake()
+	var id := _finished_draft()
+	var bytes := FileAccess.get_file_as_bytes(MyLevels.demo_path(id)).decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
+	bytes.resize(bytes.size() - 3)
+	var file := FileAccess.open(MyLevels.demo_path(id), FileAccess.WRITE)
+	file.store_buffer(bytes.compress(FileAccess.COMPRESSION_GZIP))
+	file.close()
+	check(MyLevels.has_demo(id) and MyLevels.demo(id) == null, "control: the header matches, but the recording cannot decode")
+	var screen := await _my_levels()
+	_buttons(screen, "Publish")[0].pressed.emit()
+	await frames(2)
+	check(_buttons(screen, "Use previous run").is_empty() and _buttons(screen, "Play to prove it").size() == 1, "a broken recording needs a new proof flight")
+	check(_posts(net) == 0, "opening Publish sends nothing")
+
+
+func test_publish_refuses_a_draft_that_breaks_the_level_rules_and_names_why() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var data := LevelDoc.blank()
+	data.goal.position = [0, 0]  # the ship would start inside the goal
+	MyLevels.save(MyLevels.new_id(), data)
+	var problems := LevelFormat.validate(data)
+	check(not problems.is_empty(), "control: the draft is invalid")
+	var screen := await _my_levels()
+	_buttons(screen, "Publish")[0].pressed.emit()
+	await frames(2)
+	var sheets := _sheets(screen)
+	check(sheets.size() == 1 and problems[0] in _texts(sheets[0]), "the sheet must name the problem: %s" % [sheets.map(_texts)])
+	check(_buttons(screen, "Play to prove it").is_empty() and _buttons(screen, "Use previous run").is_empty(), "an invalid draft offers no proof")
+	check(tree.current_scene == null and _posts(net) == 0, "nothing may fly or upload")
+
+
+func test_use_previous_run_asks_for_the_final_confirmation_before_anything_is_sent() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := _finished_draft()
+	var screen := await _my_levels()
+	await _confirmation(screen)
+	var sheets := _sheets(screen)
+	check(sheets.size() == 1 and _buttons(screen, "Submit for review").size() == 1, "one sheet with Submit for review: %s" % [sheets.map(_texts)])
+	var words := " ".join(_texts(sheets.back()))
+	check(words.contains("moderator") and words.contains("recording"), "the sheet must say the level and its recording go to moderators: %s" % words)
+	check(_posts(net) == 0, "the confirmation alone must send nothing")
+	sheets[0].close()
+	await frames(2)
+	check(_sheets(screen).is_empty() and _posts(net) == 0 and not MyLevels.is_submitted(id), "closing the confirmation sends nothing")
+	check(_buttons(screen, "Publish").size() == 1, "the draft is still unpublished")
 
 
 func test_my_levels_shows_nothing_of_community_on_desktop() -> void:
@@ -442,56 +563,191 @@ func test_my_levels_shows_nothing_of_community_on_desktop() -> void:
 	var screen := MyLevelsScreen.new()
 	world.add_child(screen)
 	await frames(2)
-	check(_buttons(screen, "Submit").is_empty() and not _texts(screen).has("Pending"), "desktop shows neither Submit nor statuses")
+	check(_buttons(screen, "Publish").is_empty() and _buttons(screen, "Submit").is_empty() and not _texts(screen).has("Pending"), "desktop shows neither Publish nor statuses")
 	check(net.requests.is_empty(), "desktop must not reach the server: %s" % [net.requests])
 
 
-func test_submit_sends_the_draft_and_the_row_then_shows_pending() -> void:
+func test_submit_for_review_sends_the_draft_and_the_row_then_shows_pending() -> void:
 	var net := _fake()
 	await _signed_in(net)
 	var id := _finished_draft()
-	var screen := MyLevelsScreen.new()
-	world.add_child(screen)
-	await frames(2)
+	var screen := await _my_levels()
 	check(not _texts(screen).has("Pending"), "control: nothing is pending yet")
+	await _confirmation(screen)
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
-	_buttons(screen, "Submit")[0].pressed.emit()
-	await frames(2)
+	_buttons(screen, "Submit for review")[0].pressed.emit()
+	await frames(3)
 	check(net.count("POST", "/submissions") == 1 and Community.level_id_of(id) == LEVEL_ID, "the draft must be sent and its level id kept")
 	check(_texts(screen).has("Pending"), "the row must show Pending: %s" % [_texts(screen)])
-	check(_buttons(screen, "Submit").is_empty(), "a submitted draft offers no second Submit")
+	check(_buttons(screen, "Publish").is_empty(), "a submitted draft offers no second Publish")
+	check(_sheets(screen).is_empty(), "the confirmation closes once the server took the level")
 
 
-func test_submit_signs_in_first_when_signed_out() -> void:
+func test_submit_for_review_signs_in_first_when_signed_out() -> void:
 	var net := _fake()
 	_finished_draft()
-	var screen := MyLevelsScreen.new()
-	world.add_child(screen)
-	await frames(2)
+	var screen := await _my_levels()
+	await _confirmation(screen)
 	net.answer("GET", "/nonce", 200, {"nonce": "n1"})
 	net.answer("POST", "/session", 200, SESSION)
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
-	_buttons(screen, "Submit")[0].pressed.emit()
+	_buttons(screen, "Submit for review")[0].pressed.emit()
 	await frames(2)
-	check(Community.signed_in() and net.count("POST", "/submissions") == 1, "Submit must sign in and send")
+	check(Community.signed_in() and net.count("POST", "/submissions") == 1, "Submit for review must sign in and send")
 
 
 func test_a_failed_submit_shows_the_sentence_and_no_status() -> void:
 	var net := _fake()
 	await _signed_in(net)
 	_finished_draft()
-	var screen := MyLevelsScreen.new()
-	world.add_child(screen)
-	await frames(2)
+	var screen := await _my_levels()
+	await _confirmation(screen)
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/submissions", 429, {"error": "At most 5 submissions are accepted per day."})
-	_buttons(screen, "Submit")[0].pressed.emit()
+	_buttons(screen, "Submit for review")[0].pressed.emit()
 	await frames(2)
-	var sheets := screen.find_children("*", "Overlay", true, false)
-	check(sheets.size() == 1 and "At most 5 submissions are accepted per day." in _texts(sheets[0]), "the server's sentence must show: %s" % [sheets.map(_texts)])
+	var sheets := _sheets(screen)
+	check(sheets.size() == 2 and "At most 5 submissions are accepted per day." in _texts(sheets.back()), "the server's sentence must show above the confirmation: %s" % [sheets.map(_texts)])
 	check(not _texts(screen).has("Pending"), "a refused submission is not pending")
+	check(_buttons(screen, "Publish").size() == 1, "a refused draft is still offered")
+
+
+func test_android_back_closes_publish_sheets_without_leaving_or_submitting() -> void:
+	var net := _fake()
+	_finished_draft()
+	var screen := await _my_levels()
+	_buttons(screen, "Publish")[0].pressed.emit()
+	await frames(1)
+	screen._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await frames(2)
+	check(_sheets(screen).is_empty() and tree.current_scene == null, "Back closes the proof choice and stays in My levels")
+	await _confirmation(screen)
+	screen._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await frames(2)
+	check(_sheets(screen).is_empty() and tree.current_scene == null and _posts(net) == 0, "Back closes the confirmation without submitting")
+
+
+func test_submit_for_review_rechecks_the_draft_after_the_confirmation_opened() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := _finished_draft()
+	var screen := await _my_levels()
+	await _confirmation(screen)
+	var edited := MyLevels.load_level(id)
+	edited.title = "Changed after confirmation"
+	MyLevels.save(id, edited)
+	_buttons(screen, "Submit for review")[0].pressed.emit()
+	await frames(2)
+	var sheets := _sheets(screen)
+	check(sheets.size() == 2 and Community.NOT_SUBMITTABLE in _texts(sheets.back()), "the stale proof must be refused with the existing error")
+	check(_posts(net) == 0 and not MyLevels.is_submitted(id), "a stale confirmation must upload nothing")
+
+
+func test_play_to_prove_it_flies_this_draft_as_a_test_flight_with_publish_intent() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := MyLevels.new_id()
+	MyLevels.save(id, LevelDoc.blank())
+	var stage := await _fly_proof(await _my_levels(), "Play to prove it")
+	check(stage != null and stage.level_id == id and stage.testing, "the proof must be a test flight of this draft: %s" % stage)
+	check(_posts(net) == 0, "starting the flight uploads nothing")
+	_leave_scene()
+
+
+func test_play_again_flies_the_draft_with_publish_intent() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := _finished_draft()
+	var stage := await _fly_proof(await _my_levels(), "Play again")
+	check(stage != null and stage.level_id == id and stage.testing, "Play again must be a test flight of this draft: %s" % stage)
+	check(_posts(net) == 0, "starting the flight uploads nothing")
+	_leave_scene()
+
+
+func test_a_won_proof_flight_offers_publish_and_opens_the_confirmation_even_after_a_retry() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := MyLevels.new_id()
+	MyLevels.save(id, LevelDoc.blank())
+	var stage := await _fly_proof(await _my_levels(), "Play to prove it")
+	if stage == null:
+		check(false, "the proof flight must open")
+		return
+	var first := stage.get_instance_id()
+	stage.finish(false)
+	await frames(2)
+	_buttons(stage.hud, "Retry")[0].pressed.emit()
+	await frames(2)
+	var again := tree.current_scene as Level
+	check(again != null and again.get_instance_id() != first and again.level_id == id and again.testing, "Retry must reopen this draft's test flight: %s" % again)
+	if again == null or again.get_instance_id() == first:
+		return
+	again.finish(true)
+	await frames(2)
+	check(MyLevels.demo(id) != null and _posts(net) == 0, "the win keeps the run and sends nothing")
+	check(_buttons(again.hud, "Publish").size() == 1, "a win must offer Publish")
+	_buttons(again.hud, "Publish")[0].pressed.emit()
+	await frames(3)
+	var list := tree.current_scene
+	check(list is MyLevelsScreen and _buttons(list, "Submit for review").size() == 1, "Publish must open the final confirmation in My levels: %s" % list)
+	check(_posts(net) == 0, "the confirmation alone must send nothing")
+	if not list is MyLevelsScreen:
+		return
+	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
+	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
+	_buttons(list, "Submit for review")[0].pressed.emit()
+	await frames(3)
+	check(net.count("POST", "/submissions") == 1 and MyLevels.is_submitted(id), "Submit for review must send the proven draft")
+	_leave_scene()
+
+
+func test_a_lost_proof_flight_offers_no_publish_and_sends_nothing() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := _finished_draft()
+	var stage := await _fly_proof(await _my_levels(), "Play again")
+	if stage == null:
+		check(false, "the proof flight must open")
+		return
+	stage.finish(false)
+	await frames(2)
+	check(_buttons(stage.hud, "Publish").is_empty(), "a loss must not offer Publish")
+	check(MyLevels.demo(id) != null, "a loss must not throw the earlier run away")
+	stage.hud.menu_requested.emit()
+	await frames(2)
+	var list := tree.current_scene
+	check(list is MyLevelsScreen and _sheets(list).is_empty(), "leaving a lost run returns to My levels with nothing open: %s" % list)
+	check(_posts(net) == 0 and not MyLevels.is_submitted(id), "a lost run must upload nothing")
+	_leave_scene()
+
+
+func test_abandoning_a_proof_flight_or_leaving_after_a_win_confirms_and_sends_nothing() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := MyLevels.new_id()
+	MyLevels.save(id, LevelDoc.blank())
+	var stage := await _fly_proof(await _my_levels(), "Play to prove it")
+	if stage == null:
+		check(false, "the proof flight must open")
+		return
+	stage.hud.menu_requested.emit()  # before the run ends
+	await frames(2)
+	var list := tree.current_scene
+	check(list is MyLevelsScreen and _sheets(list).is_empty() and _buttons(list, "Publish").size() == 1, "abandoning returns to My levels with nothing open: %s" % list)
+	check(MyLevels.demo(id) == null and _posts(net) == 0, "an abandoned run keeps nothing and sends nothing")
+	_leave_scene()
+	stage = await _fly_proof(await _my_levels(), "Play to prove it")
+	stage.finish(true)
+	await frames(2)
+	stage.hud.menu_requested.emit()  # the player won but did not press Publish
+	await frames(3)
+	list = tree.current_scene
+	check(list is MyLevelsScreen and _sheets(list).is_empty(), "leaving a won run by Menu opens no confirmation: %s" % list)
+	check(_posts(net) == 0 and not MyLevels.is_submitted(id), "nothing is sent without Submit for review")
+	check(_buttons(list, "Publish").size() == 1 and MyLevels.demo(id) != null, "the proven run stays for the next Publish")
+	_leave_scene()
 
 
 func test_my_levels_maps_submission_statuses_to_row_text() -> void:
@@ -503,6 +759,8 @@ func test_my_levels_maps_submission_statuses_to_row_text() -> void:
 	MyLevels.set_level_id(open, "lvl_aaaaaaaaaa")
 	MyLevels.set_level_id(approved, "lvl_bbbbbbbbbb")
 	MyLevels.set_level_id(rejected, "lvl_cccccccccc")
+	for id in [open, approved, rejected]:
+		MyLevels.set_submitted(id, LevelFormat.sha256(MyLevels.load_level(id)))
 	net.answer("GET", "/me/submissions", 200, [
 		{"level_id": "lvl_aaaaaaaaaa", "version": 1, "status": "open", "comment": null, "pull_request": 5, "title": "A"},
 		{"level_id": "lvl_bbbbbbbbbb", "version": 2, "status": "approved", "comment": null, "pull_request": 6, "title": "B"},
@@ -513,6 +771,7 @@ func test_my_levels_maps_submission_statuses_to_row_text() -> void:
 	await frames(2)
 	var texts := _texts(screen)
 	check("Pending" in texts and "Approved v2" in texts and "Rejected: Too easy." in texts, "status lines: %s" % [texts])
+	check(_buttons(screen, "Publish").is_empty(), "unchanged Pending, Approved and Rejected drafts must offer no repeat Publish")
 
 
 func test_my_levels_shows_the_last_known_status_offline() -> void:
@@ -536,16 +795,15 @@ func test_my_levels_shows_submitted_for_an_unchanged_draft_until_it_is_edited() 
 	var screen := MyLevelsScreen.new()
 	world.add_child(screen)
 	await frames(2)
-	check(_buttons(screen, "Submit").is_empty() and _texts(screen).has("Submitted"), "an unchanged submitted draft shows Submitted and no Submit: %s" % [_texts(screen)])
+	check(_buttons(screen, "Publish").is_empty() and _texts(screen).has("Submitted"), "an unchanged submitted draft shows Submitted and no Publish: %s" % [_texts(screen)])
 	screen.free()
 	var edited := MyLevels.load_level(id)
 	edited.title = "Edited"
 	MyLevels.save(id, edited)
-	_finish(id)  # tested and won again
 	screen = MyLevelsScreen.new()
 	world.add_child(screen)
 	await frames(2)
-	check(_buttons(screen, "Submit").size() == 1 and not _texts(screen).has("Submitted"), "an edited draft offers Submit again: %s" % [_texts(screen)])
+	check(_buttons(screen, "Publish").size() == 1 and not _texts(screen).has("Submitted"), "an edited draft offers Publish again: %s" % [_texts(screen)])
 
 
 func test_the_community_button_says_signing_in_and_is_off_while_it_waits() -> void:
@@ -565,22 +823,21 @@ func test_the_community_button_says_signing_in_and_is_off_while_it_waits() -> vo
 	_leave_scene()
 
 
-func test_submit_says_submitting_and_is_off_while_it_waits_then_comes_back_after_a_refusal() -> void:
+func test_submit_for_review_says_submitting_and_is_off_while_it_waits_then_comes_back_after_a_refusal() -> void:
 	var net := _fake()
 	await _signed_in(net)
 	_finished_draft()
-	var screen := MyLevelsScreen.new()
-	world.add_child(screen)
-	await frames(2)
+	var screen := await _my_levels()
+	await _confirmation(screen)
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/submissions", 429, {"error": "At most 5 submissions are accepted per day."})
 	net.held = true
-	var submit: Button = _buttons(screen, "Submit")[0]
+	var submit: Button = _buttons(screen, "Submit for review")[0]
 	submit.pressed.emit()
 	check(submit.text == "Submitting…" and submit.disabled, "while it waits: %s, disabled %s" % [submit.text, submit.disabled])
 	net.release()
 	await frames(2)
-	check(submit.text == "Submit" and not submit.disabled, "a refused submission gives the button back: %s" % submit.text)
+	check(submit.text == "Submit for review" and not submit.disabled, "a refused submission gives the button back: %s" % submit.text)
 
 
 func test_play_says_loading_and_is_off_while_the_level_downloads() -> void:

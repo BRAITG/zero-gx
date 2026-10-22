@@ -50,6 +50,28 @@ func test_test_flight_leaves_through_edit() -> void:
 	check("Edit" in labels and not "Menu" in labels, "test flight buttons: %s" % [labels])
 
 
+func test_a_won_publish_flight_is_a_test_flight_that_leaves_to_my_levels() -> void:
+	Community.platform = FakePlatform.new()
+	var id := MyLevels.new_id()
+	MyLevels.save(id, LevelDoc.new().data)
+	var lvl := Progress.build(id, true, true)
+	world.add_child(lvl)
+	await frames(2)
+	lvl.finish(true)
+	await frames(2)
+	check(MyLevels.is_completed(id) and MyLevels.demo(id) != null, "a publish flight keeps the test recording and completion")
+	check(Progress.best_points(id) < 0, "a publish flight records no score")
+	var shown: Array = lvl.hud.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.is_visible_in_tree()).map(func(b: Button) -> String: return b.text)
+	check("Publish" in shown and "Menu" in shown and not "Edit" in shown, "publish flight result buttons: %s" % [shown])
+	lvl.hud.menu_requested.emit()
+	await frames(2)
+	var scene := tree.current_scene
+	check(scene is MyLevelsScreen, "leaving a publish flight must return to My levels, not the editor: %s" % scene)
+	if scene != null:
+		scene.free()
+		tree.current_scene = null
+
+
 func test_official_level_round_trips_through_import_and_export() -> void:
 	var source := "res://levels/level_05.json"
 	var original := FileAccess.get_file_as_string(source)

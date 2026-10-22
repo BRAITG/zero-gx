@@ -231,6 +231,30 @@ func test_typing_in_a_text_field_is_not_a_shortcut() -> void:
 	field.free()
 
 
+func test_the_editors_test_flight_is_a_plain_test_that_returns_to_the_editor() -> void:
+	Community.platform = FakePlatform.new()
+	var e := editor()
+	await frames(1)
+	e._test()
+	await frames(2)
+	var lvl := tree.current_scene as Level
+	check(lvl != null and lvl.testing and lvl.level_id == e.level_id, "Test must start this draft's test flight: %s" % lvl)
+	if lvl == null:
+		return
+	lvl.finish(true)
+	await frames(2)
+	var shown: Array = lvl.hud.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.is_visible_in_tree()).map(func(b: Button) -> String: return b.text)
+	check("Edit" in shown and not "Publish" in shown, "a plain test win offers Edit, not Publish: %s" % [shown])
+	check(MyLevels.is_completed(e.level_id), "a won test still completes the level")
+	lvl.hud.menu_requested.emit()
+	await frames(2)
+	var back := tree.current_scene
+	check(back is LevelEditor and back.level_id == e.level_id, "Edit must return to the editor: %s" % back)
+	if back != null:
+		back.free()
+		tree.current_scene = null
+
+
 func _button_named(e: LevelEditor, text: String) -> Button:
 	for b: Button in e.find_children("*", "Button", true, false):
 		if b.text == text:
