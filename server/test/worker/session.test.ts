@@ -330,6 +330,24 @@ describe("GoogleVerifier", () => {
     expect(JSON.parse(String(calls[1]!.init!.body))).toEqual({ integrity_token: "itok" });
   });
 
+  it.each(["padded URL-safe", "standard", "unpadded standard"])("accepts the same nonce returned as %s Base64", async (encoding) => {
+    const standard = btoa(String.fromCharCode(...new Uint8Array(32).fill(255)));
+    const expected = standard.replace(/\//g, "_").replace(/=+$/, "");
+    const returned = encoding === "padded URL-safe" ? expected + "="
+      : encoding === "standard" ? standard : standard.replace(/=+$/, "");
+    const { v } = await verifier(verdict({
+      requestDetails: { requestPackageName: PACKAGE, nonce: returned, timestampMillis: String(Date.now()) },
+    }));
+    await expect(v.integrity("itok", expected, "device")).resolves.toBeUndefined();
+  });
+
+  it.each([null, 123, "", "n1 ", "n1\n", "n1====", "other="])("rejects an invalid or different nonce %j", async (returned) => {
+    const { v } = await verifier(verdict({
+      requestDetails: { requestPackageName: PACKAGE, nonce: returned, timestampMillis: String(Date.now()) },
+    }));
+    await expect(v.integrity("itok", "n1", "device")).rejects.toThrow();
+  });
+
   const bad: [string, Record<string, unknown>][] = [
     ["another package", { requestDetails: { requestPackageName: "com.evil", nonce: "n1", timestampMillis: String(Date.now()) } }],
     ["another nonce", { requestDetails: { requestPackageName: PACKAGE, nonce: "n2", timestampMillis: String(Date.now()) } }],
