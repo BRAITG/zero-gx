@@ -55,7 +55,7 @@ These match `PRIVACY.md` from the community release on. Play counts data as coll
 |---|---|
 | Does the app collect or share any of the required user data types? | Yes |
 | Is all collected data encrypted in transit? | Yes (HTTPS only) |
-| Do you provide a way for users to request that their data is deleted? | Yes: in the app (Community → Delete my community account) and by email |
+| Do you provide a way for users to request that their data is deleted? | Yes: in the app (Community → Settings → Account → Delete my community account) and by email |
 | Account deletion URL | `https://braitg.dev/zero-gx/privacy/#deleting-your-data` |
 | Personal info → **Name** (Play Games display name) | Collected, not shared, optional, purposes: App functionality, Account management |
 | Personal info → **User IDs** (Play Games player ID, Zero-GX player ID) | Collected, not shared, optional, purposes: App functionality, Account management, Fraud prevention, security and compliance |
