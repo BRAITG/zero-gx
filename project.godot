@@ -22,8 +22,8 @@ GodotPlayGameServices="*res://addons/GodotPlayGameServices/scripts/autoloads/god
 [community]
 
 api_url="https://zerogx.braitg.dev"
-google_web_client_id=""
-cloud_project_number=0
+google_web_client_id="171184149910-7qrlnlt0gtr33sv6mf55tnhom0plrik8.apps.googleusercontent.com"
+cloud_project_number=171184149910
 
 [display]
 
