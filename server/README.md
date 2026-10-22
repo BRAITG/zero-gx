@@ -156,6 +156,8 @@ Then add that level's `lvl_id` to `hidden.txt` in a pull request (the file `v<N>
 
 **Logs.** `npx wrangler tail` streams the Worker's logs; cron step failures appear as `cron: <step> failed`.
 
+**Integrity rejection.** `npx wrangler tail zero-gx --format pretty` shows an `integrity_rejected` event with a fixed reason code. `stage` distinguishes service-account authentication, Google's token decode API, and verdict checks. API failures include the HTTP status and an allowlisted Google reason (`unknown` otherwise). No tokens, nonces, keys, decoded verdicts or raw Google error messages are logged. The public response stays “The integrity check failed.” and all verification requirements remain unchanged. Integrity test-response groups in Play Console are optional and are not needed for genuine checks.
+
 ## Local development
 
 ```sh
