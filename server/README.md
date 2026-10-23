@@ -15,14 +15,17 @@ Auth, in the table below:
 | `POST /session` | none (nonce, auth code, integrity token in the body) | Signs a player in with a Play Games auth code; returns a 7-day session token. |
 | `POST /scores` | session + integrity | Re-checks the posted demo against its level, scores it, keeps the player's best. |
 | `POST /plays` | session + integrity | Records the caller's attempts (at most 32 per 16 KiB batch, 30 batches a minute) and acknowledges each one. Attempts up to a version's first clear feed the vote eligibility. |
-| `DELETE /me` | session | Erases the caller: Play Games link, name, scores, likes, reports, play history, rate counters and ranking row. The demo sweep deletes the orphaned demos. Their levels and submissions stay under the bare player id, with the author shown as "Deleted player". |
+| `DELETE /me` | session | Erases the caller: Play Games link, name, scores, likes, reports, play history, difficulty votes, rate counters and ranking row. The demo sweep deletes the orphaned demos. Their levels and submissions stay under the bare player id, with the author shown as "Deleted player". |
 | `GET /boards/:sha256` | session | The top 100 for one level hash plus the caller's own row. |
 | `GET /demos/:sha256/:player/:file` | session | A stored score demo. |
 | `POST /submissions` | session + integrity | Validates a level and its demo, opens or updates the pull request. |
 | `GET /me/submissions` | session | The caller's submissions with status and review comment. |
-| `POST /levels/:level/like`, `DELETE /levels/:level/like` | session | Likes or unlikes a level (a like needs a score on it). |
+| `POST /levels/:level/like`, `DELETE /levels/:level/like` | session | Likes or unlikes a level. A like needs a clear on any of its versions, five counted attempts across them, or a verified score. |
 | `POST /levels/:level/report` | session | Files a report as a GitHub issue in the levels repository. |
-| `GET /levels` | session | Visible community levels, `sort=top` or `new`, paged. |
+| `GET /levels` | session | Visible community levels, `sort=top` or `new`, paged. Each row gives the latest version's reviewed difficulty and its community label with the voter count. |
+| `GET /levels/:level/feedback?sha256=` | session | One version's reviewed and community difficulty, its play statistics (ratios and median from ten starters), and the caller's own state. |
+| `PUT /levels/:level/difficulty` | session | `{sha256, difficulty}`: sets the caller's one vote on that version. Needs a clear or five counted attempts on it. |
+| `DELETE /levels/:level/difficulty?sha256=` | session | Removes the caller's vote. Needs no play. |
 | `GET /players` | session | The player ranking. |
 | `GET /index` | session | The commit of the levels repository the game should read `index.json` from. |
 | `POST /admin/official` | admin | Registers the SHA-256 hashes of a release's official levels. |
@@ -123,7 +126,7 @@ Set it back to `0` to unban. Player ids are not in `GET /levels`; find them in b
 
 ```sh
 P=p_xxxxxxxxxxxxxxxx
-npx wrangler d1 execute zero-gx --remote --command "DELETE FROM scores WHERE player = '$P'; DELETE FROM likes WHERE player = '$P'; DELETE FROM reports WHERE player = '$P'; DELETE FROM play_attempts WHERE player = '$P'; DELETE FROM play_summaries WHERE player = '$P'; DELETE FROM rate WHERE player = '$P'; DELETE FROM player_ranking WHERE player = '$P'; DELETE FROM accounts WHERE player = '$P'; DELETE FROM players WHERE id = '$P'"
+npx wrangler d1 execute zero-gx --remote --command "DELETE FROM scores WHERE player = '$P'; DELETE FROM likes WHERE player = '$P'; DELETE FROM reports WHERE player = '$P'; DELETE FROM play_attempts WHERE player = '$P'; DELETE FROM play_summaries WHERE player = '$P'; DELETE FROM difficulty_votes WHERE player = '$P'; DELETE FROM rate WHERE player = '$P'; DELETE FROM player_ranking WHERE player = '$P'; DELETE FROM accounts WHERE player = '$P'; DELETE FROM players WHERE id = '$P'"
 ```
 
 **Hide a level.** Open a pull request in the levels repository that adds its `lvl_id` to `hidden.txt` and changes nothing else. When it is merged the webhook (a `push` touching `hidden.txt`) refreshes D1 and rebuilds the index. Hiding hides the whole level: its earlier approved versions also disappear from the index, the boards and the player ranking, and the boards stop accepting scores.

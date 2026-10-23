@@ -1,6 +1,7 @@
 import type { Env } from "./env";
 import { type Handler, HttpError } from "./http";
 import { getIndex, getLevels, getPlayers, postReport, putLike, runCron } from "./community";
+import { deleteDifficulty, getFeedback, putDifficulty } from "./feedback";
 import { postPlays } from "./plays";
 import { getBoard, getDemo, postOfficial, postScore } from "./scores";
 import { deleteMe, getNonce, postSession } from "./session";
@@ -22,6 +23,9 @@ const routes: [method: string, pattern: string, handler: Handler][] = [
   ["POST", "/levels/:level/like", putLike],
   ["DELETE", "/levels/:level/like", putLike],
   ["POST", "/levels/:level/report", postReport],
+  ["GET", "/levels/:level/feedback", getFeedback],
+  ["PUT", "/levels/:level/difficulty", putDifficulty],
+  ["DELETE", "/levels/:level/difficulty", deleteDifficulty],
   ["GET", "/levels", getLevels],
   ["GET", "/players", getPlayers],
   ["GET", "/index", getIndex],

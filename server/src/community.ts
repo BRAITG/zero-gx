@@ -1,7 +1,9 @@
 import type { Env } from "./env";
+import { communityLabels } from "./feedback";
 import { getHeadCommit, openIssue } from "./github";
 import { HttpError, readJson } from "./http";
 import { VISIBLE, visibleLevel } from "./levels";
+import { playEligibility, STAGE_ELIGIBLE } from "./plays";
 import { DELETED_AUTHOR, requirePlayer } from "./session";
 import { rebuildIndex } from "./submissions";
 
@@ -24,17 +26,23 @@ const RATE_KEEP = 2;
 
 const now = () => Math.floor(Date.now() / 1000);
 
-/** `POST` likes the level (only after a score on any of its versions), `DELETE` removes the like; both are idempotent and answer the new count. */
+const LIKE = `INSERT OR IGNORE INTO likes (player, level)
+  SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM players WHERE id = ?1 AND banned = 0)
+    AND EXISTS (SELECT 1 FROM levels l WHERE l.id = ?2 AND ${VISIBLE})
+    AND ${STAGE_ELIGIBLE}`;
+const UNLIKE = "DELETE FROM likes WHERE player = ? AND level = ?";
+/** Banned likers are filtered at query time; deleted ones have no rows. */
+const LIKES = "SELECT COUNT(*) AS likes FROM likes k JOIN players p ON p.id = k.player WHERE k.level = ? AND p.banned = 0";
+
+/** `POST` likes the level while the player is eligible (a clear, five counted attempts or a verified score); `DELETE` removes the like. Both are idempotent and answer the new count. */
 export async function putLike(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
   const player = await requirePlayer(request, env);
   const level = await visibleLevel(env, params.level);
   const liking = request.method === "POST";
-  if (liking) {
-    const played = await env.DB.prepare("SELECT 1 AS yes FROM scores s JOIN versions v ON v.sha256 = s.sha256 WHERE v.level = ? AND s.player = ?").bind(level.id, player.id).first();
-    if (!played) throw new HttpError(403, "Play the level before liking it.");
-  }
-  const change = liking ? "INSERT OR IGNORE INTO likes (player, level) VALUES (?, ?)" : "DELETE FROM likes WHERE player = ? AND level = ?";
-  const [, count] = await env.DB.batch<{ likes: number }>([env.DB.prepare(change).bind(player.id, level.id), env.DB.prepare("SELECT COUNT(*) AS likes FROM likes WHERE level = ?").bind(level.id)]);
+  if (liking && !(await playEligibility(env, player.id, level.id)).eligible) throw new HttpError(403, "Play the level before liking it.");
+  const [, count] = await env.DB.batch<{ likes: number }>([env.DB.prepare(liking ? LIKE : UNLIKE).bind(player.id, level.id), env.DB.prepare(LIKES).bind(level.id)]);
+  // Erased or banned since the checks: the guarded insert wrote nothing, so refuse here instead.
+  await requirePlayer(request, env);
   return Response.json({ likes: count!.results[0]!.likes });
 }
 
@@ -47,15 +55,16 @@ export async function getLevels(request: Request, env: Env): Promise<Response> {
   if (!/^\d{1,6}$/.test(page)) throw new HttpError(400, "page must be a non-negative integer.");
   const order = sort === "top" ? "likes DESC, players DESC, l.id" : "v.approved DESC, l.id";
   const { results } = await env.DB.prepare(
-    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256,
-       (SELECT COUNT(*) FROM likes k WHERE k.level = l.id) AS likes,
-       (SELECT COUNT(DISTINCT s.player) FROM scores s JOIN versions w ON w.sha256 = s.sha256 WHERE w.level = l.id) AS players
+    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256, v.reviewed_difficulty,
+       (SELECT COUNT(*) FROM likes k JOIN players kp ON kp.id = k.player WHERE k.level = l.id AND kp.banned = 0) AS likes,
+       (SELECT COUNT(DISTINCT s.player) FROM scores s JOIN versions w ON w.sha256 = s.sha256 JOIN players sp ON sp.id = s.player WHERE w.level = l.id AND sp.banned = 0) AS players
      FROM levels l LEFT JOIN players p ON p.id = l.owner JOIN versions v ON v.level = l.id AND v.version = l.latest
      WHERE ${VISIBLE} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ?`,
   )
     .bind(Number(page) * PAGE_SIZE)
-    .all();
-  return Response.json(results);
+    .all<{ sha256: string }>();
+  const community = await communityLabels(env, results.map((row) => row.sha256));
+  return Response.json(results.map((row) => ({ ...row, community_difficulty: community.get(row.sha256)! })));
 }
 
 const RANK_ROW = `SELECT r.rank, r.player AS id, p.name, r.points FROM player_ranking r JOIN players p ON p.id = r.player WHERE p.banned = 0`;

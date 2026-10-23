@@ -73,7 +73,7 @@ class Github {
 }
 
 beforeEach(async () => {
-  await env.DB.batch(["play_attempts", "play_summaries", "players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(["play_attempts", "play_summaries", "difficulty_votes", "players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
   const { objects } = await env.DEMOS.list();
   if (objects.length) await env.DEMOS.delete(objects.map((o) => o.key));
 });
@@ -135,7 +135,7 @@ describe("GET /levels", () => {
     await env.DB.prepare("INSERT INTO likes VALUES ('p_a', 'lvl_cccccccccc'), ('p_b', 'lvl_cccccccccc'), ('p_a', 'lvl_aaaaaaaaaa'), ('p_a', 'lvl_dddddddddd')").run();
     const items = await list();
     expect(items.map((i) => i.level_id)).toEqual(["lvl_cccccccccc", "lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb"]);
-    expect(items[2]).toEqual({ level_id: "lvl_bbbbbbbbbb", title: "Two versions", author: "Name p_b", latest: 2, sha256: hash("lvl_bbbbbbbbbb-v2"), likes: 0, players: 2 });
+    expect(items[2]).toEqual({ level_id: "lvl_bbbbbbbbbb", title: "Two versions", author: "Name p_b", latest: 2, sha256: hash("lvl_bbbbbbbbbb-v2"), likes: 0, players: 2, reviewed_difficulty: null, community_difficulty: { value: null, votes: 0 } });
     expect(items[0]).toMatchObject({ likes: 2, players: 1 });
     expect(await list("?sort=top&page=0")).toEqual(items);
   });

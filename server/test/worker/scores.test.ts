@@ -69,6 +69,7 @@ beforeEach(async () => {
   await env.DB.batch([
     env.DB.prepare("DELETE FROM play_attempts"),
     env.DB.prepare("DELETE FROM play_summaries"),
+    env.DB.prepare("DELETE FROM difficulty_votes"),
     env.DB.prepare("DELETE FROM scores"),
     env.DB.prepare("DELETE FROM rate"),
     env.DB.prepare("DELETE FROM official_levels"),

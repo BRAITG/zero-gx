@@ -9,7 +9,7 @@ const PLAYS_PER_MINUTE = 30;
 /** Counted attempts that unlock a version's vote (or a stage's like) without a clear. */
 const ELIGIBLE_ATTEMPTS = 5;
 const ATTEMPT_ID = /^[0-9a-f]{32}$/;
-const SHA256 = /^[0-9a-f]{64}$/;
+export const SHA256 = /^[0-9a-f]{64}$/;
 const SNAPSHOT_FIELDS = "ended_ms,id,outcome,revision,sha256,started_ms";
 
 type Outcome = "failed" | "abandoned" | "cleared";
@@ -184,3 +184,12 @@ export async function playEligibility(env: Env, player: string, level: string, s
   const cleared = row!.cleared === 1 || row!.scored === 1;
   return { attempts, cleared, eligible: cleared || attempts >= ELIGIBLE_ATTEMPTS };
 }
+
+/** SQL form of playEligibility for one version (`?1` player, `?2` version hash), so a write can check it atomically. */
+export const VERSION_ELIGIBLE = `(EXISTS (SELECT 1 FROM play_summaries s WHERE s.player = ?1 AND s.sha256 = ?2 AND (s.first_clear_ms IS NOT NULL OR s.attempts >= ${ELIGIBLE_ATTEMPTS}))
+  OR EXISTS (SELECT 1 FROM scores c WHERE c.player = ?1 AND c.sha256 = ?2))`;
+
+/** SQL form of playEligibility for a whole stage (`?1` player, `?2` level id). */
+export const STAGE_ELIGIBLE = `(EXISTS (SELECT 1 FROM play_summaries s JOIN versions w ON w.sha256 = s.sha256 WHERE w.level = ?2 AND s.player = ?1 AND s.first_clear_ms IS NOT NULL)
+  OR EXISTS (SELECT 1 FROM scores c JOIN versions w ON w.sha256 = c.sha256 WHERE w.level = ?2 AND c.player = ?1)
+  OR (SELECT COALESCE(SUM(s.attempts), 0) FROM play_summaries s JOIN versions w ON w.sha256 = s.sha256 WHERE w.level = ?2 AND s.player = ?1) >= ${ELIGIBLE_ATTEMPTS})`;

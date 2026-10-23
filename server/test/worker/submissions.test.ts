@@ -167,7 +167,7 @@ async function seedOpen(level: string, version: number, player: string, pullRequ
 }
 
 beforeEach(async () => {
-  await env.DB.batch(["play_attempts", "play_summaries", "submissions", "rate", "official_levels", "versions", "levels", "hidden_levels"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(["play_attempts", "play_summaries", "difficulty_votes", "submissions", "rate", "official_levels", "versions", "levels", "hidden_levels"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
 });
 
 describe("installationToken", () => {

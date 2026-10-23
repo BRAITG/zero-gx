@@ -74,7 +74,7 @@ export async function requirePlayer(request: Request, env: Env, allowBanned = fa
 
 /**
  * Erases the signed-in player (banned ones too: erasure is a right): the Play Games link, name, scores, likes, reports,
- * play history, rate counters and ranking. The cron's demo sweep then deletes the orphaned R2 demos. Levels and submissions stay
+ * play history, difficulty votes, rate counters and ranking. The cron's demo sweep then deletes the orphaned R2 demos. Levels and submissions stay
  * under the bare `p_` id, which nothing links to a person any more; their author shows as DELETED_AUTHOR.
  */
 export async function deleteMe(request: Request, env: Env): Promise<Response> {
@@ -86,6 +86,7 @@ export async function deleteMe(request: Request, env: Env): Promise<Response> {
       "DELETE FROM reports WHERE player = ?",
       "DELETE FROM play_attempts WHERE player = ?",
       "DELETE FROM play_summaries WHERE player = ?",
+      "DELETE FROM difficulty_votes WHERE player = ?",
       "DELETE FROM rate WHERE player = ?",
       "DELETE FROM player_ranking WHERE player = ?",
       "DELETE FROM accounts WHERE player = ?",
