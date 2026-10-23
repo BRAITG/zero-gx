@@ -32,6 +32,10 @@ var level_sha256 := ""
 var demo: Demo
 var _recorder: DemoRecorder
 var _done := false
+## The community attempt this run counts: its id, "" when none was recorded. Set once, when the run first goes live.
+var _attempt := ""
+## Whether the run's live-start decision was made. It is made once, even when nothing was recorded.
+var _start_checked := false
 
 
 func _ready() -> void:
@@ -76,6 +80,34 @@ func _ready() -> void:
 	goal.reached.connect(finish.bind(true))
 	ship.destroyed.connect(_ship_lost)
 	ship.stranded.connect(_ship_stranded)
+
+
+## A run goes live on its first physics tick that is not paused and has no tour: physics callbacks run before the ship's step, so nothing has moved yet.
+func _physics_process(_delta: float) -> void:
+	if _start_checked or _done or tour != null:
+		return
+	_start_checked = true
+	_attempt = _begin_attempt()
+
+
+## The attempt this run starts: "" for any stage that is not a community play, or when nothing could be recorded.
+func _begin_attempt() -> String:
+	var sha := _community_sha()
+	return "" if sha == "" else Community.record_play_start(sha)
+
+
+## The downloaded version this run plays, from the hash in its community stage id; "" for any other stage and a test flight.
+func _community_sha() -> String:
+	if testing or not level_id.begins_with(Community.STAGE_PREFIX):
+		return ""
+	return level_id.trim_prefix(Community.STAGE_PREFIX)
+
+
+## Leaving a live run (Retry, Menu, Back, a scene change or quitting) abandons it once. Only the record is saved here: the upload waits for a later flush, so no request starts while the tree is leaving.
+func _exit_tree() -> void:
+	if _attempt != "" and not _done and is_instance_valid(Community):
+		_done = true
+		Community.record_play_finish(_attempt, "abandoned")
 
 
 ## Losing the ship ends the stage, whether a level or a training.
@@ -160,6 +192,8 @@ func finish(won: bool) -> void:
 		return
 	_done = true
 	ship.thrusting = false
+	if _attempt != "":
+		Community.record_play_finish(_attempt, "cleared" if won else "failed")  # saved before the result card shows
 	if _recorder:
 		_recorder.finish(won)
 	ship.set_deferred("freeze", true)
@@ -171,6 +205,8 @@ func finish(won: bool) -> void:
 				MyLevels.save_demo(level_id, demo)
 	var result := _score() if won else {"cause": ship.death_cause}
 	result.name = display_name()
+	var sha := _community_sha()
+	result.can_rate = sha != "" and Community.play_progress(sha).can_offer_rating
 	if demo and result.get("new_best", false) and not level_id.begins_with(MyLevels.PREFIX):  # a draft's best demo would never be read
 		Progress.save_best_demo(level_id, demo)
 	hud.show_result(won, result)

@@ -536,11 +536,13 @@ func _runnable() -> bool:
 ## Starts a flush by itself when the community was entered and there is something to send; the gaps decide when.
 func _schedule() -> void:
 	if _activated and not _flushing and _runnable():
-		_background()
+		_background.call_deferred(_generation)
 
 
-func _background() -> void:
-	await _sync()
+## The flush `_schedule` asked for, one idle frame later. A Level that leaves its tree schedules one, and no request may begin inside that exit. A reset or deletion since then drops it, and so does a flush already under way.
+func _background(generation: int) -> void:
+	if generation == _generation and not _flushing and _runnable():
+		await _sync()
 
 
 ## `kind` of request ("plays" uploads, "votes" retries, "retry" a flush that left work behind) must not repeat for `FLUSH_GAP_SECONDS`. Only what follows waits: the timer runs on its own, so no request is ever held for it, and a reset makes it inert.
