@@ -933,6 +933,7 @@ func test_submit_for_review_needs_an_explicit_suggested_difficulty() -> void:
 	check(options.size() == 1, "the confirmation asks for a Suggested difficulty")
 	if options.size() != 1:
 		return
+	check(_choice(options[0]) == "", "A new publish confirmation must not preselect a difficulty: '%s'" % _choice(options[0]))
 	check(_buttons(screen, "Submit for review")[0].disabled, "Submit for review stays off until a difficulty is chosen")
 	_pick(options[0], "hard")
 	await frames(1)
@@ -941,7 +942,7 @@ func test_submit_for_review_needs_an_explicit_suggested_difficulty() -> void:
 	_buttons(screen, "Submit for review")[0].pressed.emit()
 	await frames(3)
 	var posts := _requests(net, "POST", "/submissions")
-	check(posts.size() == 1 and String(posts[0].body.get_string_from_utf8()).contains("hard"), "Submit sends the chosen difficulty once: %d" % posts.size())
+	check(posts.size() == 1 and posts[0].body.get_string_from_ascii().contains("hard"), "Submit sends the chosen difficulty once: %d" % posts.size())
 
 
 func test_a_new_proof_run_uploads_only_after_submit_with_the_same_bytes() -> void:

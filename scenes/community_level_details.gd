@@ -392,6 +392,7 @@ static func difficulty_option() -> OptionButton:
 	for difficulty: String in DIFFICULTIES:
 		option.add_item(difficulty.capitalize())
 		option.set_item_metadata(option.item_count - 1, difficulty)
+	option.select(0)
 	return option
 
 
