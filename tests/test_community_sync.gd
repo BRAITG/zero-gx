@@ -22,6 +22,8 @@ const UNAUTHORIZED := {"error": "Sign in again."}
 const FEEDBACK_PATH := "/levels/" + LEVEL_ID + "/feedback"
 const DIFFICULTY_PATH := "/levels/" + LEVEL_ID + "/difficulty"
 const LIKE_PATH := "/levels/" + LEVEL_ID + "/like"
+const OTHER_LEVEL_ID := "lvl_bcdefghijk"
+const OTHER_LIKE_PATH := "/levels/" + OTHER_LEVEL_ID + "/like"
 ## Keys of `pending_feedback()` (queued selections) and of the public `<sha>.meta.json` / `level_info()`.
 const PENDING_LIKE := "like"
 const PENDING_DIFFICULTY := "difficulty"
@@ -1000,6 +1002,28 @@ func test_a_submission_with_a_suggested_difficulty_binds_it_as_the_third_part() 
 	check(post.get("body") == CommunityWire.multipart({"suggested_difficulty": "hard"}, files, boundary), "the body carries the suggestion as a form field")
 	var parts: Array[PackedByteArray] = [level, demo, "hard".to_utf8_buffer()]
 	check(_header(post, "X-Nonce") == "n2" and _header(post, "X-Integrity") == "ok:" + CommunityWire.bound_nonce("n2", parts), "integrity is bound to the level, the demo and the suggestion's UTF-8 bytes")
+	_done()
+
+
+func test_another_stages_blocking_failure_is_not_this_actions_error() -> void:
+	var net := _boot()
+	if net == null:
+		return
+	await _sign_in(net)
+	var row: Dictionary = await _cached(net)
+	net.respond("PUT", DIFFICULTY_PATH, func(_r: Dictionary) -> Dictionary: return {"status": 429, "body": {"error": "Too many requests."}})
+	net.respond("POST", OTHER_LIKE_PATH, func(_r: Dictionary) -> Dictionary: return {"status": 200, "body": {"likes": 1}})
+	var first: Dictionary = await _c.set_difficulty(LEVEL_ID, row.sha256, "hard")
+	check(first.get("pending") == true and net.count("PUT", DIFFICULTY_PATH) == 1, "setup: stage A's vote is kept after a 429: %s" % [first])
+	await _cooldown()  # the retry gap passes: the next flush starts with stage A's vote
+	var puts := net.count("PUT", DIFFICULTY_PATH)
+	var other: Dictionary = await _c.set_like(OTHER_LEVEL_ID, true)
+	check(net.count("PUT", DIFFICULTY_PATH) - puts == 1 and net.count("POST", OTHER_LIKE_PATH) == 0, "setup: stage A's retry goes first and its failure stops the flush before stage B's like: PUT %d, POST like %d" % [net.count("PUT", DIFFICULTY_PATH) - puts, net.count("POST", OTHER_LIKE_PATH)])
+	check(other.get("error", "") == "" and other.get("pending") == true, "stage A's failure is not stage B's own error; B is only pending: %s" % [other])
+	check(_c.pending_feedback(OTHER_LEVEL_ID, row.sha256).get(PENDING_LIKE) == true and _c.pending_feedback(LEVEL_ID, row.sha256).get(PENDING_DIFFICULTY) == "hard", "both choices stay queued")
+	await _cooldown()
+	var batch: Dictionary = await _c.sync_feedback()
+	check(batch.get("error") == "Too many requests." and batch.get("pending") == true, "sync_feedback keeps the batch's own error, stage A's: %s" % [batch])
 	_done()
 
 

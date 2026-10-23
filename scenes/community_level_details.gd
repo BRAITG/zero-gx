@@ -25,8 +25,6 @@ var _settled := {}  # target → true once a choice made here was confirmed: onl
 var _want := {"like": false, "difficulty": ""}  # the latest choice per target
 var _pending := {"like": false, "difficulty": false}  # chosen here, not confirmed yet
 var _asked := {"like": 0, "difficulty": 0}  # serial of the latest choice per target
-var _sent := {"like": 0, "difficulty": 0}  # serial of the latest choice handed to Community
-var _sending := false
 var _note := ""  # why a pending choice has not gone through
 var _refusal := ""  # the server's sentence for a choice it will never take
 
@@ -96,7 +94,7 @@ func _build(parent: Node, row: Dictionary, on_play: Callable) -> Overlay:
 # --- reading ------------------------------------------------------------------------------------------------------------
 
 
-## Reads the feedback of this version. Reads are coalesced: one in flight at a time, and a reason to read that comes meanwhile (a settled vote, another player) drops the answer in flight, which may predate it, and reads once more.
+## Reads the feedback of this version. Reads are coalesced: one in flight at a time, and a reason to read that comes meanwhile (a settled vote, another player) drops the answer in flight, which may predate it, and reads once more. An answer is used only for the player who was signed in when its read began.
 func _read_feedback() -> void:
 	if _reading:
 		_again = true
@@ -107,9 +105,17 @@ func _read_feedback() -> void:
 		_again = false
 		_loading = true
 		_render()
+		var owner := Community.player_id()
 		var reply: Dictionary = await Community.feedback(_level, _sha)
-		if not _again and _alive():
-			_apply(reply)
+		if not _alive():
+			break
+		if _again:
+			continue
+		if owner != "" and Community.player_id() != owner:
+			_forget_owner()  # that answer belongs to the player who is gone
+			_again = true
+			continue
+		_apply(reply)
 	_reading = false
 
 
@@ -123,8 +129,8 @@ func _apply(reply: Dictionary) -> void:
 	_error = reply.get("error", "")
 	var queued := Community.pending_feedback(_level, _sha)  # choices left queued by an earlier sheet resolve here too
 	for kind: String in TARGETS:
-		if _error == "" and _pending[kind] and not queued.has(kind) and not _sending:
-			_pending[kind] = false  # nothing is queued or out any more: the server's answer is the state
+		if _error == "" and _pending[kind] and not queued.has(kind):
+			_pending[kind] = false  # nothing is queued any more: the server's answer is the state
 			_note = ""
 		if queued.has(kind) and not _pending[kind]:
 			_pending[kind] = true
@@ -146,14 +152,14 @@ func _alive() -> bool:
 	return is_instance_valid(_overlay) and _overlay.is_inside_tree() and not _overlay.get_parent().is_queued_for_deletion()
 
 
-## Drops everything private to the shown player, including choices not sent yet.
+## Drops everything private to the shown player, including choices not settled yet.
 func _forget_owner() -> void:
+	_account = ""
 	_data = {}
 	_liked = false
 	_vote = ""
 	_settled.clear()
 	_pending = {"like": false, "difficulty": false}
-	_sent = _asked.duplicate()
 	_note = ""
 	_refusal = ""
 
@@ -182,59 +188,49 @@ func _picked(index: int) -> void:
 		_render()
 
 
-## A choice for `target` ("like": bool, "difficulty": String, "" removes): shown at once as pending, sent in turn.
+## A choice for `target` ("like": bool, "difficulty": String, "" removes): shown at once as pending and handed to Community at once, which queues it durably (whatever happens to this sheet) and serializes the flushes. Its own answer is used only while it is still the latest choice.
 func _choose(target: String, value: Variant) -> void:
 	_want[target] = value
 	_asked[target] += 1
+	var serial: int = _asked[target]
+	var account := _account
 	_pending[target] = true
 	_note = ""
 	_refusal = ""
 	_render()
-	_send()
-
-
-## Hands the newest choice of each target to Community, one request at a time: a choice made while one is out is sent when its answer comes, and an answer for an older choice is not used.
-func _send() -> void:
-	if _sending:
+	var result: Dictionary
+	if target == "like":
+		result = await Community.set_like(_level, value)
+	else:
+		result = await Community.set_difficulty(_level, _sha, value)
+	if not _alive() or not _owner_kept(account):
 		return
-	_sending = true
-	while _alive():
-		var target := "like" if _sent.like != _asked.like else ("difficulty" if _sent.difficulty != _asked.difficulty else "")
-		if target == "":
-			break
-		var serial: int = _asked[target]
-		var account := _account
-		_sent[target] = serial
-		var result: Dictionary
-		if target == "like":
-			result = await Community.set_like(_level, _want.like)
-		else:
-			result = await Community.set_difficulty(_level, _sha, _want.difficulty)
-		if not _alive() or not _owner_kept(account):
-			break
-		if _asked[target] == serial and _pending[target]:
-			_settle(target, result)
-	_sending = false
+	if _asked[target] == serial and _pending[target]:  # a vote_result event may have settled it already (and read once): not twice
+		_settle(target, result)
+	elif _pending[target] and Community.pending_feedback(_level, _sha).has(target):
+		# the flush this older choice ran has ended while a newer one waits behind it, queued: send it now (once, no timer)
+		await Community.sync_feedback()  # each result of it arrives as a vote_result
 
 
-## One attempt at a queued or sent choice of the signed-in player (Community.vote_result): applied (`error` empty), refused for good, or kept for a later flush. Its `value` says which choice it was: an older one never touches a newer choice, but an applied one is still the confirmed state.
+## One attempt at a queued choice of the signed-in player (Community.vote_result): applied (`error` empty), refused for good, or kept for a later flush. Its `value` says which choice it was: an applied one is the confirmed state whatever was chosen since, but only ends pending when no revision of that target is queued any more; a failed one concerns only the choice that is still wanted.
 func _vote_result(account: String, kind: String, level: String, sha256: String, value: Variant, error: String) -> void:
 	if not _alive() or account != _account or level != _level or not kind in TARGETS or (kind == "difficulty" and sha256 != _sha):
 		return
 	var shown: Variant = value if kind == "like" else (value if value is String else "")
+	var queued := Community.pending_feedback(_level, _sha).has(kind)
 	if error == "":
 		_liked = shown == true if kind == "like" else _liked
 		_vote = shown if kind == "difficulty" else _vote
 		_settled[kind] = true
-		if _pending[kind] and shown == _want[kind] and _sent[kind] == _asked[kind]:
+		if _pending[kind] and shown == _want[kind] and not queued:
 			_pending[kind] = false
 			_note = ""
 		_render()
 		_read_feedback()
 		return
-	if not _pending[kind] or shown != _want[kind] or _sent[kind] != _asked[kind]:
+	if not _pending[kind] or shown != _want[kind]:
 		return
-	if Community.pending_feedback(_level, _sha).has(kind):
+	if queued:
 		_note = error
 	else:
 		_pending[kind] = false
@@ -253,6 +249,7 @@ func _plays_synced(account: String, sha256: String) -> void:
 func _settle(target: String, result: Dictionary) -> void:
 	var error: String = result.get("error", "")
 	if Community.pending_feedback(_level, _sha).has(target):
+		_pending[target] = true  # an acknowledgment of an older revision must not have ended it
 		_note = error
 		_render()
 		return

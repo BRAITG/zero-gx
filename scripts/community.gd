@@ -266,6 +266,7 @@ func feedback(level: String, sha256: String) -> Dictionary:
 	if generation != _generation:
 		return {"error": SIGNED_OUT, "offline": false}
 	var account: String = reply.get("account", "")
+	var changed := account != "" and player_id() != account  # the session changed while the read was out: the answer is of a player who is not signed in now
 	if account != "" and _blocked(account):
 		reply = {"error": ERASURE_PENDING}  # nothing of an account whose erasure is owed is cached or confirmed
 	var history := _hist()
@@ -274,12 +275,16 @@ func feedback(level: String, sha256: String) -> Dictionary:
 	elif not reply.has("error") and account != "" and history != null and history.confirm_progress(account, level, sha256, reply.data.you) == ERR_INVALID_PARAMETER:
 		reply = {"error": BAD_ANSWER}
 	if reply.has("error"):
+		if changed:
+			return {"error": ACCOUNT_CHANGED, "offline": false}  # nor is the cached copy of the account that is signed in now
 		var stale := _cached_feedback(_account(), level, sha256)
 		stale["error"] = reply.error
 		stale["offline"] = reply.error == NO_CONNECTION
 		return stale
 	if account != "":
 		_store(_feedback_path(account, sha256), JSON.stringify(reply.data).to_utf8_buffer())  # the account that was sent, not whoever is signed in now
+	if changed:
+		return {"error": ACCOUNT_CHANGED, "offline": false}  # another player is signed in now: nothing of this answer is theirs
 	var fresh: Dictionary = reply.data.duplicate()
 	fresh["offline"] = false
 	return fresh
@@ -729,13 +734,13 @@ func _vote(level: String, key: String, kind: String, sha256: String, value: Vari
 		return {"error": NO_HISTORY, "pending": false}
 	var seen := {"mine": false, "other": false, "error": ""}
 	var listener := func(account: String, other_kind: String, other_level: String, other_sha: String, other_value: Variant, error: String) -> void:
-		if account != who.account or other_level != level:
+		if account != who.account:
 			return
-		if other_kind == kind and other_sha == sha256 and typeof(other_value) == typeof(value) and other_value == value:
+		if other_level == level and other_kind == kind and other_sha == sha256 and typeof(other_value) == typeof(value) and other_value == value:
 			seen.mine = true
 			seen.error = error
 		else:
-			seen.other = true
+			seen.other = true  # another stage's, kind's or value's attempt: its failure stopped the flush, it is not this choice's
 	vote_result.connect(listener)
 	var result := await _sync()
 	vote_result.disconnect(listener)

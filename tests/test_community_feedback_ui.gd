@@ -1086,3 +1086,108 @@ func test_an_explicit_refresh_adopts_a_server_selection_another_device_changed_a
 	check(net.count("GET", FEEDBACK) >= 1, "Refresh must read the server again: %d" % net.count("GET", FEEDBACK))
 	check(_choice(option) == "easy", "Refresh must adopt the server's selection, not keep our settled hard: '%s'" % _choice(option))
 	check(not _mentions(_texts(sheet), ["pending"]) and Community.pending_feedback(LEVEL_ID, SHA).is_empty(), "nothing is pending after the refresh: %s" % [_texts(sheet)])
+
+
+# --- review: ownership of a held read, the newest choice's durability, and same-value acknowledgments --------------------
+
+
+func test_a_read_held_across_a_sign_in_is_never_shown_as_the_new_accounts_and_the_new_account_is_read() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", FEEDBACK, 200, _reply({"liked": true, "like_eligible": true, "difficulty": "hard", "difficulty_eligible": true, "attempts": 5}))  # the first account's answer, fixed before the hold
+	net.hold("GET", FEEDBACK)
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	var c := _controls(sheet)
+	if c.like == null or c.difficulty == null:
+		check(false, "the sheet needs one Like toggle and one difficulty choice")
+		return
+	check(net.count("GET", FEEDBACK) == 1, "setup: the first account's read is held: %d" % net.count("GET", FEEDBACK))
+	pilot.account = "p2"
+	await _signed_in(net, SESSION_TWO)  # the same open sheet is now another account's
+	_serve(_reply({}, {"players_started": 12}))  # what the second account has: no like, no vote
+	net.hold("GET", FEEDBACK)  # the second account's read is held too, so nothing but the first answer can be on screen
+	net.release_hold("GET", FEEDBACK)
+	await frames(3)
+	var texts := _texts(sheet)
+	check(not c.like.button_pressed and _choice(c.difficulty) == "" and not _mentions(texts, ["hard"]), "the first account's Like and vote must not show as the second account's: liked %s, '%s' %s" % [c.like.button_pressed, _choice(c.difficulty), texts])
+	check(net.count("GET", FEEDBACK) == 1, "the sheet reads again for the signed-in account (the sign-in cleared the log of the held read): %d" % net.count("GET", FEEDBACK))
+	net.release_hold("GET", FEEDBACK)
+	await frames(3)
+	check(not c.like.button_pressed and _choice(c.difficulty) == "" and _mentions(_texts(sheet), ["12"]), "the second account's own answer shows: liked %s, '%s' %s" % [c.like.button_pressed, _choice(c.difficulty), _texts(sheet)])
+
+
+func test_a_newer_choice_made_while_an_older_request_is_out_survives_closing_and_applies_later() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"difficulty_eligible": true, "attempts": 5}))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	var option: OptionButton = _controls(sheet).difficulty
+	if option == null:
+		check(false, "the sheet needs one difficulty choice")
+		return
+	net.hold("PUT", DIFFICULTY)
+	_pick(option, "hard")
+	await frames(2)
+	check(net.count("PUT", DIFFICULTY) == 1, "setup: the first vote is out: %d" % net.count("PUT", DIFFICULTY))
+	_pick(option, "easy")
+	await frames(2)
+	check(Community.pending_feedback(LEVEL_ID, SHA).get("difficulty") == "easy", "the newest choice is durable in Community's queue as soon as it is made, not kept by the sheet: %s" % [Community.pending_feedback(LEVEL_ID, SHA)])
+	_buttons(sheet, "Close")[0].pressed.emit()
+	await frames(2)
+	net.release_hold("PUT", DIFFICULTY)
+	await frames(4)
+	check(_closed(sheet), "setup: the sheet stays closed when the older vote answers")
+	check(Community.pending_feedback(LEVEL_ID, SHA).get("difficulty") == "easy", "the older answer leaves the newer choice queued: %s" % [Community.pending_feedback(LEVEL_ID, SHA)])
+	var again: Overlay = await _sheet(_row())
+	if again == null:
+		return
+	var reopened: OptionButton = _controls(again).difficulty
+	if reopened == null:
+		check(false, "the reopened sheet needs one difficulty choice")
+		return
+	check(_choice(reopened) == "easy" and _mentions(_texts(again), ["pending"]), "reopened, the last choice shows as easy and pending: '%s' %s" % [_choice(reopened), _texts(again)])
+	await _cooldown()  # the retry gap after the older vote passes
+	var refresh := _containing(again, "refresh")
+	if refresh.size() != 1:
+		check(false, "the reopened sheet needs one Refresh button: %s" % [_texts(again)])
+		return
+	refresh[0].pressed.emit()
+	await frames(4)
+	var puts := _requests(net, "PUT", DIFFICULTY)
+	check(puts.size() == 2 and _json(puts[-1].body).get("difficulty") == "easy", "the newest choice is sent after the older one: %d votes" % puts.size())
+	check(_choice(reopened) == "easy" and not _mentions(_texts(again), ["pending"]) and Community.pending_feedback(LEVEL_ID, SHA).is_empty(), "the newest choice ends up applied and nothing is pending: '%s' %s" % [_choice(reopened), _texts(again)])
+
+
+func test_an_older_same_value_acknowledgment_leaves_a_newer_queued_revision_pending() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"difficulty_eligible": true, "attempts": 5}))
+	net.hold("PUT", DIFFICULTY)
+	var background := func() -> void: await Community.set_difficulty(LEVEL_ID, SHA, "hard")  # an earlier flush, not this sheet's
+	background.call()
+	await frames(3)
+	check(net.count("PUT", DIFFICULTY) == 1, "setup: the earlier hard vote is out: %d" % net.count("PUT", DIFFICULTY))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	var option: OptionButton = _controls(sheet).difficulty
+	if option == null:
+		check(false, "the sheet needs one difficulty choice")
+		return
+	_pick(option, "easy")
+	await frames(2)
+	_pick(option, "hard")  # a newer hard, queued behind the one that is out
+	await frames(2)
+	check(net.count("PUT", DIFFICULTY) == 1 and Community.pending_feedback(LEVEL_ID, SHA).get("difficulty") == "hard", "setup: the newer hard is queued behind the one in flight: %s" % [Community.pending_feedback(LEVEL_ID, SHA)])
+	net.hold("GET", FEEDBACK)  # the read that follows the old acknowledgment stays out
+	net.release_hold("PUT", DIFFICULTY)
+	await frames(3)
+	check(Community.pending_feedback(LEVEL_ID, SHA).get("difficulty") == "hard", "the old acknowledgment leaves the newer hard queued: %s" % [Community.pending_feedback(LEVEL_ID, SHA)])
+	check(_choice(option) == "hard" and _mentions(_texts(sheet), ["pending"]), "the sheet still says pending while the newer revision is queued: '%s' %s" % [_choice(option), _texts(sheet)])
+	net.release_hold("GET", FEEDBACK)
+	await frames(3)
+	check(Community.pending_feedback(LEVEL_ID, SHA).get("difficulty") == "hard" and _mentions(_texts(sheet), ["pending"]), "the read does not end pending either while the revision is queued: %s" % [_texts(sheet)])
