@@ -24,15 +24,16 @@ const MAX_TEXT = 200;
 const TANK_RANGE: Range = [1, 1000]; // fuel and hull, unless unlimited
 const BODY_RANGES: Record<string, Range> = {
   radius: [8, 3000],
-  strength: [0, 300000], // covers the heaviest, smallest black hole
+  strength: [0, 6000000], // covers the heaviest, smallest black hole
   reach: [0, 10000],
   health: [1, 10000],
 };
 // Per-kind limits, independent of each other; total_pull is the pull at 1000 px (like mass).
+// Black holes overlap stars in mass but always out-pull them at the surface.
 const KIND_LIMITS: Record<string, Record<string, Range>> = {
   planet: { radius: [32, 240], total_pull: [0, 100], reach: [0, 1500] },
-  star: { radius: [300, 3000], total_pull: [150, 6000], reach: [0, 8000] },
-  black_hole: { radius: [32, 96], total_pull: [30, 260], reach: [0, 1500] },
+  star: { radius: [600, 3000], total_pull: [150, 5000], reach: [0, 8000] },
+  black_hole: { radius: [32, 64], total_pull: [60, 6000], reach: [0, 1500] },
 };
 // GravityBody.PRESETS in scenes/gravity_body.gd: [radius, strength, reach].
 const PRESETS: Record<string, Record<string, number>> = {

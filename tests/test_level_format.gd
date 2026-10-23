@@ -157,7 +157,13 @@ func test_round_trip_through_a_file() -> void:
 func test_body_limits_keep_each_kind_in_its_role() -> void:
 	rejects(with("bodies", [{"kind": "planet", "position": [2000, 0], "radius": 300}]), "a planet as big as a star")
 	rejects(with("bodies", [{"kind": "planet", "position": [2000, 0], "radius": 200, "strength": 5000}]), "a planet pulling like a star from afar")
-	rejects(with("bodies", [{"kind": "star", "position": [9000, 0], "radius": 300, "strength": 1000}]), "a star too weak from afar")
+	rejects(with("bodies", [{"kind": "star", "position": [9000, 0], "radius": 300, "strength": 10000}]), "a star as small as a planet")
+	rejects(with("bodies", [{"kind": "star", "position": [9000, 0], "radius": 1000, "strength": 100}]), "a star too light")
+	var limits: Dictionary = LevelFormat.KIND_LIMITS
+	var strongest_star: float = limits.star.total_pull.y / pow(limits.star.radius.x / 1000.0, 2)
+	var weakest_hole: float = limits.black_hole.total_pull.x / pow(limits.black_hole.radius.y / 1000.0, 2)
+	check(weakest_hole > strongest_star, "every black hole out-pulls every star at its surface: %s vs %s" % [weakest_hole, strongest_star])
+	check(limits.black_hole.total_pull.y > limits.star.total_pull.x, "black holes and stars overlap in mass")
 	rejects(with("bodies", [{"kind": "black_hole", "position": [2000, 900], "strength": 4000}]), "a black hole lighter than its kind allows")
 	var fine := with("bodies", [{"kind": "planet", "position": [2000, 600]}, {"kind": "star", "position": [9000, 0]}, {"kind": "black_hole", "position": [2000, -900]}])
 	check(LevelFormat.validate(fine).is_empty(), "presets must pass: %s" % LevelFormat.validate(fine))

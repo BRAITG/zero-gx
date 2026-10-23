@@ -25,14 +25,15 @@ const MAX_ROUTE := 64
 const MAX_TITLE := 40
 const MAX_TEXT := 200
 const TANK_RANGE := Vector2(1, 1000)  # fuel and hull, unless unlimited
-const BODY_RANGES := {"radius": Vector2(8, 3000), "strength": Vector2(0, 300000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}  # strength covers the heaviest, smallest black hole
+const BODY_RANGES := {"radius": Vector2(8, 3000), "strength": Vector2(0, 6000000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}  # strength covers the heaviest, smallest black hole
 ## Per-kind limits, each independent of the others so radius and pull can be set apart. Total
 ## pull is the pull at 1000 px, which acts like mass: strength (the surface pull) is total pull
-## divided by (radius / 1000)².
+## divided by (radius / 1000)². As in reality, black holes and stars overlap in mass, but any
+## black hole pulls harder at its surface than any star (at most 13,889 against at least 14,648).
 const KIND_LIMITS := {
 	"planet": {"radius": Vector2(32, 240), "total_pull": Vector2(0, 100), "reach": Vector2(0, 1500)},
-	"star": {"radius": Vector2(300, 3000), "total_pull": Vector2(150, 6000), "reach": Vector2(0, 8000)},
-	"black_hole": {"radius": Vector2(32, 96), "total_pull": Vector2(30, 260), "reach": Vector2(0, 1500)},
+	"star": {"radius": Vector2(600, 3000), "total_pull": Vector2(150, 5000), "reach": Vector2(0, 8000)},
+	"black_hole": {"radius": Vector2(32, 64), "total_pull": Vector2(60, 6000), "reach": Vector2(0, 1500)},
 }
 
 const LEVEL_SCRIPT := preload("res://scenes/level.gd")
