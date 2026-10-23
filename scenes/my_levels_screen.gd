@@ -154,14 +154,22 @@ func _validate_publish(id: String) -> bool:
 func _confirm_publish(id: String) -> void:
 	var o := Overlay.open(self, "Publish level")
 	o.paragraph("Submit this level and your finishing recording for moderator review. It will not be listed publicly until a moderator approves it.")
-	_button(o.body, "Submit for review", _submit.bind(id, o), "Submitting…")
+	var suggestion := o.card()
+	o.paragraph("Suggested difficulty", 22, Style.INK, suggestion)
+	var option := CommunityLevelDetails.difficulty_option()
+	suggestion.add_child(option)
+	o.paragraph("A moderator chooses the reviewed difficulty. Your suggestion is sent beside the level and does not change it.", 20, Style.INK_DIM, suggestion)
+	var submit := _button(o.body, "Submit for review", _submit.bind(id, o, option), "Submitting…")
+	submit.disabled = true  # until a difficulty is chosen
+	option.item_selected.connect(func(_index: int) -> void: submit.disabled = CommunityLevelDetails.chosen(option) == "")
 
 
-func _submit(id: String, confirmation: Overlay) -> void:
-	if _busy or not Community.available() or not _validate_publish(id):
+func _submit(id: String, confirmation: Overlay, option: OptionButton) -> void:
+	var difficulty := CommunityLevelDetails.chosen(option) if is_instance_valid(option) else ""
+	if _busy or difficulty == "" or not Community.available() or not _validate_publish(id):
 		return
 	_busy = true
-	var error: String = await Community.submit(id)
+	var error: String = await Community.submit(id, difficulty)
 	_busy = false
 	if not is_inside_tree():
 		return

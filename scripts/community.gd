@@ -42,6 +42,10 @@ var _choices := {}  # target of a vote → serial of the latest call for it
 var _choice_serial := 0
 
 signal _sign_in_done(error: String)
+## One attempt at a queued choice, after its owner and generation were checked: applied (`error` empty), refused for good (the choice is dropped) or kept for a later flush. `kind` is "like" or "difficulty"; `sha256` is "" for a like; `value` is the choice (bool, or the difficulty with "" for a removal).
+signal vote_result(account: String, kind: String, level: String, sha256: String, value: Variant, error: String)
+## The server acknowledged durably saved play reports of `account` on version `sha256`, once per version and upload: its eligibility may have changed.
+signal play_history_synced(account: String, sha256: String)
 
 
 func _ready() -> void:
@@ -304,14 +308,14 @@ func sync_feedback() -> Dictionary:
 	return await _sync()
 
 
-## Coroutine: likes (`value`) or unlikes stage `level`; same result as `sync_feedback`.
+## Coroutine: likes (`value`) or unlikes stage `level`; same result as `sync_feedback`, with `error` the sentence of this choice's own attempt.
 func set_like(level: String, value: bool) -> Dictionary:
-	return await _vote(level, "like:" + level, func(history: CommunityHistory, account: String) -> Error: return history.queue_like(account, level, value))
+	return await _vote(level, "like:" + level, "like", "", value, func(history: CommunityHistory, account: String) -> Error: return history.queue_like(account, level, value))
 
 
-## Coroutine: sets (or, with "", removes) the vote on the difficulty of version `sha256` of stage `level`; same result as `sync_feedback`.
+## Coroutine: sets (or, with "", removes) the vote on the difficulty of version `sha256` of stage `level`; same result as `sync_feedback`, with `error` the sentence of this vote's own attempt.
 func set_difficulty(level: String, sha256: String, value: String) -> Dictionary:
-	return await _vote(level, "difficulty:" + sha256, func(history: CommunityHistory, account: String) -> Error: return history.queue_difficulty(account, level, sha256, value))
+	return await _vote(level, "difficulty:" + sha256, "difficulty", sha256, value, func(history: CommunityHistory, account: String) -> Error: return history.queue_difficulty(account, level, sha256, value))
 
 
 ## The public metadata saved beside a downloaded version: `{level_id, version}`, `{}` when unknown or not valid.
@@ -612,13 +616,16 @@ func _flush(generation: int) -> Dictionary:
 		if generation != _generation:
 			return gone
 		var status: int = reply.get("status", 0)
-		if not reply.has("error") or _refused(status):
+		var error: String = reply.get("error", "")
+		if error == "" or _refused(status):
 			history.ack_vote(account, vote.key, int(vote.revision))  # applied, or never to be: either way this choice is done, and a newer one stays queued
-			if reply.has("error") and refused == "":
-				refused = reply.error
+			if error != "" and refused == "":
+				refused = error
+			vote_result.emit(account, vote.kind, vote.level, vote.sha, vote.value, error)
 		else:
 			_start_gap("votes")  # connection, server and rate-limit failures keep the choice for a later flush
-			return {"error": reply.error, "pending": true}
+			vote_result.emit(account, vote.kind, vote.level, vote.sha, vote.value, error)
+			return {"error": error, "pending": true}
 	return {"error": refused, "pending": _queued()}
 
 
@@ -635,7 +642,16 @@ func _upload(history: CommunityHistory, account: String, generation: int) -> Str
 		return reply.error
 	if generation != _generation:
 		return ""
-	return "" if history.acknowledge(account, _sent_only(reply.data, sent)) == OK else BAD_ANSWER
+	var acknowledged := _sent_only(reply.data, sent)
+	if history.acknowledge(account, acknowledged) != OK:
+		return BAD_ANSWER
+	var hashes := {}
+	for part in ["acknowledged", "discarded"]:
+		for entry: Dictionary in acknowledged[part]:
+			hashes[sent[entry.id].sha256] = true
+	for sha: String in hashes:
+		play_history_synced.emit(account, sha)  # once per version, after the acknowledgments are durable
+	return ""
 
 
 ## One report attempt, made afresh each time: a fresh nonce, the oldest pending snapshots of `account` (at most 32 and `MAX_REPORT_BYTES`) and an integrity token bound to exactly those bytes. `sent` receives what went in: id → snapshot.
@@ -688,8 +704,8 @@ func _send_vote(vote: Dictionary, account: String) -> Dictionary:
 	return await _authed("PUT", base + "difficulty", TYPE_DICTIONARY, build, true, account)
 
 
-## Queues one choice for the signed-in player (signing in first when the player is not known yet), then tries one flush. `key` names the target of the choice: of two calls for one target, only the later one may queue, whichever resumes first from a shared sign-in.
-func _vote(level: String, key: String, queue: Callable) -> Dictionary:
+## Queues one choice (`kind` "like" or "difficulty", of version `sha256` for the latter, to `value`) for the signed-in player (signing in first when the player is not known yet), then tries one flush. The answer is `_sync`'s, except that `error` is the sentence of this very choice's attempt when the flush made one. `key` names the target of the choice: of two calls for one target, only the later one may queue, whichever resumes first from a shared sign-in.
+func _vote(level: String, key: String, kind: String, sha256: String, value: Variant, queue: Callable) -> Dictionary:
 	if not available():
 		return {"error": CommunityPlatform.UNAVAILABLE, "pending": false}
 	if _level_id.search(level) == null:
@@ -711,7 +727,23 @@ func _vote(level: String, key: String, queue: Callable) -> Dictionary:
 		return {"error": ERASURE_PENDING, "pending": false}
 	if queue.call(history, who.account) != OK:
 		return {"error": NO_HISTORY, "pending": false}
-	return await _sync()
+	var seen := {"mine": false, "other": false, "error": ""}
+	var listener := func(account: String, other_kind: String, other_level: String, other_sha: String, other_value: Variant, error: String) -> void:
+		if account != who.account or other_level != level:
+			return
+		if other_kind == kind and other_sha == sha256 and typeof(other_value) == typeof(value) and other_value == value:
+			seen.mine = true
+			seen.error = error
+		else:
+			seen.other = true
+	vote_result.connect(listener)
+	var result := await _sync()
+	vote_result.disconnect(listener)
+	if seen.mine:
+		result["error"] = seen.error  # this choice's own attempt, not another queued choice's refusal
+	elif seen.other:
+		result["error"] = ""  # the sentence in the batch answer belongs to a choice that is not this one
+	return result
 
 
 func _meta_path(sha256: String) -> String:

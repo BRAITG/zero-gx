@@ -76,6 +76,7 @@ func _ready() -> void:
 	hud.retry_requested.connect(func(): Progress.open(level_id, testing, publishing))
 	hud.menu_requested.connect(_to_menu)
 	hud.replay_requested.connect(_replay)
+	hud.rate_requested.connect(_rate)
 	hud.next_requested.connect(_next)
 	goal.reached.connect(finish.bind(true))
 	ship.destroyed.connect(_ship_lost)
@@ -143,7 +144,21 @@ func _end_tour() -> void:
 func _notification(what: int) -> void:
 	# A frozen level is a preview inside the editor or the demo viewer; its host handles Back.
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST and process_mode != PROCESS_MODE_DISABLED:
-		_to_menu()
+		var sheets := find_children("*", "Overlay", true, false)  # Back closes the top sheet before it leaves
+		if sheets.is_empty():
+			_to_menu()
+		else:
+			sheets.back().close()
+
+
+## Rate level on the result card: the shared details and rating sheet of the version this run played, without Play.
+func _rate() -> void:
+	var sha := _community_sha()
+	var info := Community.level_info(sha) if sha != "" else {}
+	if info.is_empty() or not find_children("*", "Overlay", true, false).is_empty():
+		return
+	CommunityLevelDetails.open(self, {"level_id": info.level_id, "sha256": sha, "latest": info.version, "title": display_name()})
+
 
 
 func _to_menu() -> void:

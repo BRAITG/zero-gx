@@ -6,6 +6,7 @@ signal retry_requested
 signal menu_requested
 signal next_requested
 signal replay_requested
+signal rate_requested
 
 const INTRO_FADE := 0.6  # s
 const INTRO_WIDTH := 860.0  # px; the hint wraps inside this
@@ -58,6 +59,7 @@ var _best: Label
 var _parts := {}  # ScoreIcon.Kind -> value Label
 var _next: Button
 var _replay: Button
+var _rate: Button
 var _time: Label
 var _arrow: Control
 var _intro: PanelContainer
@@ -201,6 +203,7 @@ func _ready() -> void:
 	_next = _button(column, next_text, next_requested.emit)
 	_button(column, "Retry", retry_requested.emit)
 	_replay = _button(column, "Replay", replay_requested.emit)
+	_rate = _button(column, "Rate level", rate_requested.emit)
 	_button(column, menu_text, menu_requested.emit)
 	_pause = PauseCard.new()
 	_pause.process_mode = Node.PROCESS_MODE_ALWAYS
@@ -283,7 +286,7 @@ func intro_text() -> String:
 
 
 ## `result` keys: name; won → points, fuel_points, hull_points, time_points, new_best, has_next;
-## lost → cause.
+## lost → cause; optional can_rate (a community stage whose feedback the player may give) shows Rate level.
 func show_result(won: bool, result: Dictionary) -> void:
 	_intro.hide()
 	_result_name.text = result.name
@@ -302,6 +305,7 @@ func show_result(won: bool, result: Dictionary) -> void:
 		_detail.text = result.cause
 	_next.visible = won and result.has_next
 	_replay.visible = can_replay
+	_rate.visible = result.get("can_rate", false)
 	_result.reset_size()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_result.show()
@@ -309,6 +313,11 @@ func show_result(won: bool, result: Dictionary) -> void:
 
 
 func _focus_result() -> void:
+	if not is_inside_tree():
+		return
+	var focus := get_viewport().gui_get_focus_owner()
+	if focus != null and not is_ancestor_of(focus):
+		return  # a sheet opened inside the delay already has the focus: the card must not take it
 	for button: Button in _next.get_parent().get_children().filter(func(c: Node) -> bool: return c is Button):
 		if button.visible and not button.disabled:
 			button.grab_focus(true)
