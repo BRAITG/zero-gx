@@ -268,6 +268,30 @@ func test_practice_after_a_clear_is_not_counted_and_a_local_best_alone_is_no_cle
 	_done()
 
 
+func test_a_clear_after_the_utc_clock_moved_back_is_still_saved_and_ends_counted_practice() -> void:
+	var net := _boot()
+	if net == null:
+		return
+	await _sign_in(net)
+	var row: Dictionary = await _download(net, _level())
+	var future := int(Time.get_unix_time_from_system() * 1000.0) + 3600 * 1000  # a start stamped before the device's UTC clock was set back an hour
+	var earlier := CommunityHistory.new()
+	earlier.path = HISTORY
+	check(earlier.load_file() == OK, "setup: the history loads")
+	var id := earlier.begin(OWNER, LEVEL_ID, row.sha256, future)
+	check(id != "", "setup: the start with the later stamp is saved")
+	_c.record_play_finish(id, "cleared")  # the clear is stamped with the clock as it is now, before that start
+	var saved := _raw(id)
+	check(int(saved.get("revision", 0)) == 2 and saved.get("outcome") == "cleared" and saved.get("ended_ms") != null, "the clear is saved, not lost to the clock: %s" % [saved])
+	check(int(saved.get("started_ms", 0)) == future and saved.get("ended_ms") != null and float(saved.ended_ms) >= float(saved.started_ms), "its end is not before its unchanged start: %s" % [saved])
+	check(_c.play_progress(row.sha256).cleared == true, "the clear is known locally")
+	var practice: Level = await _start(_stage(row))
+	practice.ship.take_damage(Ship.MAX_HEALTH)
+	await frames(2)
+	check(_attempt_ids() == [id], "practice after the clear is not counted: %s" % [_attempt_ids()])
+	_done()
+
+
 func test_an_interrupted_start_is_one_counted_start_after_a_restart() -> void:
 	var net := _boot()
 	if net == null:

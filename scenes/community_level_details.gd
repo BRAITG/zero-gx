@@ -87,6 +87,7 @@ func _build(parent: Node, row: Dictionary, on_play: Callable) -> Overlay:
 	_facts = _overlay.card()
 	Community.vote_result.connect(_vote_result)
 	Community.play_history_synced.connect(_plays_synced)
+	Community.identity_changed.connect(_identity_changed)
 	_read_feedback()
 	return _overlay
 
@@ -190,6 +191,9 @@ func _picked(index: int) -> void:
 
 ## A choice for `target` ("like": bool, "difficulty": String, "" removes): shown at once as pending and handed to Community at once, which queues it durably (whatever happens to this sheet) and serializes the flushes. Its own answer is used only while it is still the latest choice.
 func _choose(target: String, value: Variant) -> void:
+	if not _owner_kept(_account):  # the controls show another player's state: nothing is queued from them
+		_render()
+		return
 	_want[target] = value
 	_asked[target] += 1
 	var serial: int = _asked[target]
@@ -242,6 +246,18 @@ func _vote_result(account: String, kind: String, level: String, sha256: String, 
 ## Reports of this player on this version reached the server (Community.play_history_synced): eligibility may have opened.
 func _plays_synced(account: String, sha256: String) -> void:
 	if _alive() and sha256 == _sha and account == Community.player_id():
+		_read_feedback()
+
+
+## The persisted player changed or was erased (Community.identity_changed): what this sheet shows of the previous one goes at once, before anything of the new one is read. Nobody is signed in any more: nothing is read, a read would sign in again.
+func _identity_changed(account: String) -> void:
+	if not _alive():
+		return
+	_error = ""
+	_forget_owner()
+	_loading = account != ""
+	_render()
+	if account != "":
 		_read_feedback()
 
 
@@ -331,7 +347,8 @@ func _hint_text(ready: bool, local_wait: bool, like_ok: bool, vote_ok: bool) -> 
 		if like_ok or _liked:
 			lines.append("Difficulty voting opens after you clear this version or try it %d times." % Community.FEEDBACK_TRIES)
 		else:
-			lines.append("Likes and difficulty votes open after you clear this level or try this version %d times." % Community.FEEDBACK_TRIES)
+			lines.append("Likes open after you clear this level on any version or try its versions %d times." % Community.FEEDBACK_TRIES)
+			lines.append("Difficulty votes open after you clear this version or try it %d times." % Community.FEEDBACK_TRIES)
 	return "\n".join(lines)
 
 

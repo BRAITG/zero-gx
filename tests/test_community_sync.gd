@@ -288,6 +288,34 @@ func test_a_deferred_flush_does_not_outlive_a_reset() -> void:
 	_done()
 
 
+func test_a_flush_queued_by_a_play_in_the_same_frame_as_a_reset_neither_uploads_nor_signs_in() -> void:
+	var net := _boot()
+	if net == null:
+		return
+	await _sign_in(net)
+	var row: Dictionary = await _cached(net)
+	_auto_nonces(net)
+	_auto_acks(net)
+	var saved := ConfigFile.new()  # a 401 dropped the token: a flush that did run would have to sign in again
+	saved.load(Community.session_path)
+	saved.erase_section("session")
+	saved.save(Community.session_path)
+	_c.activate_feedback()
+	var id: String = _c.record_play_start(row.sha256)  # each of these queues an idle-frame flush ...
+	_c.record_play_finish(id, "failed")
+	var signed_ins := pilot.sign_ins
+	_restart(net)  # ... that the reset in the same frame must cancel, with the fakes put back as a test does
+	await frames(5)
+	check(net.count("POST", "/plays") == 0 and net.count("GET", "/nonce") == 0 and net.count("POST", "/session") == 0 and pilot.sign_ins == signed_ins, "a flush queued before the reset must neither upload nor sign in again: %s" % [_urls(net)])
+	var waiting: Array = _disk().batch("p_1")
+	check(waiting.size() == 1 and waiting[0].id == id and waiting[0].revision == 2, "the durable report is still waiting: %s" % [waiting])
+	net.answer("POST", "/session", 200, {"token": "tok2", "player": {"id": "p_1", "name": "Pilot"}})
+	_c.activate_feedback()  # control: entering the community again does send it
+	var sent: bool = await _until(func() -> bool: return net.count("POST", "/plays") >= 1, 120)
+	check(sent and _attempts(_plays(net)[0]).any(func(a: Dictionary) -> bool: return a.id == id), "control: the waiting report goes out after a fresh activation: %s" % [_urls(net)])
+	_done()
+
+
 # --- 401, account switches and deletion -------------------------------------------------------------------------------
 
 
@@ -777,6 +805,48 @@ func test_a_refused_like_is_removed_and_the_confirmed_state_returns() -> void:
 	net.answer("GET", FEEDBACK_PATH, 0)
 	var offline: Dictionary = await _c.feedback(LEVEL_ID, row.sha256)
 	check(offline.get("offline") == true and offline.you.liked == false, "the confirmed state is what shows: %s" % [offline])
+	_done()
+
+
+func test_a_refused_votes_failed_acknowledgment_save_is_a_history_error_and_settles_locally_without_asking_the_server_again() -> void:
+	var net := _boot(LOCKED_HISTORY)
+	if net == null:
+		return
+	DirAccess.make_dir_recursive_absolute(LOCKED)
+	await _sign_in(net)
+	var row: Dictionary = await _cached(net)
+	net.answer("GET", FEEDBACK_PATH, 200, _dto(row.sha256, {"difficulty": "normal"}))
+	await _c.feedback(LEVEL_ID, row.sha256)  # the confirmed vote is normal
+	var refusal := "Play this level first."
+	var settled := []  # the error of every vote_result
+	var listener := func(_account: String, _kind: String, _level: String, _sha: String, _value: Variant, error: String) -> void: settled.append(error)
+	_c.vote_result.connect(listener)
+	net.hold("PUT", DIFFICULTY_PATH)
+	net.answer("PUT", DIFFICULTY_PATH, 403, {"error": refusal})
+	var results := []
+	var vote := func() -> void: results.append(await _c.set_difficulty(LEVEL_ID, row.sha256, "hard"))
+	vote.call()
+	await frames(3)
+	check(net.count("PUT", DIFFICULTY_PATH) == 1 and _disk(LOCKED_HISTORY).pending_votes("p_1").size() == 1, "setup: the vote is queued on disk and its request is out: %d" % net.count("PUT", DIFFICULTY_PATH))
+	var before := FileAccess.get_file_as_bytes(LOCKED_HISTORY)
+	if not _lock(LOCKED):  # the history folder only: the session and downloads stay writable
+		_c.vote_result.disconnect(listener)
+		_done()
+		return
+	net.release_hold("PUT", DIFFICULTY_PATH)  # the refusal arrives, and its acknowledgment cannot be saved
+	await frames(3)
+	var failed: Dictionary = results[0] if results.size() == 1 else {}
+	check(results.size() == 1 and failed.get("error", "") != "" and failed.get("error") != refusal, "the storage failure is reported, not the server's refusal as if settled: %s" % [results])
+	check(not settled.has(refusal), "no ordinary refusal is signalled while it cannot be recorded: %s" % [settled])
+	check(FileAccess.get_file_as_bytes(LOCKED_HISTORY) == before and _disk(LOCKED_HISTORY).pending_votes("p_1").size() == 1, "the history file keeps its original bytes, the vote still queued")
+	_unlock(LOCKED)  # the filesystem works again
+	await _cooldown()
+	var again: Dictionary = await _c.sync_feedback()
+	await frames(3)
+	check(net.count("PUT", DIFFICULTY_PATH) == 1, "the refused request is not sent again while this process knows its outcome: %d" % net.count("PUT", DIFFICULTY_PATH))
+	check(_disk(LOCKED_HISTORY).pending_votes("p_1").is_empty() and _c.pending_feedback(LEVEL_ID, row.sha256).is_empty() and again.get("pending") == false, "the known outcome settles locally once the save works: %s %s" % [_disk(LOCKED_HISTORY).pending_votes("p_1"), again])
+	check(settled.count(refusal) == 1, "and its refusal is signalled once, now: %s" % [settled])
+	_c.vote_result.disconnect(listener)
 	_done()
 
 

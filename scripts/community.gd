@@ -11,6 +11,7 @@ const STAGE_PREFIX := "community_"
 const SIGNED_OUT := "You are signed out."
 const ACCOUNT_CHANGED := "Another account is signed in now."
 const NO_HISTORY := "Your play history could not be read."
+const HISTORY_UNSAVED := "Your play history could not be saved on this device. It will be tried again."
 const BAD_LEVEL := "This level cannot be rated."
 ## Play-report uploads (and a retry after a failed vote) are at least this far apart. Only future scheduling waits: no request is ever held back for it.
 const FLUSH_GAP_SECONDS := 30.0
@@ -40,12 +41,15 @@ var _generation := 0  # bumped by a reset and by an account deletion: work begun
 var _deleting := false  # a deletion is with the server: its local erasure is owed but must not start before the answer
 var _choices := {}  # target of a vote → serial of the latest call for it
 var _choice_serial := 0
+var _settlements := {}  # "account|vote key" → {revision, status, error}: an answer the server gave for a queued choice whose acknowledgment could not be saved. Memory only: a reset or a relaunch forgets it and the choice is simply sent again, as after a lost answer.
 
 signal _sign_in_done(error: String)
 ## One attempt at a queued choice, after its owner and generation were checked: applied (`error` empty), refused for good (the choice is dropped) or kept for a later flush. `kind` is "like" or "difficulty"; `sha256` is "" for a like; `value` is the choice (bool, or the difficulty with "" for a removal).
 signal vote_result(account: String, kind: String, level: String, sha256: String, value: Variant, error: String)
 ## The server acknowledged durably saved play reports of `account` on version `sha256`, once per version and upload: its eligibility may have changed.
 signal play_history_synced(account: String, sha256: String)
+## The persisted player of this device changed (a sign-in as someone else) or was erased: `account` is the one now, "" when none. Open sheets drop what they show of the previous one.
+signal identity_changed(account: String)
 
 
 func _ready() -> void:
@@ -108,6 +112,7 @@ func _sign_in() -> String:
 		return BAD_ANSWER
 	if generation != _generation:
 		return SIGNED_OUT
+	var before := player_id()
 	var file := _session()  # keeps the last known statuses
 	file.set_value("session", "token", reply.data.token)
 	file.set_value("session", "expires", int(Time.get_unix_time_from_system()) + SESSION_SECONDS)
@@ -118,6 +123,7 @@ func _sign_in() -> String:
 	elif file.has_section("player"):
 		file.erase_section("player")  # a token whose player is not known must not keep the previous one's name
 	_save_session(file)
+	_announce_identity(before)
 	return ""
 
 
@@ -233,22 +239,22 @@ func record_play_finish(id: String, outcome: String) -> void:
 	var account := history.owner_for_attempt(id) if history != null and id != "" else ""
 	if account == "" or _blocked(account):
 		return
-	history.finish(account, id, outcome, _now_ms())
+	history.finish(account, id, outcome, maxi(_now_ms(), history.started_ms(account, id)))  # a clock set back since the start must not lose the result
 	_schedule()
 
 
-## What the signed-in player has done on version `sha256`, for the UI only: `local_attempts` (this device's counted starts), `confirmed_attempts` (the server's last word), `cleared`, `pending` (a report is still queued) and `can_offer_rating`. A local discovery may open Rate level, with Pending sync; the server still decides when the vote is applied.
+## What the signed-in player has done on version `sha256`, for the UI only: `local_attempts` (this device's counted starts), `confirmed_attempts` (the server's last word), `cleared`, `pending` (a report is still queued) and `can_offer_rating`. The offer counts the server's last word plus only the local starts that word cannot include (those made after the read that gave it began; acknowledged ones too), never the two totals added. A local discovery may open Rate level, with Pending sync; the server still decides when the vote is applied.
 func play_progress(sha256: String) -> Dictionary:
 	var account := _account()
 	var level: String = level_info(sha256).get("level_id", "")
 	var history := _hist()
-	var local := {"attempts": 0, "cleared": false, "pending_starts": 0, "pending": false}
+	var local := {"attempts": 0, "uncovered": 0, "cleared": false, "pending_starts": 0, "pending": false}
 	var confirmed := {}
 	if account != "" and level != "" and history != null:
 		local = history.local_progress(account, level, sha256)
 		confirmed = history.progress(account, level, sha256)
 	var cleared: bool = local.cleared or confirmed.get("cleared", false)
-	var tries := maxi(int(local.attempts), int(confirmed.get("attempts", 0)))
+	var tries := maxi(int(local.attempts), int(confirmed.get("attempts", 0)) + int(local.uncovered))
 	return {"local_attempts": local.attempts, "confirmed_attempts": int(confirmed.get("attempts", 0)), "cleared": cleared, "pending": local.pending, "can_offer_rating": cleared or tries >= FEEDBACK_TRIES}
 
 
@@ -262,6 +268,9 @@ func feedback(level: String, sha256: String) -> Dictionary:
 	if _blocked(player_id()):
 		return {"error": ERASURE_PENDING, "offline": false}
 	var generation := _generation
+	var started := player_id()
+	var history := _hist()
+	var seen: Array = history.start_ids(started, level, sha256) if history != null and started != "" else []  # the local starts this answer may count: taken before the request goes out, so a start made while it is out is never covered
 	var reply := await _authed("GET", "/levels/%s/feedback?sha256=%s" % [level, sha256])
 	if generation != _generation:
 		return {"error": SIGNED_OUT, "offline": false}
@@ -269,10 +278,9 @@ func feedback(level: String, sha256: String) -> Dictionary:
 	var changed := account != "" and player_id() != account  # the session changed while the read was out: the answer is of a player who is not signed in now
 	if account != "" and _blocked(account):
 		reply = {"error": ERASURE_PENDING}  # nothing of an account whose erasure is owed is cached or confirmed
-	var history := _hist()
 	if not reply.has("error") and not _feedback_valid(reply.data, level, sha256):
 		reply = {"error": BAD_ANSWER}
-	elif not reply.has("error") and account != "" and history != null and history.confirm_progress(account, level, sha256, reply.data.you) == ERR_INVALID_PARAMETER:
+	elif not reply.has("error") and account != "" and history != null and history.confirm_progress(account, level, sha256, reply.data.you, seen if account == started else []) == ERR_INVALID_PARAMETER:
 		reply = {"error": BAD_ANSWER}
 	if reply.has("error"):
 		if changed:
@@ -360,10 +368,12 @@ func delete_account() -> String:
 		MyLevels.set_submitted(id, "")
 	if _complete_erasure(account):
 		DirAccess.remove_absolute(session_path)  # holds the session, the player id, the statuses and the mark
+		_announce_identity(account)
 		return ""
 	var owed := ConfigFile.new()  # no token, no player, no statuses: only what is still owed
 	owed.set_value("erasure", "owner", account)
 	_save_session(owed)
+	_announce_identity(account)
 	return ERASURE_PENDING
 
 
@@ -520,6 +530,7 @@ func _is_sha(text: String) -> bool:
 func _reset_work() -> void:
 	_generation += 1
 	_flushing = false
+	_settlements.clear()
 	for kind in _gaps:
 		_gaps[kind] = false
 
@@ -617,16 +628,24 @@ func _flush(generation: int) -> Dictionary:
 		return {"error": "", "pending": _queued()}
 	var refused := ""
 	for vote: Dictionary in history.pending_votes(account):
-		var reply := await _send_vote(vote, account)
-		if generation != _generation:
-			return gone
+		var key := account + "|" + String(vote.key)
+		var reply: Dictionary = _settlements.get(key, {})
+		if reply.get("revision", 0) != int(vote.revision):  # no answer is known for this very revision: ask the server
+			reply = await _send_vote(vote, account)
+			if generation != _generation:
+				return gone
 		var status: int = reply.get("status", 0)
 		var error: String = reply.get("error", "")
 		if error == "" or _refused(status):
-			history.ack_vote(account, vote.key, int(vote.revision))  # applied, or never to be: either way this choice is done, and a newer one stays queued
+			if history.ack_vote(account, vote.key, int(vote.revision)) != OK:
+				_settlements[key] = {"revision": int(vote.revision), "status": status, "error": error}  # the answer is known: only its local settlement is retried, never the request
+				_start_gap("votes")
+				vote_result.emit(account, vote.kind, vote.level, vote.sha, vote.value, HISTORY_UNSAVED)
+				return {"error": HISTORY_UNSAVED, "pending": true}
+			_settlements.erase(key)
 			if error != "" and refused == "":
 				refused = error
-			vote_result.emit(account, vote.kind, vote.level, vote.sha, vote.value, error)
+			vote_result.emit(account, vote.kind, vote.level, vote.sha, vote.value, error)  # applied, or never to be: either way this choice is done, and a newer one stays queued
 		else:
 			_start_gap("votes")  # connection, server and rate-limit failures keep the choice for a later flush
 			vote_result.emit(account, vote.kind, vote.level, vote.sha, vote.value, error)
@@ -834,6 +853,9 @@ func _unmark_erasure() -> Error:
 
 ## Forgets everything private about `account`: its history, queued votes and cached feedback (downloaded public levels stay). True only when every part is durably gone: a cache folder that is there but cannot be opened or listed is a failure, not an empty folder, and only a folder that does not exist has nothing to erase.
 func _complete_erasure(account: String) -> bool:
+	for key: String in _settlements.keys():
+		if key.begins_with(account + "|"):
+			_settlements.erase(key)
 	var history := _hist()
 	var done := history != null and history.erase_owner(account) == OK
 	var names: Variant = _private_names(account)
@@ -843,6 +865,13 @@ func _complete_erasure(account: String) -> bool:
 		if DirAccess.remove_absolute(dir + file) != OK:
 			done = false
 	return done
+
+
+## Tells open sheets that the persisted player is not `before` any more.
+func _announce_identity(before: String) -> void:
+	var now := player_id()
+	if now != before:
+		identity_changed.emit(now)
 
 
 ## The file names of `account`'s private feedback in the downloads folder: empty when the folder does not exist, null when it exists but cannot be opened or listed (nothing is known then).

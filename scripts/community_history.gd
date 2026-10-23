@@ -15,6 +15,9 @@ extends RefCounted
 ##   confirmed data only: empty until a reply arrives, then replaced as a whole by confirm_progress.
 ## - batch(owner) returns only pending attempts. Acknowledged attempts stay in history but are not returned;
 ##   local_progress(owner, level, sha) reads the local count, clear state and pending state for one version.
+## - An observation (confirm_progress) names the local starts that existed before its read began (`covered`): the
+##   server's count may include them. A record then carries `covered: true`, kept through acknowledgment. Starts
+##   without it are `uncovered` in local_progress: tries the last confirmed count cannot include.
 
 const FORMAT := "zero-gx-community-history"
 const VERSION := 1
@@ -135,8 +138,9 @@ func acknowledge(owner: String, reply: Dictionary) -> Error:
 
 
 ## Replaces the cached feedback for one account and version with the server's latest `you` block. A clear
-## it reports is kept: no later reply can undo it.
-func confirm_progress(owner: String, level: String, sha: String, you: Dictionary) -> Error:
+## it reports is kept: no later reply can undo it. `covered` are the ids of the local starts of this version that
+## existed before the read began (see `start_ids`); they are marked as possibly counted by this answer.
+func confirm_progress(owner: String, level: String, sha: String, you: Dictionary, covered: Array = []) -> Error:
 	if not _ready:
 		return ERR_UNAVAILABLE
 	if owner.is_empty() or level.is_empty() or not _is_hex(sha, 64) or not _is_you(you):
@@ -148,6 +152,10 @@ func confirm_progress(owner: String, level: String, sha: String, you: Dictionary
 	if not section["feedback"].has(level):
 		section["feedback"][level] = {}
 	section["feedback"][level][sha] = you.duplicate(true)
+	for id: Variant in covered:
+		var record: Variant = section["attempts"].get(id)
+		if record is Dictionary and record["sha256"] == sha and record["level"] == level:
+			record["covered"] = true
 	if you["cleared"]:
 		section["clears"][sha] = true
 	return _commit(next)
@@ -160,9 +168,10 @@ func progress(owner: String, level: String, sha: String) -> Dictionary:
 
 
 ## What this device holds for one account and version, confirmed or not: `attempts` counts the local starts up
-## to the earliest locally known clear (the winning attempt included), `cleared` whether a clear is known (a
-## server-reported one invents no tries), `pending_starts` the starts the server has not acknowledged yet, and
-## `pending` whether any revision is still queued. An acknowledged record stays history, not outbox.
+## to the earliest locally known clear (the winning attempt included), `uncovered` those of them that no
+## observation covers, `cleared` whether a clear is known (a server-reported one invents no tries),
+## `pending_starts` the starts the server has not acknowledged yet, and `pending` whether any revision is
+## still queued. An acknowledged record stays history, not outbox.
 func local_progress(owner: String, level: String, sha: String) -> Dictionary:
 	var mine: Array[Dictionary] = []
 	var clear_ms := -1.0
@@ -172,15 +181,33 @@ func local_progress(owner: String, level: String, sha: String) -> Dictionary:
 		mine.append(record)
 		if record["outcome"] == "cleared" and (clear_ms < 0 or record["ended_ms"] < clear_ms):
 			clear_ms = record["ended_ms"]
-	var out := {"attempts": 0, "cleared": _part(owner, "clears").has(sha), "pending_starts": 0, "pending": false}
+	var out := {"attempts": 0, "uncovered": 0, "cleared": _part(owner, "clears").has(sha), "pending_starts": 0, "pending": false}
 	for record in mine:
 		if clear_ms < 0 or record["started_ms"] <= clear_ms:
 			out["attempts"] += 1
+			if not record.get("covered", false):
+				out["uncovered"] += 1
 		if record["acked"] == 0:
 			out["pending_starts"] += 1
 		if record["revision"] > record["acked"]:
 			out["pending"] = true
 	return out
+
+
+## The ids of the starts `owner` has of this version, in the order they were made: what an observation that
+## begins now can cover. Read before the request, so a start made while it is out is never taken as covered.
+func start_ids(owner: String, level: String, sha: String) -> Array:
+	var out := []
+	var attempts := _part(owner, "attempts")
+	for id: String in attempts:
+		if attempts[id]["sha256"] == sha and attempts[id]["level"] == level:
+			out.append(id)
+	return out
+
+
+## When attempt `id` of `owner` started, -1 when it is unknown.
+func started_ms(owner: String, id: String) -> int:
+	return int(_part(owner, "attempts").get(id, {}).get("started_ms", -1))
 
 
 ## Queues this account's like for a stage. Only the latest desired value is kept, under one key.

@@ -1192,3 +1192,160 @@ func test_an_older_same_value_acknowledgment_leaves_a_newer_queued_revision_pend
 	net.release_hold("GET", FEEDBACK)
 	await frames(3)
 	check(Community.pending_feedback(LEVEL_ID, SHA).get("difficulty") == "hard" and _mentions(_texts(sheet), ["pending"]), "the read does not end pending either while the revision is queued: %s" % [_texts(sheet)])
+
+
+# --- final review: the account a settled sheet shows, and rating discovery that spans devices ----------------------------
+
+
+func test_a_settled_sheet_drops_the_prior_accounts_private_state_when_a_background_sign_in_changes_the_player() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row: Dictionary = await _download(net, _level())
+	_serve(_reply({"liked": true, "like_eligible": true, "difficulty": "hard", "difficulty_eligible": true, "attempts": 5}, {"players_started": 12}, null, {}, row.sha256))
+	check(Community.record_play_start(row.sha256) != "", "setup: the first account has a report waiting")
+	var sheet: Overlay = await _open(world, row, Callable())
+	if sheet == null:
+		return
+	var c := _controls(sheet)
+	if c.like == null or c.difficulty == null:
+		check(false, "the sheet needs one Like toggle and one difficulty choice")
+		return
+	check(c.like.button_pressed and _choice(c.difficulty) == "hard" and not c.like.disabled and not c.difficulty.disabled and _mentions(_texts(sheet), ["counted tries: 5"]), "control: the loaded sheet shows the first account's like, vote, eligibility and tries: %s" % [_texts(sheet)])
+	# Nothing is in flight on the sheet. The report goes out in the background, the server answers 401 and the silent sign-in is another Play Games account.
+	pilot.account = "p2"
+	_serve(_reply({}, {"players_started": 12}, null, {}, row.sha256))  # what the second account has: no like, no vote, no tries
+	net.hold("GET", FEEDBACK)  # its read stays out, so only the first account's old answer could be what is on screen
+	net.answer("POST", "/plays", 401, {"error": "Sign in again."})
+	net.answer("POST", "/session", 200, SESSION_TWO)
+	Community.activate_feedback()
+	await frames(4)
+	check(Community.player_id() == "p_2" and net.count("POST", "/plays") == 1, "setup: the background report was refused and the device is the second account now: '%s', %d reports" % [Community.player_id(), net.count("POST", "/plays")])
+	var texts := _texts(sheet)
+	check(not c.like.button_pressed and _choice(c.difficulty) == "" and not _mentions(texts, ["hard", "counted tries: 5"]), "the first account's like, vote and tries must vanish at once, without a refresh or reopening: liked %s, '%s' %s" % [c.like.button_pressed, _choice(c.difficulty), texts])
+	_tap_toggle(c.like)  # a tap that still reaches the first account's controls ...
+	_pick(c.difficulty, "easy")
+	await frames(4)
+	check(net.count("POST", LIKE) + net.count("DELETE", LIKE) + net.count("PUT", DIFFICULTY) == 0, "... must not send a choice for the second account: %s" % [net.requests.map(func(r: Dictionary) -> String: return "%s %s" % [r.method, r.url])])
+	check(Community.pending_feedback(LEVEL_ID, row.sha256).is_empty(), "... nor queue one for it: %s" % [Community.pending_feedback(LEVEL_ID, row.sha256)])
+	net.release_hold("GET", FEEDBACK)
+	await frames(4)
+	check(not c.like.button_pressed and _choice(c.difficulty) == "" and c.like.disabled and c.difficulty.disabled and _mentions(_texts(sheet), ["counted tries: 0"]), "the second account's own answer shows, with its own closed choices: %s" % [_texts(sheet)])
+
+
+func test_a_settled_sheet_drops_the_accounts_private_state_when_its_account_is_deleted() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"liked": true, "like_eligible": true, "difficulty": "hard", "difficulty_eligible": true, "attempts": 5}))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	var c := _controls(sheet)
+	if c.like == null or c.difficulty == null:
+		check(false, "the sheet needs one Like toggle and one difficulty choice")
+		return
+	check(c.like.button_pressed and _choice(c.difficulty) == "hard" and _mentions(_texts(sheet), ["counted tries: 5"]), "control: the loaded sheet shows the account's own state")
+	net.answer("DELETE", "/me", 204)
+	var error: String = await Community.delete_account()
+	check(error == "", "setup: the account is deleted and erased here: '%s'" % error)
+	await frames(4)
+	var texts := _texts(sheet)
+	check(not c.like.button_pressed and _choice(c.difficulty) == "" and not _mentions(texts, ["hard", "counted tries: 5"]), "an erased account's like, vote and tries must not stay on the open sheet: liked %s, '%s' %s" % [c.like.button_pressed, _choice(c.difficulty), texts])
+
+
+## A server that counts each attempt id once, as the real one does, and answers the feedback read with that count on top of `others` attempts made elsewhere. `ids` is id → the highest revision it has seen; `lose` makes it count a report and then not answer it.
+func _counting_server(net: FakeTransport, row: Dictionary, others: int) -> Dictionary:
+	var server := {"ids": {}, "lose": false}
+	var serve := func() -> void:
+		var total: int = others + server.ids.size()
+		_serve(_reply({"attempts": total, "like_eligible": total >= 5, "difficulty_eligible": total >= 5}, {"players_started": 12}, null, {}, row.sha256))
+	serve.call()
+	net.respond("POST", "/plays", func(request: Dictionary) -> Dictionary:
+		var acks := []
+		for attempt: Dictionary in _json(request.body).get("attempts", []):
+			server.ids[attempt.id] = maxi(int(server.ids.get(attempt.id, 0)), int(attempt.revision))
+			acks.append({"id": attempt.id, "revision": int(attempt.revision)})
+		serve.call()
+		if server.lose:
+			return {"status": 0}
+		return {"status": 200, "body": {"acknowledged": acks, "discarded": [], "cleared": []}})
+	return server
+
+
+## Details of `row` opened and closed again, as a player who looks at their tries and leaves: what the server says then is the confirmed progress.
+func _observe(row: Dictionary) -> void:
+	var sheet: Overlay = await _open(world, row, Callable())
+	if sheet != null:
+		sheet.close()
+		await frames(2)
+
+
+func test_a_fifth_try_split_with_another_device_offers_rate_while_this_devices_report_is_pending() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row: Dictionary = await _download(net, _level())
+	_counting_server(net, row, 4)  # four counted tries from another device or an earlier install
+	await _observe(row)
+	var seen: Dictionary = Community.play_progress(row.sha256)
+	check(seen.confirmed_attempts == 4 and seen.local_attempts == 0 and seen.can_offer_rating == false, "setup: Details confirmed four tries and this device has none: %s" % [seen])
+	var lost: Level = await _lose(_stage(row))
+	check(net.count("POST", "/plays") == 0 and Community.play_progress(row.sha256).pending == true, "setup: nothing is sent before the community is entered, so the new try is still pending")
+	check(_buttons(lost.hud, "Rate level").size() == 1, "four tries elsewhere and this failed run are the fifth: Rate level is offered")
+
+
+func test_a_fifth_try_split_with_another_device_offers_rate_after_this_devices_reports_were_acknowledged() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row: Dictionary = await _download(net, _level())
+	var stage := _stage(row)
+	var server := _counting_server(net, row, 3)
+	await _observe(row)
+	Community.activate_feedback()
+	var first: Level = await _lose(stage)
+	check(_buttons(first.hud, "Rate level").is_empty(), "three tries elsewhere and this one are four: no rating yet")
+	first.free()
+	await _cooldown()  # the first run's finish goes out ...
+	await _cooldown()  # ... and the gap after it passes
+	var second: Level = await _lose(stage)
+	check(server.ids.size() == 2 and server.ids.values().count(2) == 1, "setup: the first run's start and finish and the second run's start were acknowledged before its result: %s" % [server.ids])
+	check(_buttons(second.hud, "Rate level").size() == 1, "three tries elsewhere and two acknowledged ones here are the fifth: Rate level is offered")
+
+
+func test_tries_the_server_already_counted_are_not_counted_twice_when_looking_for_the_fifth() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row: Dictionary = await _download(net, _level())
+	var stage := _stage(row)
+	var server := _counting_server(net, row, 2)
+	Community.activate_feedback()
+	var first: Level = await _lose(stage)
+	first.free()
+	await _cooldown()
+	await _cooldown()
+	check(server.ids.size() == 1 and server.ids.values() == [2], "setup: the first run's start and finish are acknowledged: %s" % [server.ids])
+	await _observe(row)  # the server's three now include the first run
+	check(Community.play_progress(row.sha256).confirmed_attempts == 3, "setup: Details confirmed three tries")
+	var second: Level = await _lose(stage)
+	check(_buttons(second.hud, "Rate level").is_empty(), "two tries elsewhere and two here are four: a try the server already counted is not counted again")
+	second.free()
+	await _cooldown()
+	await _cooldown()
+	check(not Community.play_progress(row.sha256).can_offer_rating, "a start's acknowledgment and its finish's are one try, so four is still not five")
+	var third: Level = await _lose(stage)
+	check(_buttons(third.hud, "Rate level").size() == 1, "the fifth try offers Rate level")
+
+
+func test_a_start_whose_report_answer_was_lost_still_counts_toward_the_fifth_try() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row: Dictionary = await _download(net, _level())
+	var stage := _stage(row)
+	var server := _counting_server(net, row, 3)
+	await _observe(row)
+	Community.activate_feedback()
+	server.lose = true  # the server counts each report, but no answer reaches this device
+	var first: Level = await _lose(stage)
+	check(_buttons(first.hud, "Rate level").is_empty(), "three tries elsewhere and one here are four")
+	first.free()
+	var second: Level = await _lose(stage)
+	check(net.count("POST", "/plays") == 1, "setup: the report went out once and its answer was lost: %d" % net.count("POST", "/plays"))
+	check(_buttons(second.hud, "Rate level").size() == 1, "three tries elsewhere and two here are the fifth, whatever the lost answer said")
