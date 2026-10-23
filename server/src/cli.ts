@@ -1,9 +1,11 @@
-// Pull-request checker for the levels repository: `tsx src/cli.ts check-pr <repo-root> <base-ref> <head-ref>`.
+// Pull-request checker for the levels repository: `tsx src/cli.ts check-pr <repo-root> <base-ref> <head-ref> [--event <github-event-json>]`.
 // Exits 0 and prints `OK: ...` for a valid submission, else prints one sentence per problem and exits 1.
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { checkDemo } from "./core/check";
 import { MAX_BYTES, decodeDemo } from "./core/demo";
+import { reviewedDifficulty } from "./core/difficulty";
 import { MAX_LEVEL_BYTES, sha256Hex, validateLevel } from "./core/level";
 
 const LEVEL_FILE = /^levels\/(lvl_[a-z0-9]{10})\/(meta\.json|v([1-9][0-9]*)\.json)$/;
@@ -19,16 +21,16 @@ export interface Result {
   problems: string[];
 }
 
-export async function checkPr(root: string, base: string, head: string): Promise<Result> {
+export async function checkPr(root: string, base: string, head: string, reviewLabels?: readonly string[]): Promise<Result> {
   try {
-    return await check(root, base, head);
+    return await check(root, base, head, reviewLabels);
   } catch (e) {
     // A git or decode failure must read as a verdict, not a stack trace.
     return fail(`The check could not be completed: ${String(e instanceof Error ? e.message : e).split("\n")[0]}.`);
   }
 }
 
-async function check(root: string, base: string, head: string): Promise<Result> {
+async function check(root: string, base: string, head: string, reviewLabels?: readonly string[]): Promise<Result> {
   // A ref starting with "-" would be read by git as an option.
   if (base.startsWith("-") || head.startsWith("-")) return fail("The refs must not start with a dash.");
   const git = (...args: string[]) => execFileSync("git", args, { cwd: root, maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
@@ -87,6 +89,10 @@ async function check(root: string, base: string, head: string): Promise<Result> 
         : `${path} has the wrong version: the next version of ${id} is v${n}.`,
     );
   }
+  // Exactly one recognised difficulty label; labels left undefined mean a content-only check.
+  if (reviewLabels !== undefined && reviewedDifficulty(reviewLabels) === null) {
+    problems.push("A level submission needs exactly one moderator label: difficulty:easy, difficulty:normal, difficulty:hard or difficulty:expert.");
+  }
   if (problems.length > 0) return { ok: null, problems };
 
   if (size(levelPath) > MAX_LEVEL_BYTES) problems.push(`${levelPath} is larger than ${MAX_LEVEL_BYTES} bytes.`);
@@ -124,6 +130,20 @@ function parseObject(bytes: Uint8Array): Record<string, unknown> | null {
   }
 }
 
+/** The label names of a `pull_request` event file, read as data and never run. Null unless it has a labels list of named labels. */
+function eventLabels(path: string): string[] | null {
+  let bytes: Buffer;
+  try {
+    bytes = readFileSync(path);
+  } catch {
+    return null;
+  }
+  const pull = parseObject(bytes)?.pull_request;
+  if (typeof pull !== "object" || pull === null || !("labels" in pull) || !Array.isArray(pull.labels)) return null;
+  const names = pull.labels.map((label: unknown) => (typeof label === "object" && label !== null && "name" in label ? label.name : undefined));
+  return names.every((name): name is string => typeof name === "string") ? names : null;
+}
+
 function checkMeta(path: string, bytes: Uint8Array): string[] {
   const meta = parseObject(bytes);
   if (!meta) return [`${path} is not a JSON object.`];
@@ -144,12 +164,20 @@ function checkHidden(bytes: number, read: () => Uint8Array): string[] {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  const [command, root, base, head] = process.argv.slice(2);
-  if (command !== "check-pr" || !root || !base || !head) {
-    console.error("usage: cli.ts check-pr <repo-root> <base-ref> <head-ref>");
+  const args = process.argv.slice(2);
+  const at = args.indexOf("--event");
+  const [command, root, base, head] = at < 0 ? args : [...args.slice(0, at), ...args.slice(at + 2)];
+  const event = at < 0 ? undefined : args[at + 1];
+  if (command !== "check-pr" || !root || !base || !head || (at >= 0 && event === undefined)) {
+    console.error("usage: cli.ts check-pr <repo-root> <base-ref> <head-ref> [--event <github-event-json>]");
     process.exit(2);
   }
-  const { ok, problems } = await checkPr(root, base, head);
-  console.log(ok ?? problems.join("\n"));
-  process.exit(ok ? 0 : 1);
+  let result: Result;
+  if (event === undefined) result = await checkPr(root, base, head);
+  else {
+    const labels = eventLabels(event);
+    result = labels === null ? fail("The --event file is not a pull request event with a labels list.") : await checkPr(root, base, head, labels);
+  }
+  console.log(result.ok ?? result.problems.join("\n"));
+  process.exit(result.ok ? 0 : 1);
 }

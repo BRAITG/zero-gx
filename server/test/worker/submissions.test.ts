@@ -123,6 +123,10 @@ interface Fields {
   demo?: Uint8Array<ArrayBuffer>;
   level_id?: string;
   based_on?: string;
+  /** Sent as the optional `suggested_difficulty` field when defined, even when empty. */
+  suggested_difficulty?: string;
+  /** The suggestion the integrity token binds: defaults to the one sent; null binds two parts. */
+  bindSuggestion?: string | null;
 }
 
 async function submit(token: string, fields: Fields, gh: Github, submitEnv: Env = testEnv) {
@@ -132,7 +136,12 @@ async function submit(token: string, fields: Fields, gh: Github, submitEnv: Env 
   form.set("demo", new File([fields.demo ?? DEMO_01], "demo.gz"));
   if (fields.level_id) form.set("level_id", fields.level_id);
   if (fields.based_on) form.set("based_on", fields.based_on);
-  const bound = await boundNonce(n, [fields.level ?? LEVEL_01, fields.demo ?? DEMO_01]);
+  if (fields.suggested_difficulty !== undefined) form.set("suggested_difficulty", fields.suggested_difficulty);
+  // The optional third part is bound only when a suggestion is sent; a test may forge the binding.
+  const suggestion = fields.bindSuggestion === undefined ? fields.suggested_difficulty : fields.bindSuggestion;
+  const parts = [fields.level ?? LEVEL_01, fields.demo ?? DEMO_01];
+  if (suggestion !== undefined && suggestion !== null) parts.push(new TextEncoder().encode(suggestion));
+  const bound = await boundNonce(n, parts);
   const request = new Request("https://example.com/submissions", { method: "POST", body: form, headers: { Authorization: `Bearer ${token}`, "X-Integrity": `ok:${bound}`, "X-Nonce": n } });
   return postSubmission(request, submitEnv, {}, gh.fetchFn).catch(failed);
 }
@@ -413,6 +422,53 @@ describe("POST /submissions", () => {
   });
 });
 
+describe("suggested difficulty", () => {
+  it("puts the author's hint in the pull request body and nowhere else", async () => {
+    const { token, player } = await signIn("hint-1", "Mo");
+    const gh = github();
+    expect((await submit(token, { suggested_difficulty: "hard" }, gh)).status).toBe(201);
+    const [pull] = gh.where("POST", "/pulls");
+    expect(pull!.body.body).toMatch(/\bhard\b/);
+    expect(pull!.body).not.toHaveProperty("labels");
+    expect(gh.ops().filter((op) => op.includes("/labels"))).toEqual([]);
+    // The committed files are exactly those of an unsuggested submission.
+    const [levelBlob, , metaBlob] = gh.where("POST", "/git/blobs").map((c) => c.body);
+    expect(levelBlob).toEqual({ content: LEVEL_01_TEXT, encoding: "utf-8" });
+    expect(metaBlob).toEqual({ content: `{"author":"${player.id}"}\n`, encoding: "utf-8" });
+  });
+
+  it("adds no hint when the field is absent, and keeps the two-part binding", async () => {
+    const { token } = await signIn("hint-2", "Nu");
+    const gh = github();
+    expect((await submit(token, {}, gh)).status).toBe(201);
+    expect(gh.where("POST", "/pulls")[0]!.body.body).not.toMatch(/\b(easy|normal|hard|expert)\b/);
+  });
+
+  it("refuses a present but empty or unknown suggestion before any GitHub call", async () => {
+    const { token } = await signIn("hint-3", "Ob");
+    for (const suggested_difficulty of ["", "legendary", "Hard", "hard ", "constructor"]) {
+      const gh = github();
+      const response = await submit(token, { suggested_difficulty }, gh);
+      expect(response.status, JSON.stringify(suggested_difficulty)).toBe(400);
+      expect(gh.calls, JSON.stringify(suggested_difficulty)).toEqual([]);
+    }
+    expect(await rows("SELECT * FROM levels")).toEqual([]);
+  });
+
+  it("fails integrity unless the bound parts are exactly the parts sent", async () => {
+    const { token } = await signIn("hint-4", "Pim");
+    const gh = github();
+    // Bound to "hard" as the third part, but the form says "expert".
+    expect((await submit(token, { suggested_difficulty: "expert", bindSuggestion: "hard" }, gh)).status).toBe(403);
+    // Bound to two parts, but a suggestion is sent: its presence selects three parts.
+    expect((await submit(token, { suggested_difficulty: "hard", bindSuggestion: null }, gh)).status).toBe(403);
+    // Bound to a third part, but no suggestion is sent.
+    expect((await submit(token, { bindSuggestion: "hard" }, gh)).status).toBe(403);
+    expect(gh.calls).toEqual([]);
+    expect((await submit(token, { suggested_difficulty: "hard" }, gh)).status).toBe(201);
+  });
+});
+
 describe("GET /me/submissions", () => {
   it("lists the player's submissions, newest first", async () => {
     const { token, player } = await signIn("me-1", "Nia");
@@ -467,27 +523,21 @@ describe("POST /github", () => {
     expect(submission).toMatchObject({ status: "approved" });
     expect(submission!.decided).toBeGreaterThan(0);
 
-    const expected =
-      JSON.stringify(
+    expect(JSON.parse(gh.files.get("index.json")!.text)).toEqual({
+      levels: [
+        { id: "lvl_aaaaaaaaaa", title: "Alpha", author: "Quinn", latest: 1, versions: [{ version: 1, sha256: SHA_01, reviewed_difficulty: null }] },
         {
-          levels: [
-            { id: "lvl_aaaaaaaaaa", title: "Alpha", author: "Quinn", latest: 1, versions: [{ version: 1, sha256: SHA_01 }] },
-            {
-              id: "lvl_bbbbbbbbbb",
-              title: "Beta",
-              author: "Bo",
-              latest: 2,
-              versions: [
-                { version: 1, sha256: "lvl_bbbbbbbbbb-1".padEnd(64, "0") },
-                { version: 2, sha256: "lvl_bbbbbbbbbb-2".padEnd(64, "0") },
-              ],
-            },
+          id: "lvl_bbbbbbbbbb",
+          title: "Beta",
+          author: "Bo",
+          latest: 2,
+          versions: [
+            { version: 1, sha256: "lvl_bbbbbbbbbb-1".padEnd(64, "0"), reviewed_difficulty: null },
+            { version: 2, sha256: "lvl_bbbbbbbbbb-2".padEnd(64, "0"), reviewed_difficulty: null },
           ],
         },
-        null,
-        2,
-      ) + "\n";
-    expect(gh.files.get("index.json")!.text).toBe(expected);
+      ],
+    });
     const [put] = gh.where("PUT", "/contents/index.json");
     expect(put!.body).toMatchObject({ message: "Update index", branch: "main" });
 
@@ -574,6 +624,76 @@ describe("POST /github", () => {
     expect((await hook(gh, "pull_request", closed(99, true))).status).toBe(204);
     expect((await hook(gh, "pull_request", { ...closed(7, true), action: "opened" })).status).toBe(204);
     expect(gh.calls).toEqual([]);
+  });
+});
+
+describe("reviewed difficulty on merge", () => {
+  const mergedWith = (number: number, labels: string[]) => ({ action: "closed", repository, pull_request: { number, merged: true, labels: labels.map((name) => ({ name })) } });
+  const mergedFile = (gh: Github, level: string, version: number, text: string) => gh.files.set(`levels/${level}/v${version}.json`, { text, sha: `main-${level}-${version}` });
+  const versionsOf = (level: string) => rows("SELECT version, sha256, reviewed_difficulty FROM versions WHERE level = ? ORDER BY version", level);
+
+  it("saves the moderator's label once, with the merged file's hash; repeated or reordered deliveries rewrite nothing", async () => {
+    const { player } = await signIn("rev-1", "Ira");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 7, "Alpha", SHA_01);
+    const gh = github();
+    mergedFile(gh, "lvl_aaaaaaaaaa", 1, LEVEL_05_TEXT); // not the bytes the player uploaded
+
+    expect((await hook(gh, "pull_request", mergedWith(7, ["bug", "difficulty:hard"]))).status).toBe(200);
+    const saved = [{ version: 1, sha256: SHA_05, reviewed_difficulty: "hard" }];
+    expect(await versionsOf("lvl_aaaaaaaaaa")).toEqual(saved);
+
+    // A repeated delivery with another label, then a rejection and a reopen of the same pull request.
+    expect((await hook(gh, "pull_request", mergedWith(7, ["difficulty:expert"]))).status).toBe(200);
+    await hook(gh, "pull_request", { action: "closed", repository, pull_request: { number: 7, merged: false } });
+    await hook(gh, "pull_request", { action: "reopened", repository, pull_request: { number: 7, merged: false } });
+    expect(await versionsOf("lvl_aaaaaaaaaa")).toEqual(saved);
+
+    // A later replay that sees other bytes on main moves neither the hash nor the label.
+    mergedFile(gh, "lvl_aaaaaaaaaa", 1, LEVEL_01_TEXT);
+    await hook(gh, "pull_request", mergedWith(7, ["difficulty:easy"]));
+    expect(await versionsOf("lvl_aaaaaaaaaa")).toEqual(saved);
+    expect(JSON.parse(gh.files.get("index.json")!.text).levels[0].versions).toEqual(saved);
+  });
+
+  for (const [i, labels] of [[], ["bug"], ["difficulty:easy", "difficulty:hard"]].entries()) {
+    it(`publishes the version as Not rated, and still approves it, with labels ${JSON.stringify(labels)}`, async () => {
+      const { player } = await signIn(`rev-b${i}`, "Jun");
+      await seedLevel("lvl_aaaaaaaaaa", player.id);
+      await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 7, "Alpha", SHA_01);
+      const gh = github();
+      mergedFile(gh, "lvl_aaaaaaaaaa", 1, LEVEL_01_TEXT);
+
+      expect((await hook(gh, "pull_request", mergedWith(7, labels))).status).toBe(200);
+      expect(await versionsOf("lvl_aaaaaaaaaa")).toEqual([{ version: 1, sha256: SHA_01, reviewed_difficulty: null }]);
+      expect(await rows("SELECT status FROM submissions")).toEqual([{ status: "approved" }]);
+      expect(await rows("SELECT latest FROM levels")).toEqual([{ latest: 1 }]);
+      expect(JSON.parse(gh.files.get("index.json")!.text).levels.map((l: { id: string }) => l.id)).toEqual(["lvl_aaaaaaaaaa"]);
+    });
+  }
+
+  it("never turns the author's suggestion into the reviewed label", async () => {
+    const { token } = await signIn("rev-c", "Kai");
+    const gh = github();
+    const response = await submit(token, { suggested_difficulty: "expert" }, gh);
+    expect(response.status).toBe(201);
+    const { level_id, pull_request } = (await response.json()) as { level_id: string; pull_request: number };
+    mergedFile(gh, level_id, 1, LEVEL_01_TEXT);
+    expect((await hook(gh, "pull_request", mergedWith(pull_request, []))).status).toBe(200);
+    expect(await versionsOf(level_id)).toEqual([{ version: 1, sha256: SHA_01, reviewed_difficulty: null }]);
+  });
+
+  it("leaves the versions published before the label existed as Not rated", async () => {
+    const { player } = await signIn("rev-d", "Lee");
+    await seedLevel("lvl_aaaaaaaaaa", player.id, { latest: 1 });
+    await seedOpen("lvl_aaaaaaaaaa", 2, player.id, 7, "Alpha", SHA_01);
+    const gh = github();
+    mergedFile(gh, "lvl_aaaaaaaaaa", 2, LEVEL_01_TEXT);
+    expect((await hook(gh, "pull_request", mergedWith(7, ["difficulty:hard"]))).status).toBe(200);
+    expect(await versionsOf("lvl_aaaaaaaaaa")).toEqual([
+      { version: 1, sha256: "lvl_aaaaaaaaaa-1".padEnd(64, "0"), reviewed_difficulty: null },
+      { version: 2, sha256: SHA_01, reviewed_difficulty: "hard" },
+    ]);
   });
 });
 
@@ -716,7 +836,7 @@ describe("recovering from partial failures", () => {
     expect((await hook(gh, "pull_request", merged(7))).status).toBe(200);
     expect(await rows("SELECT sha256 FROM versions")).toEqual([{ sha256: SHA_05 }]);
     expect(await rows("SELECT sha256, status FROM submissions")).toEqual([{ sha256: SHA_05, status: "approved" }]);
-    expect(JSON.parse(gh.files.get("index.json")!.text).levels[0].versions).toEqual([{ version: 1, sha256: SHA_05 }]);
+    expect(JSON.parse(gh.files.get("index.json")!.text).levels[0].versions).toEqual([{ version: 1, sha256: SHA_05, reviewed_difficulty: null }]);
   });
 
   it("fails loudly and leaves the submission open when the merged file's hash is already published", async () => {

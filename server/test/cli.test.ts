@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -66,6 +66,9 @@ const newLevel = (id = A): Files => ({
   [`proof/${id}/v1.demo.gz`]: demo,
 });
 const problems = (before: Files, change: Files, baseAfter: Files = {}) => checkPr(repo(before, change, baseAfter), "main", "pr");
+const labelled = (labels: string[], before: Files, change: Files, baseAfter: Files = {}) => checkPr(repo(before, change, baseAfter), "main", "pr", labels);
+const tsx = join(import.meta.dirname, "../node_modules/.bin/tsx");
+const cli = (...args: string[]) => spawnSync(tsx, ["src/cli.ts", ...args], { cwd: join(import.meta.dirname, ".."), encoding: "utf8" });
 
 describe("check-pr accepts", () => {
   it("a new level", async () => {
@@ -176,12 +179,38 @@ describe("check-pr rejects", () => {
   });
 });
 
+describe("check-pr with review labels", () => {
+  it("refuses a new level without exactly one difficulty label", async () => {
+    for (const labels of [[], ["bug", "good first issue"], ["hard"], ["difficulty:legendary"]]) {
+      const r = await labelled(labels, {}, newLevel());
+      expect(r.ok, JSON.stringify(labels)).toBeNull();
+    }
+  });
+
+  it("refuses a new level with several difficulty labels", async () => {
+    const r = await labelled(["difficulty:easy", "difficulty:hard"], {}, newLevel());
+    expect(r.ok).toBeNull();
+  });
+
+  it("accepts exactly one difficulty label among unrelated labels", async () => {
+    expect(await labelled(["bug", "difficulty:hard", "good first issue"], {}, newLevel())).toEqual({ ok: `OK: ${A} v1`, problems: [] });
+  });
+
+  it("requires the label on the next version too", async () => {
+    const change = { [`levels/${A}/v2.json`]: level, [`proof/${A}/v2.demo.gz`]: demo };
+    expect((await labelled([], existing, change)).ok).toBeNull();
+    expect(await labelled(["difficulty:normal"], existing, change)).toEqual({ ok: `OK: ${A} v2`, problems: [] });
+  });
+
+  it("exempts hidden.txt-only maintenance, labelled or not", async () => {
+    const change = { "hidden.txt": `${A}\n` };
+    expect(await labelled([], {}, change)).toEqual({ ok: "OK: hidden.txt", problems: [] });
+    expect(await labelled(["bug"], {}, change)).toEqual({ ok: "OK: hidden.txt", problems: [] });
+  });
+});
+
 describe("cli", () => {
-  const run = (root: string) =>
-    spawnSync(join(import.meta.dirname, "../node_modules/.bin/tsx"), ["src/cli.ts", "check-pr", root, "main", "pr"], {
-      cwd: join(import.meta.dirname, ".."),
-      encoding: "utf8",
-    });
+  const run = (root: string) => cli("check-pr", root, "main", "pr");
 
   it("prints OK and exits 0", () => {
     const r = run(repo({}, newLevel()));
@@ -192,5 +221,77 @@ describe("cli", () => {
     const r = run(repo({}, { "hidden.txt": null }));
     expect(r.status).toBe(1);
     expect(r.stdout.trim().split("\n")).toHaveLength(1);
+  });
+});
+
+describe("cli --event", () => {
+  const scratch = () => {
+    const dir = mkdtempSync(join(tmpdir(), "zgx-event-"));
+    dirs.push(dir);
+    return dir;
+  };
+  const eventFile = (dir: string, content: string) => {
+    const path = join(dir, "event.json");
+    writeFileSync(path, content);
+    return path;
+  };
+  /** A `labeled` delivery whose pull request carries exactly these label names. */
+  const labels = (...names: string[]) => JSON.stringify({ action: "labeled", pull_request: { number: 1, labels: names.map((name) => ({ name })) } });
+
+  it("accepts a labelled new level", () => {
+    const r = cli("check-pr", repo({}, newLevel()), "main", "pr", "--event", eventFile(scratch(), labels("bug", "difficulty:hard")));
+    expect([r.status, r.stdout]).toEqual([0, `OK: ${A} v1\n`]);
+  });
+
+  it("fails with one sentence unless exactly one difficulty label is present", () => {
+    const dir = scratch();
+    for (const names of [[], ["difficulty:easy", "difficulty:hard"]]) {
+      const r = cli("check-pr", repo({}, newLevel()), "main", "pr", "--event", eventFile(dir, labels(...names)));
+      expect([r.status, r.stdout.trim().split("\n").length], JSON.stringify(names)).toEqual([1, 1]);
+    }
+  });
+
+  it("exempts a hidden.txt-only change without a label", () => {
+    const r = cli("check-pr", repo({}, { "hidden.txt": `${A}\n` }), "main", "pr", "--event", eventFile(scratch(), labels()));
+    expect([r.status, r.stdout]).toEqual([0, "OK: hidden.txt\n"]);
+  });
+
+  it("never executes label text from the event", () => {
+    const dir = scratch();
+    const marker = join(dir, "pwned");
+    const hostile = [`bug"; touch ${marker}; echo "`, `$(touch ${marker})`, `\`touch ${marker}\``, `difficulty:hard\n; touch ${marker}`];
+    const r = cli("check-pr", repo({}, newLevel()), "main", "pr", "--event", eventFile(dir, labels(...hostile)));
+    expect(existsSync(marker)).toBe(false);
+    expect([r.status, r.stdout.trim().split("\n").length]).toEqual([1, 1]);
+  });
+
+  it("reads the exact difficulty label past hostile text, and runs none of it", () => {
+    const dir = scratch();
+    const marker = join(dir, "pwned");
+    const r = cli("check-pr", repo({}, newLevel()), "main", "pr", "--event", eventFile(dir, labels(`"; touch ${marker}; "`, "difficulty:hard")));
+    expect([r.status, r.stdout]).toEqual([0, `OK: ${A} v1\n`]);
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  it("exits nonzero with one sentence for an event it cannot read", () => {
+    const dir = scratch();
+    const root = repo({}, newLevel());
+    const unreadable = [
+      "{",
+      "[]",
+      JSON.stringify({ action: "labeled" }),
+      JSON.stringify({ pull_request: { labels: "difficulty:hard" } }),
+      JSON.stringify({ pull_request: { labels: [{ name: 3 }] } }),
+      JSON.stringify({ pull_request: { labels: [null] } }),
+    ];
+    for (const content of unreadable) {
+      const r = cli("check-pr", root, "main", "pr", "--event", eventFile(dir, content));
+      expect(r.status, content).not.toBe(0);
+      expect(r.stdout.trim().split("\n"), content).toHaveLength(1);
+      expect(r.stdout.trim(), content).toMatch(/\.$/);
+    }
+    const missing = cli("check-pr", root, "main", "pr", "--event", join(dir, "absent.json"));
+    expect(missing.status).not.toBe(0);
+    expect(missing.stdout.trim().split("\n")).toHaveLength(1);
   });
 });

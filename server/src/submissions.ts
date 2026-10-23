@@ -1,5 +1,6 @@
 import { checkDemo } from "./core/check";
 import { MAX_BYTES, decodeDemo } from "./core/demo";
+import { type Difficulty, isDifficulty, reviewedDifficulty } from "./core/difficulty";
 import { MAX_LEVEL_BYTES, sha256Hex, validateLevel } from "./core/level";
 import type { Env } from "./env";
 import { commitIndex, getFile, lastComment, openOrUpdatePullRequest, pullRequestState } from "./github";
@@ -51,6 +52,14 @@ function field(form: FormData, name: string): string | null {
   return value;
 }
 
+/** The author's optional `suggested_difficulty`: absent is null; present must be one of the four labels, so an empty value is refused. */
+function suggestedDifficulty(form: FormData): Difficulty | null {
+  if (!form.has("suggested_difficulty")) return null;
+  const value = form.get("suggested_difficulty");
+  if (!isDifficulty(value)) throw new HttpError(400, "suggested_difficulty must be easy, normal, hard or expert.");
+  return value;
+}
+
 /** `fetchFn` is the injection point for tests. */
 export async function postSubmission(request: Request, env: Env, _params: Record<string, string>, fetchFn: typeof fetch = fetch): Promise<Response> {
   const player = await requirePlayer(request, env);
@@ -65,11 +74,14 @@ export async function postSubmission(request: Request, env: Env, _params: Record
   const basedOn = field(form, "based_on");
   if (levelId !== null && !LEVEL_ID.test(levelId)) throw new HttpError(400, "level_id must look like lvl_abcdefghij.");
   if (basedOn !== null && !SHA256.test(basedOn)) throw new HttpError(400, "based_on must be a lowercase 64-digit hex sha256.");
+  const suggestion = suggestedDifficulty(form);
 
   // Everything below up to the limits is validation: nothing reaches GitHub before it passes.
   const levelBytes = new Uint8Array(await levelFile.arrayBuffer());
   const demoBytes = new Uint8Array(await demoFile.arrayBuffer());
-  await requireIntegrity(request, env, [levelBytes, demoBytes], "device");
+  // The suggestion is bound as a third part only when it is sent: its presence selects the protocol.
+  const parts = suggestion === null ? [levelBytes, demoBytes] : [levelBytes, demoBytes, new TextEncoder().encode(suggestion)];
+  await requireIntegrity(request, env, parts, "device");
   let levelText: string;
   let level: unknown;
   try {
@@ -169,7 +181,7 @@ export async function postSubmission(request: Request, env: Env, _params: Record
       // Every version's commit starts from the default branch, so meta.json is needed until a version has been merged.
       meta: published ? null : `${JSON.stringify({ author, ...(parent ? { based_on: parent } : {}) })}\n`,
       title: `${checked.title} (${level_id} v${version})`,
-      body: `Version ${version} of ${level_id}\nAuthor: ${author}${parent ? `\nBased on: ${parent}` : ""}`,
+      body: `Version ${version} of ${level_id}\nAuthor: ${author}${parent ? `\nBased on: ${parent}` : ""}${suggestion === null ? "" : `\nSuggested difficulty: ${suggestion}`}`,
       pullRequest: open!.pull_request,
     });
   } catch (error) {
@@ -209,19 +221,19 @@ export async function getMySubmissions(request: Request, env: Env): Promise<Resp
 
 /** `index.json` as the bot publishes it: levels that are listed and have an approved version. */
 async function buildIndex(env: Env): Promise<string> {
-  const [levels, versions] = await env.DB.batch<{ id: string; title: string; author: string; latest: number; level: string; version: number; sha256: string }>([
+  const [levels, versions] = await env.DB.batch<{ id: string; title: string; author: string; latest: number; level: string; version: number; sha256: string; reviewed_difficulty: Difficulty | null }>([
     env.DB.prepare(
       `SELECT l.id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest FROM levels l LEFT JOIN players p ON p.id = l.owner
        WHERE l.hidden = 0 AND l.id NOT IN (SELECT level FROM hidden_levels) AND l.latest > 0 ORDER BY l.id`,
     ),
-    env.DB.prepare("SELECT level, version, sha256 FROM versions ORDER BY level, version"),
+    env.DB.prepare("SELECT level, version, sha256, reviewed_difficulty FROM versions ORDER BY level, version"),
   ]);
   const entries = levels!.results.map(({ id, title, author, latest }) => ({
     id,
     title,
     author,
     latest,
-    versions: versions!.results.filter((v) => v.level === id).map(({ version, sha256 }) => ({ version, sha256 })),
+    versions: versions!.results.filter((v) => v.level === id).map(({ version, sha256, reviewed_difficulty }) => ({ version, sha256, reviewed_difficulty })),
   }));
   return `${JSON.stringify({ levels: entries }, null, 2)}\n`;
 }
@@ -257,11 +269,13 @@ async function closePullRequest(env: Env, fetchFn: typeof fetch, pull: PullReque
       const file = await getFile(env, fetchFn, path);
       if (!file) throw new Error(`${path} is missing on the default branch of a merged pull request.`);
       const sha256 = await sha256Hex(file.bytes);
+      // The moderator's label, read from the signed delivery: exactly one difficulty:<label>, else null. It is saved in the guarded insert below.
+      const reviewed = reviewedDifficulty((pull.labels ?? []).map((label) => label.name ?? ""));
       // One transaction, each statement guarded by the submission not being decided yet: a repeated delivery changes nothing.
       // A hash that is already published makes the versions insert fail and roll everything back, leaving the submission undecided.
       const undecided = "(SELECT status FROM submissions WHERE id = ?1) IN ('open', 'rejected')";
       await env.DB.batch([
-        env.DB.prepare(`INSERT INTO versions (level, version, sha256, approved) SELECT level, version, ?3, ?2 FROM submissions WHERE id = ?1 AND ${undecided}`).bind(row.id, now(), sha256),
+        env.DB.prepare(`INSERT INTO versions (level, version, sha256, approved, reviewed_difficulty) SELECT level, version, ?3, ?2, ?4 FROM submissions WHERE id = ?1 AND ${undecided}`).bind(row.id, now(), sha256, reviewed),
         env.DB.prepare(
           `UPDATE levels SET latest = (SELECT version FROM submissions WHERE id = ?1), title = (SELECT title FROM submissions WHERE id = ?1)
            WHERE id = (SELECT level FROM submissions WHERE id = ?1) AND ${undecided}`,
@@ -306,6 +320,7 @@ interface PullRequest {
   number: number;
   merged: boolean;
   head?: { ref?: string; repo?: { full_name?: string } };
+  labels?: { name?: string }[];
 }
 
 /** The parts of a delivery this server reads. */
@@ -313,7 +328,7 @@ interface WebhookPayload {
   action?: string;
   ref?: string;
   repository?: { full_name?: string };
-  pull_request?: { number?: number; merged?: boolean; head?: { ref?: string; repo?: { full_name?: string } } };
+  pull_request?: { number?: number; merged?: boolean; head?: { ref?: string; repo?: { full_name?: string } }; labels?: { name?: string }[] };
   commits?: { added?: string[]; modified?: string[]; removed?: string[] }[];
 }
 
@@ -335,7 +350,7 @@ export async function postGithub(request: Request, env: Env, _params: Record<str
   let handled = false;
   const number = payload.pull_request?.number;
   if (event === "pull_request" && typeof number === "number" && (payload.action === "closed" || payload.action === "reopened")) {
-    const pull = { number, merged: payload.pull_request?.merged === true, head: payload.pull_request?.head };
+    const pull = { number, merged: payload.pull_request?.merged === true, head: payload.pull_request?.head, labels: payload.pull_request?.labels };
     handled = payload.action === "closed" ? await closePullRequest(env, fetchFn, pull) : await reopenPullRequest(env, pull);
   } else if (event === "push" && payload.ref === "refs/heads/main") {
     const touched = (payload.commits ?? []).some((commit) => [commit.added, commit.modified, commit.removed].some((files) => files?.includes("hidden.txt")));

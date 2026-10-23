@@ -1,6 +1,8 @@
 name: Check submission
 
-on: pull_request
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read
@@ -25,7 +27,7 @@ jobs:
           node-version: 22
       - run: npm ci
         working-directory: tool/server
-      - run: npm run --prefix tool/server cli -- check-pr "$GITHUB_WORKSPACE" "origin/$BASE_REF" "$HEAD_SHA"
+      - run: npm run --prefix tool/server cli -- check-pr "$GITHUB_WORKSPACE" "origin/$BASE_REF" "$HEAD_SHA" --event "$GITHUB_EVENT_PATH"
         env:
           BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
