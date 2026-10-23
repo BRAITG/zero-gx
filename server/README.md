@@ -14,7 +14,8 @@ Auth, in the table below:
 | `GET /nonce` | none | A one-time nonce, valid 5 minutes. |
 | `POST /session` | none (nonce, auth code, integrity token in the body) | Signs a player in with a Play Games auth code; returns a 7-day session token. |
 | `POST /scores` | session + integrity | Re-checks the posted demo against its level, scores it, keeps the player's best. |
-| `DELETE /me` | session | Erases the caller: Play Games link, name, scores, likes, reports, rate counters and ranking row. The demo sweep deletes the orphaned demos. Their levels and submissions stay under the bare player id, with the author shown as "Deleted player". |
+| `POST /plays` | session + integrity | Records the caller's attempts (at most 32 per 16 KiB batch, 30 batches a minute) and acknowledges each one. Attempts up to a version's first clear feed the vote eligibility. |
+| `DELETE /me` | session | Erases the caller: Play Games link, name, scores, likes, reports, play history, rate counters and ranking row. The demo sweep deletes the orphaned demos. Their levels and submissions stay under the bare player id, with the author shown as "Deleted player". |
 | `GET /boards/:sha256` | session | The top 100 for one level hash plus the caller's own row. |
 | `GET /demos/:sha256/:player/:file` | session | A stored score demo. |
 | `POST /submissions` | session + integrity | Validates a level and its demo, opens or updates the pull request. |
@@ -122,7 +123,7 @@ Set it back to `0` to unban. Player ids are not in `GET /levels`; find them in b
 
 ```sh
 P=p_xxxxxxxxxxxxxxxx
-npx wrangler d1 execute zero-gx --remote --command "DELETE FROM scores WHERE player = '$P'; DELETE FROM likes WHERE player = '$P'; DELETE FROM reports WHERE player = '$P'; DELETE FROM rate WHERE player = '$P'; DELETE FROM player_ranking WHERE player = '$P'; DELETE FROM accounts WHERE player = '$P'; DELETE FROM players WHERE id = '$P'"
+npx wrangler d1 execute zero-gx --remote --command "DELETE FROM scores WHERE player = '$P'; DELETE FROM likes WHERE player = '$P'; DELETE FROM reports WHERE player = '$P'; DELETE FROM play_attempts WHERE player = '$P'; DELETE FROM play_summaries WHERE player = '$P'; DELETE FROM rate WHERE player = '$P'; DELETE FROM player_ranking WHERE player = '$P'; DELETE FROM accounts WHERE player = '$P'; DELETE FROM players WHERE id = '$P'"
 ```
 
 **Hide a level.** Open a pull request in the levels repository that adds its `lvl_id` to `hidden.txt` and changes nothing else. When it is merged the webhook (a `push` touching `hidden.txt`) refreshes D1 and rebuilds the index. Hiding hides the whole level: its earlier approved versions also disappear from the index, the boards and the player ranking, and the boards stop accepting scores.

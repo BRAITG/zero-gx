@@ -1,6 +1,7 @@
 import type { Env } from "./env";
 import { getHeadCommit, openIssue } from "./github";
 import { HttpError, readJson } from "./http";
+import { VISIBLE, visibleLevel } from "./levels";
 import { DELETED_AUTHOR, requirePlayer } from "./session";
 import { rebuildIndex } from "./submissions";
 
@@ -9,7 +10,6 @@ const RANKING_SIZE = 100;
 const REPORTS_PER_DAY = 10;
 const MAX_REASON = 500;
 const INDEX_CACHE_MS = 60_000;
-const LEVEL_ID = /^lvl_[a-z0-9]{10}$/;
 /** Demos younger than this may belong to a post that has not stored its score row yet. */
 const ORPHAN_AGE_MS = 60 * 60 * 1000;
 const SWEEP_PAGE = 1000;
@@ -23,19 +23,6 @@ const SWEEP_PAGES = 5;
 const RATE_KEEP = 2;
 
 const now = () => Math.floor(Date.now() / 1000);
-const VISIBLE = "l.hidden = 0 AND l.id NOT IN (SELECT level FROM hidden_levels)";
-
-interface LevelRow {
-  id: string;
-  latest: number;
-}
-
-/** A level that exists and is not hidden, else 404. */
-async function visibleLevel(env: Env, id: string | undefined): Promise<LevelRow> {
-  const level = LEVEL_ID.test(id ?? "") ? await env.DB.prepare(`SELECT l.id, l.latest FROM levels l WHERE l.id = ? AND ${VISIBLE}`).bind(id).first<LevelRow>() : null;
-  if (!level) throw new HttpError(404, "Not found.");
-  return level;
-}
 
 /** `POST` likes the level (only after a score on any of its versions), `DELETE` removes the like; both are idempotent and answer the new count. */
 export async function putLike(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
@@ -214,8 +201,8 @@ export async function runCron(env: Env, fetchFn: typeof fetch = fetch): Promise<
   await step("ranking", () => recomputeRanking(env));
   await step("cleanup", () =>
     env.DB.batch([
-      // Per-minute counters ('score') and per-day ones ('submit', 'report'); the action name says which unit the window is in.
-      env.DB.prepare(`DELETE FROM rate WHERE (action = 'score' AND "window" < ?1) OR (action IN ('submit', 'report') AND "window" < ?2)`).bind(Math.floor(time / 60) - RATE_KEEP, Math.floor(time / 86400) - RATE_KEEP),
+      // Per-minute counters ('score', 'plays') and per-day ones ('submit', 'report'); the action name says which unit the window is in.
+      env.DB.prepare(`DELETE FROM rate WHERE (action IN ('score', 'plays') AND "window" < ?1) OR (action IN ('submit', 'report') AND "window" < ?2)`).bind(Math.floor(time / 60) - RATE_KEEP, Math.floor(time / 86400) - RATE_KEEP),
       env.DB.prepare("DELETE FROM nonces WHERE expires < ?").bind(time),
     ]),
   );

@@ -36,7 +36,11 @@ export async function readBytes(request: Request, maxBytes: number): Promise<Uin
 
 /** Reads a JSON object body, refusing more than `maxBytes` of raw body. */
 export async function readJson(request: Request, maxBytes = 4096): Promise<Record<string, unknown>> {
-  const bytes = await readBytes(request, maxBytes);
+  return parseJsonObject(await readBytes(request, maxBytes));
+}
+
+/** Parses bytes already read as a JSON object; 400 otherwise. */
+export function parseJsonObject(bytes: Uint8Array): Record<string, unknown> {
   let body: unknown;
   try {
     body = JSON.parse(new TextDecoder().decode(bytes));

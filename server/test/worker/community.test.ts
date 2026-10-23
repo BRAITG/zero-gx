@@ -73,7 +73,7 @@ class Github {
 }
 
 beforeEach(async () => {
-  await env.DB.batch(["players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(["play_attempts", "play_summaries", "players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
   const { objects } = await env.DEMOS.list();
   if (objects.length) await env.DEMOS.delete(objects.map((o) => o.key));
 });
