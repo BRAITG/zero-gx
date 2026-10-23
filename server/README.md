@@ -5,7 +5,7 @@ A Cloudflare Worker (TypeScript) with a D1 database and an R2 bucket. It signs p
 Auth, in the table below:
 
 - **session**: `Authorization: Bearer <session token>` from `POST /session`; banned players get 403, except on `DELETE /me`.
-- **integrity**: a fresh Play Integrity token in `X-Integrity` and the one-time server nonce (from `GET /nonce`) in `X-Nonce`. The app requests the token with a nonce bound to the request's payload: base64url without padding of SHA-256(server nonce as UTF-8 ‖ SHA-256(part 1) ‖ SHA-256(part 2) ‖ …), where the parts are the demo bytes for `POST /scores`, and the level bytes then the demo bytes for `POST /submissions` (`boundNonce` in `src/session.ts`). Google signs that nonce, so a changed or swapped body fails. `POST /scores` requires the `MEETS_STRONG_INTEGRITY` device verdict (hardware-backed: rooted phones and emulators cannot rank); `POST /session` and `POST /submissions` require `MEETS_DEVICE_INTEGRITY`.
+- **integrity**: a fresh Play Integrity token in `X-Integrity` and the one-time server nonce (from `GET /nonce`) in `X-Nonce`. The app requests the token with a nonce bound to the request's payload: base64url without padding of SHA-256(server nonce as UTF-8 ‖ SHA-256(part 1) ‖ SHA-256(part 2) ‖ …), where the parts are the demo bytes for `POST /scores`, and for `POST /submissions` the level bytes, then the demo bytes, then the suggestion's UTF-8 bytes when `suggested_difficulty` is sent (`boundNonce` in `src/session.ts`). Google signs that nonce, so a changed or swapped body fails. `POST /scores` requires the `MEETS_STRONG_INTEGRITY` device verdict (hardware-backed: rooted phones and emulators cannot rank); `POST /session` and `POST /submissions` require `MEETS_DEVICE_INTEGRITY`.
 - **admin**: `Authorization: Bearer <ADMIN_TOKEN>`.
 - **webhook**: GitHub's `X-Hub-Signature-256` HMAC over the body, keyed with `GITHUB_WEBHOOK_SECRET`.
 
@@ -14,18 +14,22 @@ Auth, in the table below:
 | `GET /nonce` | none | A one-time nonce, valid 5 minutes. |
 | `POST /session` | none (nonce, auth code, integrity token in the body) | Signs a player in with a Play Games auth code; returns a 7-day session token. |
 | `POST /scores` | session + integrity | Re-checks the posted demo against its level, scores it, keeps the player's best. |
-| `DELETE /me` | session | Erases the caller: Play Games link, name, scores, likes, reports, rate counters and ranking row. The demo sweep deletes the orphaned demos. Their levels and submissions stay under the bare player id, with the author shown as "Deleted player". |
+| `POST /plays` | session + integrity | Records the caller's attempts (at most 32 per 16 KiB batch, 30 batches a minute) and acknowledges each one. Attempts up to a version's first clear feed the vote eligibility. |
+| `DELETE /me` | session | Erases the caller: Play Games link, name, scores, likes, reports, play history, difficulty votes, rate counters and ranking row. The demo sweep deletes the orphaned demos. Their levels and submissions stay under the bare player id, with the author shown as "Deleted player". |
 | `GET /boards/:sha256` | session | The top 100 for one level hash plus the caller's own row. |
 | `GET /demos/:sha256/:player/:file` | session | A stored score demo. |
-| `POST /submissions` | session + integrity | Validates a level and its demo, opens or updates the pull request. |
+| `POST /submissions` | session + integrity | Validates a level and its demo, opens or updates the pull request. An optional `suggested_difficulty` (`easy`, `normal`, `hard` or `expert`) appears in the pull request's description only; any other value, even empty, is refused with 400. |
 | `GET /me/submissions` | session | The caller's submissions with status and review comment. |
-| `POST /levels/:level/like`, `DELETE /levels/:level/like` | session | Likes or unlikes a level (a like needs a score on it). |
+| `POST /levels/:level/like`, `DELETE /levels/:level/like` | session | Likes or unlikes a level. A like needs a clear on any of its versions, five counted attempts across them, or a verified score. |
 | `POST /levels/:level/report` | session | Files a report as a GitHub issue in the levels repository. |
-| `GET /levels` | session | Visible community levels, `sort=top` or `new`, paged. |
+| `GET /levels` | session | Visible community levels, `sort=top` or `new`, paged. Each row gives the latest version's reviewed difficulty and its community label with the voter count. |
+| `GET /levels/:level/feedback?sha256=` | session | One version's reviewed and community difficulty, its play statistics (ratios and median from ten starters), and the caller's own state. |
+| `PUT /levels/:level/difficulty` | session | `{sha256, difficulty}`: sets the caller's one vote on that version. Needs a clear or five counted attempts on it. |
+| `DELETE /levels/:level/difficulty?sha256=` | session | Removes the caller's vote. Needs no play. |
 | `GET /players` | session | The player ranking. |
 | `GET /index` | session | The commit of the levels repository the game should read `index.json` from. |
 | `POST /admin/official` | admin | Registers the SHA-256 hashes of a release's official levels. |
-| `POST /github` | webhook | Records pull request outcomes and `hidden.txt` changes. |
+| `POST /github` | webhook | Records pull request outcomes and `hidden.txt` changes. A merge stores the pull request's one `difficulty:<label>` as the version's reviewed difficulty, or none when there is not exactly one. |
 
 A cron trigger runs every 10 minutes: it recomputes the player ranking, deletes expired nonces and old rate counters, expires score demos (each level keeps the demos of its top 10 runs, ties at the cut included; every other demo, and every banned player's, is deleted 14 days after it was posted, and the score stays without a demo), sweeps orphaned demos from R2 and rebuilds `index.json`.
 
@@ -96,6 +100,7 @@ To complete when the Play Console account exists.
 ### GitHub setup
 
 1. Create the public repository `BRAITG/zero-gx-levels` from `levels-repo/`: copy its files (including `.github/`) into a new directory, `git init -b main`, commit, add the remote and push. Its check workflow runs the checker from `BRAITG/zero-gx@master`, so it fails until `server/` is merged to `master` there.
+   Also create the labels `difficulty:easy`, `difficulty:normal`, `difficulty:hard` and `difficulty:expert` there: moderators can only apply labels that exist.
 2. Create the team `moderators` in the BRAITG organization and add the moderators (`CODEOWNERS` names `@BRAITG/moderators`). The team needs write access to the repository. With code-owner review required, a lone moderator cannot approve their own pull requests: add a second moderator, or have a repository admin merge: admins bypass the ruleset only because step 4 puts the Repository admin role on its bypass list.
 3. Create a GitHub App owned by BRAITG:
    - Repository permissions: Contents read and write, Pull requests read and write, Issues read and write, Metadata read.
@@ -122,7 +127,7 @@ Set it back to `0` to unban. Player ids are not in `GET /levels`; find them in b
 
 ```sh
 P=p_xxxxxxxxxxxxxxxx
-npx wrangler d1 execute zero-gx --remote --command "DELETE FROM scores WHERE player = '$P'; DELETE FROM likes WHERE player = '$P'; DELETE FROM reports WHERE player = '$P'; DELETE FROM rate WHERE player = '$P'; DELETE FROM player_ranking WHERE player = '$P'; DELETE FROM accounts WHERE player = '$P'; DELETE FROM players WHERE id = '$P'"
+npx wrangler d1 execute zero-gx --remote --command "DELETE FROM scores WHERE player = '$P'; DELETE FROM likes WHERE player = '$P'; DELETE FROM reports WHERE player = '$P'; DELETE FROM play_attempts WHERE player = '$P'; DELETE FROM play_summaries WHERE player = '$P'; DELETE FROM difficulty_votes WHERE player = '$P'; DELETE FROM rate WHERE player = '$P'; DELETE FROM player_ranking WHERE player = '$P'; DELETE FROM accounts WHERE player = '$P'; DELETE FROM players WHERE id = '$P'"
 ```
 
 **Hide a level.** Open a pull request in the levels repository that adds its `lvl_id` to `hidden.txt` and changes nothing else. When it is merged the webhook (a `push` touching `hidden.txt`) refreshes D1 and rebuilds the index. Hiding hides the whole level: its earlier approved versions also disappear from the index, the boards and the player ranking, and the boards stop accepting scores.
@@ -182,4 +187,4 @@ ADMIN_TOKEN=dev
 
 then `npx wrangler d1 migrations apply zero-gx --local` and `npx wrangler dev`. Sign in with the auth code `test:<id>:<name>` and the integrity token `ok:<nonce>` (device integrity) or `strong:<nonce>` (strong integrity), where `<nonce>` is the server nonce for `/session` and the bound nonce for `/scores` and `/submissions`. Calls that need GitHub (submissions, reports, the index) additionally need real `GITHUB_*` values in `.dev.vars` and a test copy of the levels repository in `LEVELS_REPO`.
 
-`npm run cli -- check-pr <repo-root> <base-ref> <head-ref>` is the pull-request checker that the levels repository's workflow runs.
+`npm run cli -- check-pr <repo-root> <base-ref> <head-ref> [--event <github-event-json>]` is the pull-request checker that the levels repository's workflow runs. With `--event`, the event file's `pull_request.labels` must name exactly one `difficulty:<label>` for a level; the file is read as data and never run.

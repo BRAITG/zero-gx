@@ -1,6 +1,9 @@
 import type { Env } from "./env";
+import { communityLabels } from "./feedback";
 import { getHeadCommit, openIssue } from "./github";
 import { HttpError, readJson } from "./http";
+import { VISIBLE, visibleLevel } from "./levels";
+import { playEligibility, STAGE_ELIGIBLE } from "./plays";
 import { DELETED_AUTHOR, requirePlayer } from "./session";
 import { rebuildIndex } from "./submissions";
 
@@ -9,7 +12,6 @@ const RANKING_SIZE = 100;
 const REPORTS_PER_DAY = 10;
 const MAX_REASON = 500;
 const INDEX_CACHE_MS = 60_000;
-const LEVEL_ID = /^lvl_[a-z0-9]{10}$/;
 /** Demos younger than this may belong to a post that has not stored its score row yet. */
 const ORPHAN_AGE_MS = 60 * 60 * 1000;
 const SWEEP_PAGE = 1000;
@@ -23,31 +25,28 @@ const SWEEP_PAGES = 5;
 const RATE_KEEP = 2;
 
 const now = () => Math.floor(Date.now() / 1000);
-const VISIBLE = "l.hidden = 0 AND l.id NOT IN (SELECT level FROM hidden_levels)";
 
-interface LevelRow {
-  id: string;
-  latest: number;
-}
+// A repeated like returns its row too, through the no-op update, so a row back means the guards held.
+const LIKE = `INSERT INTO likes (player, level)
+  SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM players WHERE id = ?1 AND banned = 0)
+    AND EXISTS (SELECT 1 FROM levels l WHERE l.id = ?2 AND ${VISIBLE})
+    AND ${STAGE_ELIGIBLE}
+  ON CONFLICT (player, level) DO UPDATE SET level = excluded.level
+  RETURNING level`;
+const UNLIKE = "DELETE FROM likes WHERE player = ? AND level = ?";
+/** Banned likers are filtered at query time; deleted ones have no rows. */
+const LIKES = "SELECT COUNT(*) AS likes FROM likes k JOIN players p ON p.id = k.player WHERE k.level = ? AND p.banned = 0";
 
-/** A level that exists and is not hidden, else 404. */
-async function visibleLevel(env: Env, id: string | undefined): Promise<LevelRow> {
-  const level = LEVEL_ID.test(id ?? "") ? await env.DB.prepare(`SELECT l.id, l.latest FROM levels l WHERE l.id = ? AND ${VISIBLE}`).bind(id).first<LevelRow>() : null;
-  if (!level) throw new HttpError(404, "Not found.");
-  return level;
-}
-
-/** `POST` likes the level (only after a score on any of its versions), `DELETE` removes the like; both are idempotent and answer the new count. */
+/** `POST` likes the level while the player is eligible (a clear, five counted attempts or a verified score); `DELETE` removes the like. Both are idempotent and answer the new count. */
 export async function putLike(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
   const player = await requirePlayer(request, env);
   const level = await visibleLevel(env, params.level);
   const liking = request.method === "POST";
-  if (liking) {
-    const played = await env.DB.prepare("SELECT 1 AS yes FROM scores s JOIN versions v ON v.sha256 = s.sha256 WHERE v.level = ? AND s.player = ?").bind(level.id, player.id).first();
-    if (!played) throw new HttpError(403, "Play the level before liking it.");
-  }
-  const change = liking ? "INSERT OR IGNORE INTO likes (player, level) VALUES (?, ?)" : "DELETE FROM likes WHERE player = ? AND level = ?";
-  const [, count] = await env.DB.batch<{ likes: number }>([env.DB.prepare(change).bind(player.id, level.id), env.DB.prepare("SELECT COUNT(*) AS likes FROM likes WHERE level = ?").bind(level.id)]);
+  if (liking && !(await playEligibility(env, player.id, level.id)).eligible) throw new HttpError(403, "Play the level before liking it.");
+  const [written, count] = await env.DB.batch<{ likes: number }>([env.DB.prepare(liking ? LIKE : UNLIKE).bind(player.id, level.id), env.DB.prepare(LIKES).bind(level.id)]);
+  // Erased or banned since the checks fails requirePlayer; otherwise a POST with no row was refused because the level was hidden.
+  await requirePlayer(request, env);
+  if (liking && written.results.length === 0) throw new HttpError(404, "Not found.");
   return Response.json({ likes: count!.results[0]!.likes });
 }
 
@@ -60,15 +59,16 @@ export async function getLevels(request: Request, env: Env): Promise<Response> {
   if (!/^\d{1,6}$/.test(page)) throw new HttpError(400, "page must be a non-negative integer.");
   const order = sort === "top" ? "likes DESC, players DESC, l.id" : "v.approved DESC, l.id";
   const { results } = await env.DB.prepare(
-    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256,
-       (SELECT COUNT(*) FROM likes k WHERE k.level = l.id) AS likes,
-       (SELECT COUNT(DISTINCT s.player) FROM scores s JOIN versions w ON w.sha256 = s.sha256 WHERE w.level = l.id) AS players
+    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256, v.reviewed_difficulty,
+       (SELECT COUNT(*) FROM likes k JOIN players kp ON kp.id = k.player WHERE k.level = l.id AND kp.banned = 0) AS likes,
+       (SELECT COUNT(DISTINCT s.player) FROM scores s JOIN versions w ON w.sha256 = s.sha256 JOIN players sp ON sp.id = s.player WHERE w.level = l.id AND sp.banned = 0) AS players
      FROM levels l LEFT JOIN players p ON p.id = l.owner JOIN versions v ON v.level = l.id AND v.version = l.latest
      WHERE ${VISIBLE} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ?`,
   )
     .bind(Number(page) * PAGE_SIZE)
-    .all();
-  return Response.json(results);
+    .all<{ sha256: string }>();
+  const community = await communityLabels(env, results.map((row) => row.sha256));
+  return Response.json(results.map((row) => ({ ...row, community_difficulty: community.get(row.sha256)! })));
 }
 
 const RANK_ROW = `SELECT r.rank, r.player AS id, p.name, r.points FROM player_ranking r JOIN players p ON p.id = r.player WHERE p.banned = 0`;
@@ -214,8 +214,8 @@ export async function runCron(env: Env, fetchFn: typeof fetch = fetch): Promise<
   await step("ranking", () => recomputeRanking(env));
   await step("cleanup", () =>
     env.DB.batch([
-      // Per-minute counters ('score') and per-day ones ('submit', 'report'); the action name says which unit the window is in.
-      env.DB.prepare(`DELETE FROM rate WHERE (action = 'score' AND "window" < ?1) OR (action IN ('submit', 'report') AND "window" < ?2)`).bind(Math.floor(time / 60) - RATE_KEEP, Math.floor(time / 86400) - RATE_KEEP),
+      // Per-minute counters ('score', 'plays') and per-day ones ('submit', 'report'); the action name says which unit the window is in.
+      env.DB.prepare(`DELETE FROM rate WHERE (action IN ('score', 'plays') AND "window" < ?1) OR (action IN ('submit', 'report') AND "window" < ?2)`).bind(Math.floor(time / 60) - RATE_KEEP, Math.floor(time / 86400) - RATE_KEEP),
       env.DB.prepare("DELETE FROM nonces WHERE expires < ?").bind(time),
     ]),
   );
