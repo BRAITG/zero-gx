@@ -243,7 +243,7 @@ func record_play_finish(id: String, outcome: String) -> void:
 	_schedule()
 
 
-## What the signed-in player has done on version `sha256`, for the UI only: `local_attempts` (this device's counted starts), `confirmed_attempts` (the server's last word), `cleared`, `pending` (a report is still queued) and `can_offer_rating`. The offer counts the server's last word plus only the local starts that word cannot include (those made after the read that gave it began; acknowledged ones too), never the two totals added. A local discovery may open Rate level, with Pending sync; the server still decides when the vote is applied.
+## UI-only progress: local/confirmed starts, clear and pending state. Rate discovery estimates confirmed starts plus local starts made after the last read began; overlapping reads/uploads can offer early, and ambiguous earlier starts can offer late. The sheet and server still enforce confirmed voting eligibility.
 func play_progress(sha256: String) -> Dictionary:
 	var account := _account()
 	var level: String = level_info(sha256).get("level_id", "")
@@ -270,7 +270,7 @@ func feedback(level: String, sha256: String) -> Dictionary:
 	var generation := _generation
 	var started := player_id()
 	var history := _hist()
-	var seen: Array = history.start_ids(started, level, sha256) if history != null and started != "" else []  # the local starts this answer may count: taken before the request goes out, so a start made while it is out is never covered
+	var seen: Array = history.start_ids(started, level, sha256) if history != null and started != "" else []  # discovery cutoff, not a server snapshot: concurrent uploads may already be in the answer
 	var reply := await _authed("GET", "/levels/%s/feedback?sha256=%s" % [level, sha256])
 	if generation != _generation:
 		return {"error": SIGNED_OUT, "offline": false}
