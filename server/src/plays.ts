@@ -101,6 +101,16 @@ const SUMMARY = `WITH earliest AS (SELECT ended_ms FROM play_attempts WHERE play
     AND EXISTS (SELECT 1 FROM play_attempts WHERE player = ?1 AND sha256 = ?2)
   ON CONFLICT (player, sha256) DO UPDATE SET attempts = excluded.attempts, first_clear_ms = excluded.first_clear_ms`;
 
+/** Visibility of the published versions among `sha256s`: true when visible, false when hidden; unknown hashes are absent. */
+async function visibilityOf(env: Env, sha256s: string[]): Promise<Map<string, boolean>> {
+  const lookup = await env.DB.prepare(
+    `SELECT v.sha256, (${VISIBLE}) AS visible FROM versions v JOIN levels l ON l.id = v.level WHERE v.sha256 IN (SELECT value FROM json_each(?))`,
+  )
+    .bind(JSON.stringify(sha256s))
+    .all<{ sha256: string; visible: number }>();
+  return new Map(lookup.results.map((row): [string, boolean] => [row.sha256, row.visible === 1]));
+}
+
 /**
  * `POST /plays`: records the caller's attempts and acknowledges each one. Ownership and structure are checked before
  * any write; the guarded writes and the summaries they touch commit in one batch.
@@ -113,12 +123,7 @@ export async function postPlays(request: Request, env: Env, _params: Record<stri
   const { player_id, records } = parseReport(bytes);
   if (player_id !== player.id) throw new HttpError(403, "A report can only name the signed-in player.");
 
-  const lookup = await env.DB.prepare(
-    `SELECT v.sha256, (${VISIBLE}) AS visible FROM versions v JOIN levels l ON l.id = v.level WHERE v.sha256 IN (SELECT value FROM json_each(?))`,
-  )
-    .bind(JSON.stringify([...new Set(records.map((record) => record.sha256))]))
-    .all<{ sha256: string; visible: number }>();
-  const visibility = new Map(lookup.results.map((row): [string, boolean] => [row.sha256, row.visible === 1]));
+  const visibility = await visibilityOf(env, [...new Set(records.map((record) => record.sha256))]);
 
   const discarded: Discard[] = [];
   const writable: Snapshot[] = [];
@@ -139,17 +144,23 @@ export async function postPlays(request: Request, env: Env, _params: Record<stri
       ),
       ...touched.map((sha256) => env.DB.prepare(SUMMARY).bind(player.id, sha256)),
     ]);
+    // Every write is refused once the account is gone; answer as a signed-out request would.
+    await requirePlayer(request, env);
+    const refused: Snapshot[] = [];
     writable.forEach((record, i) => {
-      // Refused by a guard: a stored record with other immutable fields or a changed finish, or a version hidden since the lookup.
       if (results[i]!.results.length === 0) {
-        discarded.push({ id: record.id, revision: record.revision, reason: "conflict" });
+        refused.push(record);
       } else {
         acknowledged.push({ id: record.id, revision: record.revision });
         if (record.outcome === "cleared") cleared.add(record.sha256);
       }
     });
-    // Every write is refused once the account is gone; answer as a signed-out request would.
-    await requirePlayer(request, env);
+    // Refused by a guard: hidden since the lookup, or conflicting with the stored record. The re-read tells which.
+    const reread = refused.length > 0 ? await visibilityOf(env, refused.map((record) => record.sha256)) : new Map<string, boolean>();
+    for (const record of refused) {
+      const visible = reread.get(record.sha256);
+      discarded.push({ id: record.id, revision: record.revision, reason: visible === undefined ? "unknown_version" : visible ? "conflict" : "hidden_version" });
+    }
   }
   return Response.json({ acknowledged, discarded, cleared: [...cleared] });
 }

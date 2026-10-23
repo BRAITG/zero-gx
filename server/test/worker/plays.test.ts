@@ -237,6 +237,37 @@ describe("POST /plays", () => {
       expect(await summaryOf(ALICE, V1)).toMatchObject({ attempts: 1, first_clear_ms: 2000 });
     });
 
+    it("classifies a version hidden after its lookup as hidden_version, and stores only the unrelated record", async () => {
+      await seedVersion(LISTED_LEVEL, 1, LISTED);
+      // The lookup has already seen LEVEL as visible; hiding it here lands between the lookup and the guarded batch.
+      let raced = false;
+      const racing = {
+        ...testEnv,
+        DB: new Proxy(env.DB, {
+          get(target, prop) {
+            if (prop !== "batch") return Reflect.get(target, prop, target).bind(target);
+            return async (statements: D1PreparedStatement[]) => {
+              raced = true;
+              await target.prepare("INSERT INTO hidden_levels (level) VALUES (?)").bind(LEVEL).run();
+              return target.batch(statements);
+            };
+          },
+        }) as unknown as D1Database,
+      };
+
+      const bytes = wire([start(A, V1, 1000), start(B, LISTED, 1000)]);
+      const response = await worker.fetch(await playsRequest(ALICE, bytes, bytes, await nonce()), racing);
+      expect(response.status).toBe(200);
+      expect(raced).toBe(true);
+      expect(await response.json<Reply>()).toEqual({
+        acknowledged: [{ id: B, revision: 1 }],
+        discarded: [{ id: A, revision: 1, reason: "hidden_version" }],
+        cleared: [],
+      });
+      expect(await rows("SELECT id FROM play_attempts WHERE player = ?", ALICE)).toEqual([{ id: B }]);
+      expect(await rows("SELECT sha256 FROM play_summaries WHERE player = ?", ALICE)).toEqual([{ sha256: LISTED }]);
+    });
+
     it("keeps a conflicting record's original, discards the conflict, and still acknowledges unrelated records", async () => {
       await begin(ALICE, A, V1, 1000);
       expect(await report(ALICE, [start(A, V2, 1000), start(B, V1, 1500)])).toMatchObject({
