@@ -327,7 +327,8 @@ func _is_section(section: Variant) -> bool:
 
 
 func _is_attempt(attempt: Variant) -> bool:
-	if typeof(attempt) != TYPE_DICTIONARY or not _is_text(attempt.get("level")) or not _is_hex(attempt.get("sha256"), 64):
+	# batch() reads both keys directly, and get() cannot tell a missing key from null: both must be present, even when null.
+	if typeof(attempt) != TYPE_DICTIONARY or not attempt.has("outcome") or not attempt.has("ended_ms") or not _is_text(attempt.get("level")) or not _is_hex(attempt.get("sha256"), 64):
 		return false
 	if not _is_count(attempt.get("started_ms")) or not _is_revision(attempt.get("revision")):
 		return false

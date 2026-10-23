@@ -411,8 +411,16 @@ func test_corrupt_file_is_left_untouched_and_counting_stops() -> void:
 	var source = _open()
 	if source == null:
 		return
-	source.begin(ALICE, LEVEL, sha_a, START)
+	check(source.load_file() == OK, "a first run must load before it records anything")
+	var id: String = source.begin(ALICE, LEVEL, sha_a, START)
+	check(id != "", "a saved start must give an attempt id to damage")
 	var real: PackedByteArray = FileAccess.get_file_as_bytes(FILE)
+	check(not real.is_empty(), "the history must be saved before it is damaged")
+	check(_same_snapshots(_reload(source).batch(ALICE), [_snapshot(id, START, 1, null, null)]), "the undamaged revision-1 record must load")
+	var saved = JSON.parse_string(real.get_string_from_utf8())
+	if typeof(saved) != TYPE_DICTIONARY:
+		check(false, "the saved history must parse as a JSON object")
+		return
 	var cases := {
 		"not_json": "{not json".to_utf8_buffer(),
 		"array_root": "[1, 2]".to_utf8_buffer(),
@@ -420,6 +428,10 @@ func test_corrupt_file_is_left_untouched_and_counting_stops() -> void:
 		"future_version": '{"format": "zero-gx-community-history", "version": 2}'.to_utf8_buffer(),
 		"truncated": real.slice(0, real.size() / 2),
 	}
+	for missing in ["outcome", "ended_ms"]:  # a revision-1 record must keep both terminal fields, even as null
+		var damaged: Dictionary = saved.duplicate(true)
+		damaged["owners"][ALICE]["attempts"][id].erase(missing)
+		cases["revision_1_without_%s" % missing] = JSON.stringify(damaged).to_utf8_buffer()
 	for name in cases:
 		var h = _open()
 		if h == null:
