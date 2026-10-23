@@ -26,10 +26,13 @@ const RATE_KEEP = 2;
 
 const now = () => Math.floor(Date.now() / 1000);
 
-const LIKE = `INSERT OR IGNORE INTO likes (player, level)
+// A repeated like returns its row too, through the no-op update, so a row back means the guards held.
+const LIKE = `INSERT INTO likes (player, level)
   SELECT ?1, ?2 WHERE EXISTS (SELECT 1 FROM players WHERE id = ?1 AND banned = 0)
     AND EXISTS (SELECT 1 FROM levels l WHERE l.id = ?2 AND ${VISIBLE})
-    AND ${STAGE_ELIGIBLE}`;
+    AND ${STAGE_ELIGIBLE}
+  ON CONFLICT (player, level) DO UPDATE SET level = excluded.level
+  RETURNING level`;
 const UNLIKE = "DELETE FROM likes WHERE player = ? AND level = ?";
 /** Banned likers are filtered at query time; deleted ones have no rows. */
 const LIKES = "SELECT COUNT(*) AS likes FROM likes k JOIN players p ON p.id = k.player WHERE k.level = ? AND p.banned = 0";
@@ -40,9 +43,10 @@ export async function putLike(request: Request, env: Env, params: Record<string,
   const level = await visibleLevel(env, params.level);
   const liking = request.method === "POST";
   if (liking && !(await playEligibility(env, player.id, level.id)).eligible) throw new HttpError(403, "Play the level before liking it.");
-  const [, count] = await env.DB.batch<{ likes: number }>([env.DB.prepare(liking ? LIKE : UNLIKE).bind(player.id, level.id), env.DB.prepare(LIKES).bind(level.id)]);
-  // Erased or banned since the checks: the guarded insert wrote nothing, so refuse here instead.
+  const [written, count] = await env.DB.batch<{ likes: number }>([env.DB.prepare(liking ? LIKE : UNLIKE).bind(player.id, level.id), env.DB.prepare(LIKES).bind(level.id)]);
+  // Erased or banned since the checks fails requirePlayer; otherwise a POST with no row was refused because the level was hidden.
   await requirePlayer(request, env);
+  if (liking && written.results.length === 0) throw new HttpError(404, "Not found.");
   return Response.json({ likes: count!.results[0]!.likes });
 }
 

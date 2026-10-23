@@ -70,8 +70,8 @@ async function call(player: string | null, method: string, path: string, body?: 
   return worker.fetch(new Request(`https://example.com${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), bindings);
 }
 
-/** The worker's bindings with the database wrapped so that `deleteAccount` runs once, just before the first batch the handler writes. */
-function racing(deleteAccount: () => Promise<unknown>) {
+/** The worker's bindings with the database wrapped so that `beforeBatch` runs once, just before the first batch the handler writes. */
+function racing(beforeBatch: () => Promise<unknown>) {
   const state = { raced: false };
   const DB = new Proxy(env.DB, {
     get(target, prop) {
@@ -79,7 +79,7 @@ function racing(deleteAccount: () => Promise<unknown>) {
       return async (statements: D1PreparedStatement[]) => {
         if (!state.raced) {
           state.raced = true;
-          await deleteAccount();
+          await beforeBatch();
         }
         return target.batch(statements);
       };
@@ -273,6 +273,22 @@ describe("POST /levels/:level/like", () => {
     const removed = await call("p_l", "DELETE", `/levels/${A}/like`);
     expect(removed.status).toBe(200);
     expect(await removed.json()).toEqual({ likes: 0 });
+  });
+
+  it.each([false, true])("answers 404 and leaves the likes unchanged when the level is hidden between the lookup and the write (repeated like: %s)", async (repeated) => {
+    await seedPlayer("p_other");
+    await summary("p_l", A1, 1, true);
+    await env.DB.prepare("INSERT INTO likes (player, level) VALUES (?, ?)").bind("p_other", A).run();
+    if (repeated) await env.DB.prepare("INSERT INTO likes (player, level) VALUES (?, ?)").bind("p_l", A).run();
+
+    const race = racing(() => env.DB.prepare("INSERT INTO hidden_levels (level) VALUES (?)").bind(A).run());
+    const response = await call("p_l", "POST", `/levels/${A}/like`, undefined, race.env);
+    expect(race.state.raced).toBe(true);
+    expect(response.status).toBe(404);
+    const likers = repeated ? ["p_l", "p_other"] : ["p_other"];
+    expect(await rows("SELECT player FROM likes WHERE level = ? ORDER BY player", A)).toEqual(likers.map((player) => ({ player })));
+    expect(await rows("SELECT sha256, attempts FROM play_summaries WHERE player = ?", "p_l")).toEqual([{ sha256: A1, attempts: 1 }]);
+    expect(await rows("SELECT level FROM hidden_levels")).toEqual([{ level: A }]);
   });
 });
 

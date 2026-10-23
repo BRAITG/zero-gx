@@ -26,6 +26,14 @@ export function reviewedDifficulty(labels: readonly string[]): Difficulty | null
 
 /** The community label: the vote at the upper median, so with an even count the harder middle vote. Null below five voters. */
 export function upperMedianDifficulty(counts: Record<Difficulty, number>): Difficulty | null {
-  const votes = SCALE.flatMap((label) => Array<Difficulty>(counts[label]).fill(label));
-  return votes.length < MIN_VOTERS ? null : votes[Math.floor(votes.length / 2)]!;
+  const total = SCALE.reduce((sum, label) => sum + counts[label], 0);
+  if (total < MIN_VOTERS) return null;
+  // The vote at index floor(total / 2) of the sorted votes: the first label whose running count passes that index.
+  const index = Math.floor(total / 2);
+  let seen = 0;
+  for (const label of SCALE) {
+    seen += counts[label];
+    if (seen > index) return label;
+  }
+  return null;
 }
