@@ -65,6 +65,38 @@ func test_ship_next_to_a_planet_is_picked_before_the_planet() -> void:
 	check(doc.hit(Vector2(1200, 0), 40.0) == {"type": "body", "index": 0}, "the planet's centre is still the planet: %s" % doc.hit(Vector2(1200, 0), 40.0))
 
 
+func test_a_tap_on_a_stars_glow_picks_the_star() -> void:
+	var doc := LevelDoc.new()
+	doc.place("star", Vector2(5000, 2000))
+	check(doc.hit(Vector2(5000 + 600 + 120, 2000), 40.0) == {"type": "body", "index": 0}, "120 px past the rim is still the star's prominences")
+	check(doc.hit(Vector2(5000 + 600 + 400, 2000), 40.0).is_empty(), "400 px past the rim is empty space")
+
+
+func test_strength_range_keeps_every_body_valid() -> void:
+	var doc := LevelDoc.new()
+	doc.place("star", Vector2(5000, 2000))
+	doc.place("black_hole", Vector2(-5000, 2000))
+	for radius: float in [300.0, 3000.0]:  # the star's smallest and largest radius
+		doc.set_property({"type": "body", "index": 0}, "radius", radius)
+		var bounds := doc.strength_range(0)
+		check(bounds.x <= bounds.y, "radius %s gives a range: %s" % [radius, bounds])
+		for strength: float in [bounds.x, bounds.y]:
+			doc.set_property({"type": "body", "index": 0}, "strength", strength)
+			check(doc.errors().is_empty(), "radius %s, pull %s: %s" % [radius, strength, doc.errors()])
+	doc.set_property({"type": "body", "index": 0}, "radius", 300.0)
+	doc.set_property({"type": "body", "index": 0}, "strength", 20000.0)
+	doc.set_property({"type": "body", "index": 1}, "strength", 30000.0)
+	check(doc.strength_range(0).y < 30000 and doc.strength_range(1).x > 20000, "a star stays below the black hole and the black hole above the star: %s %s" % [doc.strength_range(0), doc.strength_range(1)])
+
+
+func test_ship_velocity_setting() -> void:
+	var doc := LevelDoc.new()
+	doc.set_setting("velocity", [300, -400])
+	check(LevelFormat.validate(doc.data).is_empty() and doc.data.ship.velocity == [300, -400], "the ship starts moving: %s" % doc.data.ship)
+	doc.set_setting("velocity", [0, 0])
+	check(not doc.data.ship.has("velocity"), "speed 0 stores no velocity: %s" % doc.data.ship)
+
+
 func test_settings_and_validity() -> void:
 	var doc := LevelDoc.new()
 	check(doc.errors().is_empty(), "a new level must be valid: %s" % doc.errors())

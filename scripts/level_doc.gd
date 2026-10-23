@@ -96,7 +96,7 @@ func hit(at: Vector2, slop := HIT_SLOP) -> Dictionary:
 				return {"type": type, "index": i}
 	var bodies: Array = data.get("bodies", [])
 	for i in bodies.size():
-		if _v(bodies[i].position).distance_to(at) <= LevelFormat.body_value(bodies[i], "radius") + slop:
+		if _v(bodies[i].position).distance_to(at) <= drawn_radius(bodies[i]) + slop:
 			return {"type": "body", "index": i}
 	for i in walls.size():
 		var points: Array = walls[i].points
@@ -104,6 +104,34 @@ func hit(at: Vector2, slop := HIT_SLOP) -> Dictionary:
 			if Geometry2D.get_closest_point_to_segment(at, _v(points[k]), _v(points[k + 1])).distance_to(at) <= slop:
 				return {"type": "wall", "index": i}
 	return {}
+
+
+## How far a body's drawing reaches from its centre: a star's corona and prominences, a black
+## hole's accretion disk, a planet's atmosphere (see GravityBody._draw).
+static func drawn_radius(body: Dictionary) -> float:
+	var r := LevelFormat.body_value(body, "radius")
+	match body.kind:
+		"star": return maxf(r * 1.36, r + GravityBody.PROMINENCE_SIZE.y)
+		"black_hole": return r * 1.79
+	return r + 7.0
+
+
+## The surface pulls body `index` may take at its current radius: its kind's limits on surface and
+## total pull, a star below every black hole and a black hole above every star. Whole numbers.
+func strength_range(index: int) -> Vector2:
+	var body: Dictionary = data.bodies[index]
+	var limits: Dictionary = LevelFormat.KIND_LIMITS[body.kind]
+	var bounds: Vector2 = limits.get("strength", LevelFormat.BODY_RANGES.strength)
+	if limits.has("total_pull"):  # total pull = strength × (radius / 1000)²
+		var area := pow(LevelFormat.body_value(body, "radius") / 1000.0, 2)
+		bounds = Vector2(maxf(bounds.x, limits.total_pull.x / area), minf(bounds.y, limits.total_pull.y / area))
+	for other: Dictionary in data.bodies:
+		if body.kind == "star" and other.kind == "black_hole":
+			bounds.y = minf(bounds.y, LevelFormat.body_value(other, "strength") - 1.0)
+		elif body.kind == "black_hole" and other.kind == "star":
+			bounds.x = maxf(bounds.x, LevelFormat.body_value(other, "strength") + 1.0)
+	bounds = Vector2(ceilf(bounds.x), floorf(bounds.y))
+	return Vector2(minf(bounds.x, bounds.y), bounds.y)  # empty only when a star out-pulls every black hole's maximum
 
 
 ## Where `ref` is: its position, a wall point, or a wall's first point.
@@ -169,10 +197,13 @@ func set_property(ref: Dictionary, key: String, value: Variant) -> void:
 	_entry(ref)[key] = value
 
 
-## Title, hint, show_velocity, or the ship's fuel and hull (a number or LevelFormat.UNLIMITED).
+## Title, hint, show_velocity, or the ship's fuel and hull (a number or LevelFormat.UNLIMITED) and
+## velocity ([x, y] px/s; [0, 0] removes it).
 func set_setting(key: String, value: Variant) -> void:
 	_remember()
-	if key in ["fuel", "hull"]:
+	if key == "velocity" and value == [0, 0]:
+		data.ship.erase("velocity")
+	elif key in ["fuel", "hull", "velocity"]:
 		data.ship[key] = value
 	elif key == "hint" and value == "":
 		data.erase("hint")

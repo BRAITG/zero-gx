@@ -12,6 +12,8 @@ const ZOOM_RANGE := Vector2(0.1, 1.5)
 const DRIFT_PER_PX := 1.0  # px/s of asteroid drift per px dragged
 const MAX_DRIFT := 400.0  # px/s
 const DRAG_START := 12.0  # screen px a finger must move before a press becomes a drag
+const LONG_PRESS := 0.5  # s a finger rests on a thing, without dragging, to open its sheet
+const NO_SHEET := ["goal", "wall_point"]  # nothing to set beyond position
 const GRID_COLOR := Color(1, 1, 1, 0.06)
 const MAJOR_GRID_COLOR := Color(1, 1, 1, 0.14)
 const FINE_GRID_MIN_PX := 3.0  # screen px between 1 m lines below which they would merge into a fill
@@ -36,6 +38,8 @@ var _touches := {}  # touch index -> screen position
 var _pinch_start := {}
 var _pressed_at := Vector2.ZERO  # screen
 var _dragging := false
+var _presses := 0  # counts finger downs and ups, so a long-press timer can tell its press is still down
+var _long_pressed := false  # the press opened a sheet, so its release does nothing
 var _held: Dictionary = {}  # the ref a select drag is moving, or the asteroid being aimed
 var _view := []  # [camera position, zoom] to restore, or empty for the start
 var _moving := false  # a placing tool pressed on an existing thing, which it now drags
@@ -217,13 +221,30 @@ func _zoom_at(factor: float, cursor: Vector2) -> void:
 
 
 func _one_finger(down: bool, screen: Vector2) -> void:
+	_presses += 1
 	if down:
 		_pressed_at = screen
 		_dragging = false
+		_long_pressed = false
 		_pinch_start = {}
+		get_tree().create_timer(LONG_PRESS).timeout.connect(_long_press.bind(_presses))
 		press(_to_world(screen))
-	elif _pinch_start.is_empty():
+	elif _pinch_start.is_empty() and not _long_pressed:
 		release(_to_world(screen), _dragging)
+
+
+## A finger resting still on a thing opens its sheet, whatever the tool.
+func _long_press(press_number: int) -> void:
+	if press_number != _presses or _dragging or not _pinch_start.is_empty() or not find_children("*", "Overlay", true, false).is_empty():
+		return
+	var ref := doc.hit(_to_world(_pressed_at), LevelDoc.HIT_SLOP / _camera.zoom.x)
+	if ref.is_empty() or ref.type in NO_SHEET:
+		return
+	_long_pressed = true
+	_held = {}
+	_moving = false
+	_open_sheet(ref)
+	_refresh()
 
 
 ## Walls, the start and the goal snap to the grid; everything else goes exactly where it is put.
@@ -265,7 +286,7 @@ func _draw_marks() -> void:
 	else:
 		_draw_grid(LevelDoc.COARSE_SNAP, LevelDoc.COARSE_SNAP * (1 if _camera.zoom.x >= 0.3 else 10), GRID_COLOR)
 	var width := 2.0 / _camera.zoom.x
-	for rock in doc.data.get("asteroids", []):  # drift arrows
+	for rock in doc.data.get("asteroids", []) + [doc.data.ship]:  # drift arrows, and the ship's starting velocity
 		if rock.has("velocity") and not rock.has("orbit"):
 			var from := LevelDoc._v(rock.position)
 			_marks.draw_line(from, from + LevelDoc._v(rock.velocity), Color(1, 1, 1, 0.6), width)
@@ -277,7 +298,7 @@ func _draw_marks() -> void:
 	if doc.drawing >= 0:
 		var points: Array = doc.data.walls[doc.drawing].points
 		_marks.draw_circle(LevelDoc._v(points[0]), LevelDoc.CLOSE_DISTANCE / _camera.zoom.x, Color(1, 1, 1, 0.15))
-	if not _held.is_empty() and tool == "select":
+	if not _held.is_empty() and (tool == "select" or _moving):
 		_marks.draw_arc(doc.position_of(_held), 60.0, 0.0, TAU, 32, Style.ACCENT, width)
 
 
@@ -403,7 +424,7 @@ func _tank(o: Overlay, tank: String) -> void:
 	row.add_theme_constant_override("separation", 16)
 	o.body.add_child(row)
 	var label := Label.new()
-	label.custom_minimum_size.x = 260
+	label.custom_minimum_size.x = 160
 	row.add_child(label)
 	var slider := HSlider.new()
 	slider.min_value = LevelFormat.TANK_RANGE.x
@@ -411,19 +432,23 @@ func _tank(o: Overlay, tank: String) -> void:
 	slider.step = 1
 	slider.value = 100 if unlimited else value
 	slider.editable = not unlimited
-	slider.custom_minimum_size = Vector2(480, 48)
+	slider.custom_minimum_size = Vector2(400, 48)
 	row.add_child(slider)
+	var box := _number_box(slider)
+	box.editable = slider.editable
+	row.add_child(box)
 	var forever := CheckButton.new()
 	forever.text = "Unlimited"
 	forever.button_pressed = unlimited
 	row.add_child(forever)
 	var show := func() -> void:
-		label.text = "%s: %s" % [tank.capitalize(), "∞" if forever.button_pressed else str(int(slider.value))]
+		label.text = tank.capitalize() + (": ∞" if forever.button_pressed else "")
 	slider.value_changed.connect(func(v: float) -> void:
 		doc.set_setting(tank, int(v))
 		show.call())
 	forever.toggled.connect(func(on: bool) -> void:
 		slider.editable = not on
+		box.editable = not on
 		doc.set_setting(tank, LevelFormat.UNLIMITED if on else int(slider.value))
 		show.call())
 	show.call()
@@ -431,8 +456,8 @@ func _tank(o: Overlay, tank: String) -> void:
 
 ## The sheet for one thing in the level: its kind and the numbers its kind may change.
 func _open_sheet(ref: Dictionary) -> void:
-	if ref.type in ["ship", "goal", "wall_point"]:
-		return  # nothing to set beyond position
+	if ref.type in NO_SHEET:
+		return
 	var o := Overlay.open(self, TOOL_LABELS.get(ref.type, ref.type.capitalize()) if ref.type != "body" else doc.data.bodies[ref.index].kind.replace("_", " ").capitalize())
 	o.tree_exited.connect(_refresh)
 	match ref.type:
@@ -450,9 +475,14 @@ func _open_sheet(ref: Dictionary) -> void:
 		"body":
 			var body: Dictionary = doc.data.bodies[ref.index]
 			var limits: Dictionary = LevelFormat.KIND_LIMITS[body.kind]
-			_slider(o, "Radius (px)", limits.radius, 4, LevelFormat.body_value(body, "radius"), func(v: float) -> void: doc.set_property(ref, "radius", v))
-			_slider(o, "Surface pull (px/s²)", limits.get("strength", Vector2(100, 20000)), 50, LevelFormat.body_value(body, "strength"), func(v: float) -> void: doc.set_property(ref, "strength", v))
-			_slider(o, "Reach (px)", limits.reach, 50, LevelFormat.body_value(body, "reach"), func(v: float) -> void: doc.set_property(ref, "reach", v))
+			var radius := _slider(o, "Radius (px)", limits.radius, 1, LevelFormat.body_value(body, "radius"))
+			var pull := _slider(o, "Surface pull (px/s²)", doc.strength_range(ref.index), 1, LevelFormat.body_value(body, "strength"), func(v: float) -> void: doc.set_property(ref, "strength", v))
+			radius.value_changed.connect(func(v: float) -> void:
+				doc.set_property(ref, "radius", v)
+				var bounds := doc.strength_range(ref.index)
+				pull.min_value = bounds.x  # a bound that moves past the pull moves the pull, which its slider saves
+				pull.max_value = bounds.y)
+			_slider(o, "Reach (px)", limits.reach, 1, LevelFormat.body_value(body, "reach"), func(v: float) -> void: doc.set_property(ref, "reach", v))
 			if body.kind == "planet":
 				var breakable := CheckButton.new()
 				breakable.text = "Destructible (asteroids can shatter it)"
@@ -463,7 +493,15 @@ func _open_sheet(ref: Dictionary) -> void:
 						doc.set_property(ref, "health", 100))
 				o.body.add_child(breakable)
 				_slider(o, "Health", Vector2(1, 1000), 1, body.get("health", 100), func(v: float) -> void: doc.set_property(ref, "health", v))
-			o.paragraph("Total pull from afar must stay within this kind's limits; problems show at the bottom of the editor.", 18, Style.INK_DIM)
+		"ship":
+			var velocity := LevelDoc._v(doc.data.ship.get("velocity", [0, 0]))
+			var direction := _slider(o, "Starting direction (degrees, 0 = right, 90 = down)", Vector2(-180, 180), 1, roundf(rad_to_deg(velocity.angle())))
+			var speed := _slider(o, "Starting speed (px/s)", Vector2(0, Tuning.max_speed), 1, roundf(velocity.length()))
+			var aim := func(_v: float) -> void:
+				doc.set_setting("velocity", LevelDoc._p(Vector2.from_angle(deg_to_rad(direction.value)) * speed.value))
+				_marks.queue_redraw()
+			direction.value_changed.connect(aim)
+			speed.value_changed.connect(aim)
 
 
 ## A closed wall loses a point: ask whether it stays closed or opens where the point was.
@@ -493,7 +531,8 @@ func _choice(o: Overlay, label: String, options: Array, current: String, apply: 
 		button.button_pressed = option == current
 
 
-func _slider(o: Overlay, label: String, bounds: Vector2, step: float, value: float, apply: Callable) -> void:
+func _slider(o: Overlay, label: String, bounds: Vector2, step: float, value: float, apply := Callable()) -> HSlider:
+	o.paragraph(label, 20, Style.INK_DIM)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 16)
 	o.body.add_child(row)
@@ -502,14 +541,21 @@ func _slider(o: Overlay, label: String, bounds: Vector2, step: float, value: flo
 	slider.max_value = bounds.y
 	slider.step = step
 	slider.value = value
-	slider.custom_minimum_size = Vector2(520, 48)
+	slider.custom_minimum_size = Vector2(760, 48)
 	row.add_child(slider)
-	var text := Label.new()
-	row.add_child(text)
-	var show := func(v: float) -> void: text.text = "%s: %s" % [label, snappedf(v, step)]
-	slider.value_changed.connect(apply)
-	slider.value_changed.connect(show)
-	show.call(value)
+	row.add_child(_number_box(slider))
+	if apply.is_valid():
+		slider.value_changed.connect(apply)
+	return slider
+
+
+## A box for typing `slider`'s value exactly; it shares the slider's value, bounds and step.
+func _number_box(slider: Range) -> SpinBox:
+	var box := SpinBox.new()
+	box.custom_minimum_size = Vector2(200, 48)
+	box.select_all_on_focus = true
+	slider.share(box)
+	return box
 
 
 ## Android's back gesture leaves like Back: save, then the level list.
