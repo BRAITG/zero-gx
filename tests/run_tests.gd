@@ -55,8 +55,11 @@ func _run() -> void:
 			var community := root.get_node("Community")
 			community.dir = "user://test_community/"  # never touch the player's session or downloads
 			community.session_path = "user://test_community.cfg"
-			community.use_defaults()  # a test that swaps in fakes must not leak them
+			community.history_path = "user://test_community_history.json"  # never touch the player's play history; redirected before any use
+			community.use_defaults()  # a test that swaps in fakes must not leak them, and no timer or loaded history survives it
 			DirAccess.remove_absolute(community.session_path)
+			DirAccess.remove_absolute(community.history_path)
+			DirAccess.remove_absolute(community.history_path + ".tmp")
 			for leftover in DirAccess.get_files_at(community.dir) if DirAccess.dir_exists_absolute(community.dir) else PackedStringArray():
 				DirAccess.remove_absolute(community.dir + leftover)
 			var my_levels = load("res://scripts/my_levels.gd")

@@ -13,8 +13,8 @@ extends RefCounted
 ## Progress contract (Task 6):
 ## - progress(owner, level, sha) is the server's last `you` block for that account and version. It is
 ##   confirmed data only: empty until a reply arrives, then replaced as a whole by confirm_progress.
-## - batch(owner) returns only pending attempts. Acknowledged attempts stay in history but are not returned,
-##   so an unconfirmed local attempt count needs a read accessor that this module does not have yet.
+## - batch(owner) returns only pending attempts. Acknowledged attempts stay in history but are not returned;
+##   local_progress(owner, level, sha) reads the local count, clear state and pending state for one version.
 
 const FORMAT := "zero-gx-community-history"
 const VERSION := 1
@@ -159,6 +159,30 @@ func progress(owner: String, level: String, sha: String) -> Dictionary:
 	return levels.get(level, {}).get(sha, {}).duplicate(true)
 
 
+## What this device holds for one account and version, confirmed or not: `attempts` counts the local starts up
+## to the earliest locally known clear (the winning attempt included), `cleared` whether a clear is known (a
+## server-reported one invents no tries), `pending_starts` the starts the server has not acknowledged yet, and
+## `pending` whether any revision is still queued. An acknowledged record stays history, not outbox.
+func local_progress(owner: String, level: String, sha: String) -> Dictionary:
+	var mine: Array[Dictionary] = []
+	var clear_ms := -1.0
+	for record: Dictionary in _part(owner, "attempts").values():
+		if record["sha256"] != sha or record["level"] != level:
+			continue
+		mine.append(record)
+		if record["outcome"] == "cleared" and (clear_ms < 0 or record["ended_ms"] < clear_ms):
+			clear_ms = record["ended_ms"]
+	var out := {"attempts": 0, "cleared": _part(owner, "clears").has(sha), "pending_starts": 0, "pending": false}
+	for record in mine:
+		if clear_ms < 0 or record["started_ms"] <= clear_ms:
+			out["attempts"] += 1
+		if record["acked"] == 0:
+			out["pending_starts"] += 1
+		if record["revision"] > record["acked"]:
+			out["pending"] = true
+	return out
+
+
 ## Queues this account's like for a stage. Only the latest desired value is kept, under one key.
 func queue_like(owner: String, level: String, value: bool) -> Error:
 	if owner.is_empty() or level.is_empty():
@@ -243,7 +267,7 @@ func _desire(owner: String, key: String, kind: String, level: String, sha: Strin
 	var next := _state.duplicate(true)
 	var votes: Dictionary = _activate(next, owner)["votes"]
 	var vote: Dictionary = votes.get(key, {"kind": kind, "level": level, "sha": sha, "value": null, "revision": 0, "acked": 0})
-	if vote["value"] != value:
+	if vote["value"] != value or vote["revision"] == vote["acked"]:  # an acknowledged or refused choice asked for again is a new request: the server may have refused it
 		vote["value"] = value
 		vote["revision"] += 1
 	votes[key] = vote
