@@ -16,6 +16,8 @@ extends "res://tests/test_case.gd"
 const LEVEL_ID := "lvl_abcdefghij"
 const DIR := "user://test_community_sync/"
 const HISTORY := DIR + "history.json"
+const LOCKED := DIR + "locked/"  # holds a history that a test makes read-only; the session file is not here
+const LOCKED_HISTORY := LOCKED + "history.json"
 const UNAUTHORIZED := {"error": "Sign in again."}
 const FEEDBACK_PATH := "/levels/" + LEVEL_ID + "/feedback"
 const DIFFICULTY_PATH := "/levels/" + LEVEL_ID + "/difficulty"
@@ -477,6 +479,97 @@ func test_a_sign_in_started_before_the_account_was_deleted_cannot_restore_the_se
 	_done()
 
 
+func test_a_failed_local_erasure_after_a_remote_delete_is_no_success_and_old_activity_never_goes_out() -> void:
+	var net := _boot(LOCKED_HISTORY)
+	if net == null:
+		return
+	check(Community.session_path.get_base_dir() != LOCKED.trim_suffix("/") and not Community.session_path.begins_with(LOCKED), "control: the session file lives apart from the history folder, so only the history cannot be written")
+	DirAccess.make_dir_recursive_absolute(LOCKED)
+	await _sign_in(net, "p_2", "tok2")  # another account on this device: it must come through untouched
+	var row: Dictionary = await _cached(net)
+	var other: String = _c.record_play_start(row.sha256)
+	await _sign_in(net, "p_1", "tok1")
+	var id: String = _c.record_play_start(row.sha256)
+	_c.record_play_finish(id, "failed")
+	net.respond("GET", "/nonce", func(_r: Dictionary) -> Dictionary: return {"status": 0})
+	await _c.set_like(LEVEL_ID, true)
+	net.responders.clear()
+	var before: Variant = _disk(LOCKED_HISTORY)
+	check(other != "" and id != "" and before.batch("p_1").size() == 1 and before.pending_votes("p_1").size() == 1 and before.batch("p_2").size() == 1, "setup: p_1 has a queued play and like, p_2 a queued start")
+	if not _lock(LOCKED):
+		_done()
+		return
+	net.answer("DELETE", "/me", 204)
+	var result: String = await Community.delete_account()
+	check(result != "", "the server deleted the account but its history could not be erased here: that must not read as a successful deletion")
+	check(_disk(LOCKED_HISTORY).batch("p_1").size() == 1, "control: the failed save left the old queue in the file, so only the client can keep it from going out")
+	# The same session, signed in again as the same player (an explicit action).
+	await _sign_in(net, "p_1", "tok9")
+	_auto_nonces(net)
+	_auto_acks(net)
+	net.respond("POST", LIKE_PATH, func(_r: Dictionary) -> Dictionary: return {"status": 200, "body": {"likes": 1}})
+	_c.record_play_finish(id, "failed")  # the scene of the erased attempt ends later
+	await _cooldown()
+	await _c.sync_feedback()
+	await _cooldown()
+	check(_writes(net).is_empty(), "erased activity must not be sent after signing in again: %s" % [_steps(net)])
+	# A relaunch: timers and the loaded history are gone, the files stay.
+	_restart(net)
+	_auto_nonces(net)
+	_auto_acks(net)
+	net.respond("POST", LIKE_PATH, func(_r: Dictionary) -> Dictionary: return {"status": 200, "body": {"likes": 1}})
+	_c.activate_feedback()
+	await _cooldown()
+	await _c.sync_feedback()
+	await _cooldown()
+	check(_writes(net).is_empty(), "nor after a restart, in the background or on demand: %s" % [_steps(net)])
+	check(_c.pending_feedback(LEVEL_ID, row.sha256).is_empty(), "a choice of the erased account is not shown as pending: %s" % [_c.pending_feedback(LEVEL_ID, row.sha256)])
+	# The folder is writable again: the erasure completes and nothing of the old account comes back.
+	_unlock(LOCKED)
+	_c.record_play_finish(id, "failed")
+	await _cooldown()
+	await _c.sync_feedback()
+	await _cooldown()
+	var after: Variant = _disk(LOCKED_HISTORY)
+	check(_writes(net).is_empty(), "nothing of the erased account goes out once the folder is writable: %s" % [_steps(net)])
+	check(after.batch("p_1").is_empty() and after.pending_votes("p_1").is_empty() and after.owner_for_attempt(id) == "", "the erasure completes on disk: %s %s" % [after.batch("p_1"), after.pending_votes("p_1")])
+	check(after.batch("p_2").size() == 1 and after.owner_for_attempt(other) == "p_2", "the other account's history is preserved")
+	check(FileAccess.file_exists(Community.level_path(row.sha256)) and _c.level_info(row.sha256).get(META_LEVEL) == LEVEL_ID, "downloaded public levels are preserved")
+	_done()
+
+
+func test_a_private_cache_that_cannot_be_removed_is_no_deletion_success_and_is_never_served_afterwards() -> void:
+	var net := _boot()
+	if net == null:
+		return
+	await _sign_in(net)
+	var row: Dictionary = await _cached(net)
+	net.answer("GET", FEEDBACK_PATH, 200, _dto(row.sha256, {"liked": true, "attempts": 4321}))
+	var live: Dictionary = await _c.feedback(LEVEL_ID, row.sha256)
+	check(not live.has("error") and _private_files().size() == 1, "setup: the private payload is cached for this player: %s" % [_private_files()])
+	if not _lock(Community.dir):  # files stay readable, but none can be removed
+		_done()
+		return
+	net.answer("DELETE", "/me", 204)
+	var result: String = await Community.delete_account()
+	check(result != "", "the account is gone on the server but its private cache could not be removed here: that must not read as a successful deletion")
+	await _sign_in(net, "p_1", "tok9")
+	net.answer("GET", FEEDBACK_PATH, 0)
+	var offline: Dictionary = await _c.feedback(LEVEL_ID, row.sha256)
+	check(offline.has("error") and not offline.has("you") and not offline.has("stats"), "an erased account's cache is never served again: %s" % [offline])
+	_restart(net)  # a relaunch: the files stay
+	net.answer("GET", FEEDBACK_PATH, 0)
+	offline = await _c.feedback(LEVEL_ID, row.sha256)
+	check(offline.has("error") and not offline.has("you") and not offline.has("stats"), "nor after a restart: %s" % [offline])
+	_unlock(Community.dir)
+	await _c.sync_feedback()
+	net.answer("GET", FEEDBACK_PATH, 0)
+	offline = await _c.feedback(LEVEL_ID, row.sha256)
+	check(offline.has("error") and not offline.has("you") and _private_files().is_empty(), "once the folder is writable the erasure completes: %s %s" % [offline, _private_files()])
+	check(FileAccess.file_exists(Community.level_path(row.sha256)) and _c.level_info(row.sha256).get(META_LEVEL) == LEVEL_ID, "downloaded public levels are preserved")
+	_done()
+
+
 # --- feedback reads and the per-owner cache ---------------------------------------------------------------------------
 
 
@@ -701,6 +794,51 @@ func test_a_late_acknowledgment_of_an_older_choice_does_not_clear_a_newer_one() 
 	_done()
 
 
+func test_two_difficulty_choices_made_during_a_held_sign_in_end_with_the_latest_one() -> void:
+	var net := _boot()
+	if net == null:
+		return
+	var sha: String = _row().sha256
+	var server := _held_sign_in(net)
+	var out := []
+	var vote := func(value: String) -> void: out.append(await _c.set_difficulty(LEVEL_ID, sha, value))
+	vote.call("easy")
+	await frames(3)
+	check(pilot.sign_ins == 1, "setup: the first choice is waiting in the held sign-in")
+	vote.call("hard")  # the later choice, made while that sign-in is still open
+	await frames(3)
+	check(pilot.sign_ins == 1 and net.count("PUT", DIFFICULTY_PATH) == 0 and not FileAccess.file_exists(HISTORY), "setup: nothing is sent or stored before the player is known: %s" % [_urls(net)])
+	pilot.release_sign_in()
+	await frames(5)
+	var labels := net.requests.filter(func(r: Dictionary) -> bool: return r.method == "PUT").map(func(r: Dictionary) -> Variant: return JSON.parse_string(r.body.get_string_from_utf8()).get("difficulty"))
+	check(out.size() == 2, "both calls return: %s" % [out])
+	check(server.get("difficulty") == "hard" and not labels.is_empty() and labels.back() == "hard", "the latest choice made is the one the server ends with: server %s, sent %s" % [server.get("difficulty"), labels])
+	check(_disk().pending_votes("p_1").is_empty(), "nothing older stays pending: %s" % [_disk().pending_votes("p_1")])
+	_done()
+
+
+func test_a_like_toggled_twice_during_a_held_sign_in_ends_with_the_latest_value() -> void:
+	var net := _boot()
+	if net == null:
+		return
+	var server := _held_sign_in(net)
+	var out := []
+	var toggle := func(value: bool) -> void: out.append(await _c.set_like(LEVEL_ID, value))
+	toggle.call(true)
+	await frames(3)
+	check(pilot.sign_ins == 1, "setup: the first choice is waiting in the held sign-in")
+	toggle.call(false)
+	await frames(3)
+	check(pilot.sign_ins == 1 and net.count("POST", LIKE_PATH) + net.count("DELETE", LIKE_PATH) == 0 and not FileAccess.file_exists(HISTORY), "setup: nothing is sent or stored before the player is known: %s" % [_urls(net)])
+	pilot.release_sign_in()
+	await frames(5)
+	var likes := _steps(net).filter(func(s: String) -> bool: return s.ends_with("/like"))
+	check(out.size() == 2, "both calls return: %s" % [out])
+	check(server.get("liked") == false and not likes.is_empty() and likes.back() == "DELETE " + LIKE_PATH, "the latest value is the one the server ends with: server %s, sent %s" % [server.get("liked"), likes])
+	check(_disk().pending_votes("p_1").is_empty(), "nothing older stays pending: %s" % [_disk().pending_votes("p_1")])
+	_done()
+
+
 # --- local progress ---------------------------------------------------------------------------------------------------
 
 
@@ -826,8 +964,8 @@ func test_a_submission_with_a_suggested_difficulty_binds_it_as_the_third_part() 
 
 
 ## The fake world: paths redirected to test folders, history and fakes in place. Null (and one failed check) when the
-## Task 6 interface is not there yet, or when a path would touch real user files.
-func _boot() -> FakeTransport:
+## Task 6 interface is not there yet, or when a path would touch real user files. `history_file` is where the history lives.
+func _boot(history_file := HISTORY) -> FakeTransport:
 	var missing := PackedStringArray()
 	for name: String in INTERFACE_METHODS:
 		if not _c.has_method(name):
@@ -841,10 +979,13 @@ func _boot() -> FakeTransport:
 	if not (Community.dir.begins_with("user://test_") and Community.session_path.begins_with("user://test_")):
 		check(false, "Community must be redirected to test paths by the runner: %s %s" % [Community.dir, Community.session_path])
 		return null
+	for stranded: String in [LOCKED, Community.dir]:  # a test that died while a folder was read-only must not strand it
+		if DirAccess.dir_exists_absolute(stranded):
+			OS.execute("chmod", ["755", ProjectSettings.globalize_path(stranded)])
 	_wipe()
 	_wipe_dir(Community.dir)
 	DirAccess.remove_absolute(Community.session_path)
-	_c.history_path = HISTORY
+	_c.history_path = history_file
 	Community.use_defaults()
 	Engine.time_scale = 1.0  # a test that failed mid-cooldown must not leave the clock fast
 	var net := FakeTransport.new()
@@ -856,12 +997,78 @@ func _boot() -> FakeTransport:
 
 ## The end of every test: the reset the runner does, so no timer or loaded history outlives it.
 func _done() -> void:
+	for path in _locked.duplicate():
+		_unlock(path)
 	Community.use_defaults()
 	_wipe()
 
 
 func _wipe() -> void:
 	_wipe_dir(DIR)
+
+
+## Folders this test made read-only.
+var _locked: Array[String] = []
+
+
+## Makes `path` read-only with a real permission change (a file cannot be created or removed in it, but its files can be read). False, and a failed check, when the platform did not enforce it (no chmod, or the test runs as root).
+func _lock(path: String) -> bool:
+	_locked.append(path)
+	OS.execute("chmod", ["555", ProjectSettings.globalize_path(path)])
+	var probe := path.path_join("probe.tmp")
+	var file := FileAccess.open(probe, FileAccess.WRITE)
+	if file != null:
+		file.close()
+		DirAccess.remove_absolute(probe)
+		check(false, "control: %s could not be made read-only here (no chmod, or running as root)" % path)
+		return false
+	return true
+
+
+func _unlock(path: String) -> void:
+	_locked.erase(path)
+	OS.execute("chmod", ["755", ProjectSettings.globalize_path(path)])
+
+
+## What a relaunch does: timers, activation and the loaded history are gone; files, session and downloads stay.
+func _restart(net: FakeTransport) -> void:
+	Community.use_defaults()
+	Community.transport = net
+	Community.platform = pilot
+
+
+## The requests that carry a player's activity: play reports and votes.
+func _writes(net: FakeTransport) -> Array:
+	return _steps(net).filter(func(s: String) -> bool: return s.begins_with("POST /plays") or s.ends_with("/like") or s.ends_with("/difficulty"))
+
+
+## Files in the downloads folder that hold a player's private feedback (a payload with a `you` block), wherever the client keeps them.
+func _private_files() -> PackedStringArray:
+	var out := PackedStringArray()
+	for file in DirAccess.get_files_at(Community.dir):
+		var json := JSON.new()
+		if json.parse(FileAccess.get_file_as_string(Community.dir + file)) == OK and json.data is Dictionary and json.data.has("you"):
+			out.append(file)
+	return out
+
+
+## A signed-out client whose sign-in is held at Play Games and whose server answers every vote, remembering the last one. Returns that server state: `difficulty` and `liked`.
+func _held_sign_in(net: FakeTransport) -> Dictionary:
+	var server := {"difficulty": "", "liked": null}
+	net.answer("GET", "/nonce", 200, {"nonce": "n_held"})
+	net.answer("POST", "/session", 200, {"token": "tok1", "player": {"id": "p_1", "name": "Pilot"}})
+	net.respond("PUT", DIFFICULTY_PATH, func(r: Dictionary) -> Dictionary:
+		var body: Dictionary = JSON.parse_string(r.body.get_string_from_utf8())
+		server["difficulty"] = body.difficulty
+		return {"status": 200, "body": {"difficulty": body.difficulty}})
+	net.respond("POST", LIKE_PATH, func(_r: Dictionary) -> Dictionary:
+		server["liked"] = true
+		return {"status": 200, "body": {"likes": 1}})
+	net.respond("DELETE", LIKE_PATH, func(_r: Dictionary) -> Dictionary:
+		server["liked"] = false
+		return {"status": 200, "body": {"likes": 0}})
+	pilot.sign_in_held = true
+	return server
 
 
 func _wipe_dir(path: String) -> void:
@@ -924,9 +1131,9 @@ func _meta(sha: String) -> Dictionary:
 
 
 ## A history read from the file, as a restart would see it.
-func _disk() -> Variant:
+func _disk(path := HISTORY) -> Variant:
 	var h := CommunityHistory.new()
-	h.path = HISTORY
+	h.path = path
 	h.load_file()
 	return h
 

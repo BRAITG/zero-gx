@@ -16,6 +16,8 @@ const BAD_LEVEL := "This level cannot be rated."
 const FLUSH_GAP_SECONDS := 30.0
 const MAX_REPORT_BYTES := 16384  # the server refuses a larger report
 const FEEDBACK_TRIES := 5  # counted tries that open the rating of a version without a clear
+const ERASURE_PENDING := "Your account was deleted, but its data could not be erased from this device yet. It will be tried again."
+const ERASURE_UNSAVED := "Your account was not deleted: this device could not record the deletion."
 
 var transport: CommunityTransport
 var platform: CommunityPlatform
@@ -35,6 +37,9 @@ var _activated := false  # the community was entered this launch: only then may 
 var _flushing := false  # one flush at a time
 var _gaps := {"plays": false, "votes": false, "retry": false}  # true while that kind of request waits out its gap; see `_start_gap`
 var _generation := 0  # bumped by a reset and by an account deletion: work begun before it writes and retries nothing after it
+var _deleting := false  # a deletion is with the server: its local erasure is owed but must not start before the answer
+var _choices := {}  # target of a vote → serial of the latest call for it
+var _choice_serial := 0
 
 signal _sign_in_done(error: String)
 
@@ -52,6 +57,8 @@ func use_defaults() -> void:
 	_reset_work()
 	_activated = false
 	_history = null
+	_deleting = false
+	_choices.clear()
 
 
 ## Whether this device can use community at all (Android with Play Games).
@@ -106,7 +113,7 @@ func _sign_in() -> String:
 		file.set_value("player", "id", id)  # who this device's play history belongs to; kept when a 401 drops the token
 	elif file.has_section("player"):
 		file.erase_section("player")  # a token whose player is not known must not keep the previous one's name
-	file.save(session_path)
+	_save_session(file)
 	return ""
 
 
@@ -187,7 +194,7 @@ func statuses() -> Dictionary:
 			fresh[row.level_id] = {"status": row.get("status"), "version": int(row.get("version", 0)), "comment": row.get("comment") if row.get("comment") is String else ""}
 	var file := _session()  # read afresh: a sign-in may have rewritten it meanwhile
 	file.set_value("statuses", "last", fresh)
-	file.save(session_path)
+	_save_session(file)
 	return fresh
 
 
@@ -199,13 +206,14 @@ func player_id() -> String:
 
 ## The community (or Submit) was entered this launch: from now on reports may go out by themselves, spaced by `FLUSH_GAP_SECONDS`. It makes no request and records no play.
 func activate_feedback() -> void:
+	_finish_erasure()
 	_activated = true
 	_schedule()
 
 
 ## Records the start of a counted attempt of the downloaded version `sha256` for the signed-in player; returns its id, "" when nothing was recorded (no Play Games, no known player, a level without saved metadata, a version already cleared, or a history that cannot be written). Makes no request unless the community was entered.
 func record_play_start(sha256: String) -> String:
-	var account := player_id()
+	var account := _account()
 	var level: String = level_info(sha256).get("level_id", "")
 	var history := _hist()
 	if account == "" or level == "" or history == null or not available():
@@ -219,7 +227,7 @@ func record_play_start(sha256: String) -> String:
 func record_play_finish(id: String, outcome: String) -> void:
 	var history := _hist()
 	var account := history.owner_for_attempt(id) if history != null and id != "" else ""
-	if account == "":
+	if account == "" or _blocked(account):
 		return
 	history.finish(account, id, outcome, _now_ms())
 	_schedule()
@@ -227,7 +235,7 @@ func record_play_finish(id: String, outcome: String) -> void:
 
 ## What the signed-in player has done on version `sha256`, for the UI only: `local_attempts` (this device's counted starts), `confirmed_attempts` (the server's last word), `cleared`, `pending` (a report is still queued) and `can_offer_rating`. A local discovery may open Rate level, with Pending sync; the server still decides when the vote is applied.
 func play_progress(sha256: String) -> Dictionary:
-	var account := player_id()
+	var account := _account()
 	var level: String = level_info(sha256).get("level_id", "")
 	var history := _hist()
 	var local := {"attempts": 0, "cleared": false, "pending_starts": 0, "pending": false}
@@ -246,18 +254,23 @@ func feedback(level: String, sha256: String) -> Dictionary:
 		return {"error": CommunityPlatform.UNAVAILABLE, "offline": false}
 	if _level_id.search(level) == null or not _is_sha(sha256):
 		return {"error": BAD_LEVEL, "offline": false}
+	_finish_erasure()
+	if _blocked(player_id()):
+		return {"error": ERASURE_PENDING, "offline": false}
 	var generation := _generation
 	var reply := await _authed("GET", "/levels/%s/feedback?sha256=%s" % [level, sha256])
 	if generation != _generation:
 		return {"error": SIGNED_OUT, "offline": false}
 	var account: String = reply.get("account", "")
+	if account != "" and _blocked(account):
+		reply = {"error": ERASURE_PENDING}  # nothing of an account whose erasure is owed is cached or confirmed
 	var history := _hist()
 	if not reply.has("error") and not _feedback_valid(reply.data, level, sha256):
 		reply = {"error": BAD_ANSWER}
 	elif not reply.has("error") and account != "" and history != null and history.confirm_progress(account, level, sha256, reply.data.you) == ERR_INVALID_PARAMETER:
 		reply = {"error": BAD_ANSWER}
 	if reply.has("error"):
-		var stale := _cached_feedback(player_id(), level, sha256)
+		var stale := _cached_feedback(_account(), level, sha256)
 		stale["error"] = reply.error
 		stale["offline"] = reply.error == NO_CONNECTION
 		return stale
@@ -272,7 +285,7 @@ func feedback(level: String, sha256: String) -> Dictionary:
 func pending_feedback(level: String, sha256: String) -> Dictionary:
 	var out := {}
 	var history := _hist()
-	var account := player_id()
+	var account := _account()
 	if history == null or account == "":
 		return out
 	for vote: Dictionary in history.pending_votes(account):
@@ -287,17 +300,18 @@ func pending_feedback(level: String, sha256: String) -> Dictionary:
 
 ## Coroutine: sends what is queued, plays first. `{error: String, pending: bool}`: `pending` is true while anything is still queued (offline, a server or rate-limit failure, a flush already under way, or the gap between uploads), `error` the sentence of a failure or of a refusal; a refused choice is dropped and the confirmed state stays. Within the gap it answers at once.
 func sync_feedback() -> Dictionary:
+	_finish_erasure()
 	return await _sync()
 
 
 ## Coroutine: likes (`value`) or unlikes stage `level`; same result as `sync_feedback`.
 func set_like(level: String, value: bool) -> Dictionary:
-	return await _vote(level, func(history: CommunityHistory, account: String) -> Error: return history.queue_like(account, level, value))
+	return await _vote(level, "like:" + level, func(history: CommunityHistory, account: String) -> Error: return history.queue_like(account, level, value))
 
 
 ## Coroutine: sets (or, with "", removes) the vote on the difficulty of version `sha256` of stage `level`; same result as `sync_feedback`.
 func set_difficulty(level: String, sha256: String, value: String) -> Dictionary:
-	return await _vote(level, func(history: CommunityHistory, account: String) -> Error: return history.queue_difficulty(account, level, sha256, value))
+	return await _vote(level, "difficulty:" + sha256, func(history: CommunityHistory, account: String) -> Error: return history.queue_difficulty(account, level, sha256, value))
 
 
 ## The public metadata saved beside a downloaded version: `{level_id, version}`, `{}` when unknown or not valid.
@@ -310,18 +324,38 @@ func level_info(sha256: String) -> Dictionary:
 	return {"level_id": meta.level_id, "version": int(meta.version)}
 
 
-## Coroutine: deletes the player's community account on the server; `""` once it is gone and the session, statuses, draft level ids, submitted marks, play history, queued votes and private feedback are cleared here too (downloaded public levels stay), else the sentence. Work that was under way (an upload, a sign-in, a feedback read) can no longer write anything or retry.
+## Coroutine: deletes the player's community account on the server; `""` once it is gone and the session, statuses, draft level ids, submitted marks, play history, queued votes and private feedback are cleared here too (downloaded public levels stay), else the sentence. Work that was under way (an upload, a sign-in, a feedback read) can no longer write anything or retry. The local erasure is owed from before the request: it is recorded in the session file first (no record, no request), and when the server has deleted the account but this device cannot finish erasing it, the answer is a sentence, nothing of that account is recorded, shown, cached or sent, and the next explicit community action tries again. A refused deletion keeps everything.
 func delete_account() -> String:
-	var reply := await _authed("DELETE", "/me", TYPE_NIL)
+	if not _finish_erasure():
+		return ERASURE_PENDING
+	var account := player_id()
+	if account == "":  # a session saved before the player was stored: learn who it is, so what is owed here has a name
+		var error := await sign_in()
+		if error != "":
+			return error
+		account = player_id()
+		if account == "":
+			return BAD_ANSWER
+	if _mark_erasure(account) != OK:
+		return ERASURE_UNSAVED
+	_deleting = true
+	_reset_work()
+	var reply := await _authed("DELETE", "/me", TYPE_NIL, Callable(), true, account)
+	_deleting = false
 	if reply.has("error"):
+		_unmark_erasure()
 		return reply.error
 	_reset_work()
-	_erase_private(reply.get("account", ""))
-	DirAccess.remove_absolute(session_path)  # holds the session, the player id and the statuses
 	for id in MyLevels.ids():
 		MyLevels.set_level_id(id, "")
 		MyLevels.set_submitted(id, "")
-	return ""
+	if _complete_erasure(account):
+		DirAccess.remove_absolute(session_path)  # holds the session, the player id, the statuses and the mark
+		return ""
+	var owed := ConfigFile.new()  # no token, no player, no statuses: only what is still owed
+	owed.set_value("erasure", "owner", account)
+	_save_session(owed)
+	return ERASURE_PENDING
 
 
 ## The stored session token, "" when there is none or it has expired.
@@ -390,7 +424,7 @@ func _forget(token: String) -> void:
 	var file := _session()
 	if file.has_section_key("session", "token") and file.get_value("session", "token") == token:
 		file.erase_section("session")
-		file.save(session_path)
+		_save_session(file)
 
 
 ## One authorized request; the answer carries the `token` it was sent with and the `account` that token belongs to.
@@ -484,14 +518,14 @@ func _reset_work() -> void:
 ## Whether this account has anything queued for the server.
 func _queued() -> bool:
 	var history := _hist()
-	var account := player_id()
+	var account := _account()
 	return history != null and account != "" and not (history.batch(account).is_empty() and history.pending_votes(account).is_empty())
 
 
 ## Whether a flush could send something right now: pending plays when their gap is over, else pending votes when theirs is.
 func _runnable() -> bool:
 	var history := _hist()
-	var account := player_id()
+	var account := _account()
 	if history == null or account == "" or not available():
 		return false
 	if not history.batch(account).is_empty():
@@ -557,6 +591,8 @@ func _flush(generation: int) -> Dictionary:
 	var account: String = who.account
 	if account == "":
 		return {"error": who.error, "pending": false}
+	if _blocked(account):
+		return {"error": ERASURE_PENDING, "pending": false}
 	if not history.batch(account).is_empty():
 		if _gaps.plays:
 			return {"error": "", "pending": true}
@@ -650,19 +686,27 @@ func _send_vote(vote: Dictionary, account: String) -> Dictionary:
 	return await _authed("PUT", base + "difficulty", TYPE_DICTIONARY, build, true, account)
 
 
-## Queues one choice for the signed-in player (signing in first when the player is not known yet), then tries one flush.
-func _vote(level: String, queue: Callable) -> Dictionary:
+## Queues one choice for the signed-in player (signing in first when the player is not known yet), then tries one flush. `key` names the target of the choice: of two calls for one target, only the later one may queue, whichever resumes first from a shared sign-in.
+func _vote(level: String, key: String, queue: Callable) -> Dictionary:
 	if not available():
 		return {"error": CommunityPlatform.UNAVAILABLE, "pending": false}
 	if _level_id.search(level) == null:
 		return {"error": BAD_LEVEL, "pending": false}
+	_finish_erasure()
 	var generation := _generation
+	_choice_serial += 1
+	var order := _choice_serial
+	_choices[key] = order
 	var who := await _identify()
 	if generation != _generation:
 		return {"error": SIGNED_OUT, "pending": false}
+	if _choices.get(key) != order:
+		return {"error": "", "pending": true}  # a later choice for this target was made meanwhile; it alone is queued
 	var history := _hist()
 	if who.account == "" or history == null:
 		return {"error": who.error if who.account == "" else NO_HISTORY, "pending": false}
+	if _blocked(who.account):
+		return {"error": ERASURE_PENDING, "pending": false}
 	if queue.call(history, who.account) != OK:
 		return {"error": NO_HISTORY, "pending": false}
 	return await _sync()
@@ -700,21 +744,74 @@ func _feedback_valid(data: Variant, level: String, sha256: String) -> bool:
 
 func _cached_feedback(account: String, level: String, sha256: String) -> Dictionary:
 	var path := _feedback_path(account, sha256)
-	if account == "" or not FileAccess.file_exists(path):
+	if account == "" or _blocked(account) or not FileAccess.file_exists(path):
 		return {}
 	var data: Variant = _parse(FileAccess.get_file_as_bytes(path))
 	return data if _feedback_valid(data, level, sha256) else {}
 
 
-## Forgets everything private about `account`: history, queued votes, cached feedback. Downloaded public levels stay.
-func _erase_private(account: String) -> void:
-	if account == "":
-		return
+## The account whose local erasure is owed: recorded in the session file (and checked) before a deletion goes to the server, cleared only once its history, queued votes and private feedback are durably gone. "" when none.
+func _erasure_owner() -> String:
+	var who: Variant = _session().get_value("erasure", "owner", "")
+	return who if who is String else ""
+
+
+## Whether `account` is owed an erasure: nothing of it may be recorded, shown, cached or sent until that is done.
+func _blocked(account: String) -> bool:
+	return account != "" and _erasure_owner() == account
+
+
+## The stored player id, or "" when that account is owed an erasure.
+func _account() -> String:
+	var account := player_id()
+	return "" if _blocked(account) else account
+
+
+## Saves the session file through a temporary file and a checked rename, so a failed save leaves the current one whole.
+func _save_session(file: ConfigFile) -> Error:
+	var temp := session_path + ".tmp"
+	var err := file.save(temp)
+	if err == OK:
+		err = DirAccess.rename_absolute(temp, session_path)
+	if err != OK:
+		DirAccess.remove_absolute(temp)
+	return err
+
+
+func _mark_erasure(account: String) -> Error:
+	var file := _session()
+	file.set_value("erasure", "owner", account)
+	return _save_session(file)
+
+
+## Takes the mark back after the server refused the deletion.
+func _unmark_erasure() -> Error:
+	var file := _session()
+	if not file.has_section("erasure"):
+		return OK
+	file.erase_section("erasure")
+	return _save_session(file)
+
+
+## Forgets everything private about `account`: its history, queued votes and cached feedback (downloaded public levels stay). True only when every part is durably gone.
+func _complete_erasure(account: String) -> bool:
 	var history := _hist()
-	if history != null:
-		history.erase_owner(account)
+	var done := history != null and history.erase_owner(account) == OK
 	if DirAccess.dir_exists_absolute(dir):
 		var prefix := "feedback_%s_" % _owner_tag(account)
 		for file in DirAccess.get_files_at(dir):
-			if file.begins_with(prefix):
-				DirAccess.remove_absolute(dir + file)
+			if file.begins_with(prefix) and DirAccess.remove_absolute(dir + file) != OK:
+				done = false
+	return done
+
+
+## Pays an owed erasure (an explicit community action calls it): true when none is owed any more. Never while the deletion that owes it is still with the server.
+func _finish_erasure() -> bool:
+	var account := _erasure_owner()
+	if account == "":
+		return true
+	if _deleting or not _complete_erasure(account):
+		return false
+	var file := _session()
+	file.erase_section("erasure")
+	return _save_session(file) == OK
