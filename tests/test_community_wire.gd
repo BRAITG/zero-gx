@@ -22,3 +22,29 @@ func test_multipart_frames_fields_then_files_with_crlf() -> void:
 	expected.append_array(demo)
 	expected.append_array("\r\n--XB--\r\n".to_utf8_buffer())
 	check(body == expected, "multipart body differs from the expected framing")
+
+
+## The optional third part: server/test/suggested_difficulty_nonce.test.ts checks the same fixture.
+func test_three_part_bound_nonce_with_a_suggestion_matches_the_server() -> void:
+	var suggested := _suggested()
+	var level := Marshalls.base64_to_raw(suggested.level_base64)
+	var demo := Marshalls.base64_to_raw(suggested.demo_base64)
+	var label: PackedByteArray = suggested.suggested_difficulty.to_utf8_buffer()
+	check(CommunityWire.sha256_hex(level) == suggested.level_sha256 and CommunityWire.sha256_hex(demo) == suggested.demo_sha256 and CommunityWire.sha256_hex(label) == suggested.suggested_difficulty_sha256, "the fixture parts must decode to the pinned hashes")
+	var parts: Array[PackedByteArray] = [level, demo, label]
+	check(CommunityWire.bound_nonce(suggested.nonce, parts) == suggested.bound, "three-part bound nonce differs from the server's")
+
+
+func test_a_changed_or_dropped_suggestion_cannot_reuse_the_three_part_binding() -> void:
+	var suggested := _suggested()
+	var level := Marshalls.base64_to_raw(suggested.level_base64)
+	var demo := Marshalls.base64_to_raw(suggested.demo_base64)
+	for other: String in ["normal", "easy", "expert", "Hard", "hard ", ""]:
+		var parts: Array[PackedByteArray] = [level, demo, other.to_utf8_buffer()]
+		check(CommunityWire.bound_nonce(suggested.nonce, parts) != suggested.bound, "suggestion '%s' must not bind like 'hard'" % other)
+	var two: Array[PackedByteArray] = [level, demo]
+	check(CommunityWire.bound_nonce(suggested.nonce, two) != suggested.bound, "dropping the suggestion must change the binding")
+
+
+func _suggested() -> Dictionary:
+	return JSON.parse_string(FileAccess.get_file_as_string("res://fixtures/suggested_difficulty_nonce.json"))

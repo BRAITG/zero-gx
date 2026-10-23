@@ -77,6 +77,19 @@ func _confirmation(screen: MyLevelsScreen) -> void:
 	await frames(2)
 
 
+## Chooses a Suggested difficulty in the open confirmation, as a player does: the choice Submit for review waits for.
+func _suggest(node: Node, value := "hard") -> void:
+	var options := node.find_children("*", "OptionButton", true, false)
+	check(options.size() == 1, "the confirmation asks for one Suggested difficulty: %d" % options.size())
+	if options.size() != 1:
+		return
+	var option: OptionButton = options[0]
+	for i in option.item_count:
+		if option.get_item_metadata(i) == value:
+			option.select(i)
+			option.item_selected.emit(i)
+
+
 ## Publish, then `choice` ("Play to prove it" or "Play again"): the flight that replaces the screen, or null.
 func _fly_proof(screen: MyLevelsScreen, choice: String) -> Level:
 	_buttons(screen, "Publish")[0].pressed.emit()
@@ -576,6 +589,7 @@ func test_submit_for_review_sends_the_draft_and_the_row_then_shows_pending() -> 
 	await _confirmation(screen)
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
+	_suggest(screen)
 	_buttons(screen, "Submit for review")[0].pressed.emit()
 	await frames(3)
 	check(net.count("POST", "/submissions") == 1 and Community.level_id_of(id) == LEVEL_ID, "the draft must be sent and its level id kept")
@@ -593,6 +607,7 @@ func test_submit_for_review_signs_in_first_when_signed_out() -> void:
 	net.answer("POST", "/session", 200, SESSION)
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
+	_suggest(screen)
 	_buttons(screen, "Submit for review")[0].pressed.emit()
 	await frames(2)
 	check(Community.signed_in() and net.count("POST", "/submissions") == 1, "Submit for review must sign in and send")
@@ -606,6 +621,7 @@ func test_a_failed_submit_shows_the_sentence_and_no_status() -> void:
 	await _confirmation(screen)
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/submissions", 429, {"error": "At most 5 submissions are accepted per day."})
+	_suggest(screen)
 	_buttons(screen, "Submit for review")[0].pressed.emit()
 	await frames(2)
 	var sheets := _sheets(screen)
@@ -638,6 +654,7 @@ func test_submit_for_review_rechecks_the_draft_after_the_confirmation_opened() -
 	var edited := MyLevels.load_level(id)
 	edited.title = "Changed after confirmation"
 	MyLevels.save(id, edited)
+	_suggest(screen)
 	_buttons(screen, "Submit for review")[0].pressed.emit()
 	await frames(2)
 	var sheets := _sheets(screen)
@@ -697,6 +714,7 @@ func test_a_won_proof_flight_offers_publish_and_opens_the_confirmation_even_afte
 		return
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/submissions", 201, {"level_id": LEVEL_ID, "version": 1, "pull_request": 7})
+	_suggest(list)
 	_buttons(list, "Submit for review")[0].pressed.emit()
 	await frames(3)
 	check(net.count("POST", "/submissions") == 1 and MyLevels.is_submitted(id), "Submit for review must send the proven draft")
@@ -833,6 +851,7 @@ func test_submit_for_review_says_submitting_and_is_off_while_it_waits_then_comes
 	net.answer("POST", "/submissions", 429, {"error": "At most 5 submissions are accepted per day."})
 	net.held = true
 	var submit: Button = _buttons(screen, "Submit for review")[0]
+	_suggest(screen)
 	submit.pressed.emit()
 	check(submit.text == "Submitting…" and submit.disabled, "while it waits: %s, disabled %s" % [submit.text, submit.disabled])
 	net.release()

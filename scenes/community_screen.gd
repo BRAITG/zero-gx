@@ -100,16 +100,32 @@ func _load(sort: String, page: int) -> void:
 
 
 func _add_row(row: Dictionary) -> Button:
+	var card := VBoxContainer.new()
+	card.add_theme_constant_override("separation", 2)
+	_rows.add_child(card)
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
-	_rows.add_child(line)
+	card.add_child(line)
 	var label := Label.new()
 	label.text = "%s · v%d · by %s · ♥ %d" % [row.get("title", "?"), int(row.get("latest", 1)), row.get("author", "?"), int(row.get("likes", 0))]
 	label.add_theme_font_size_override("font_size", 24)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	line.add_child(label)
-	return _button(line, "Play", _play.bind(row), "Loading…")
+	_button(line, "Details", _details.bind(row))
+	var play := _button(line, "Play", _play.bind(row), "Loading…")
+	var ratings := Label.new()  # Reviewed and Community side by side, each its own value
+	ratings.text = CommunityLevelDetails.summary(row)
+	ratings.add_theme_font_size_override("font_size", 20)
+	ratings.add_theme_color_override("font_color", Style.INK_DIM)
+	ratings.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	card.add_child(ratings)
+	return play
+
+
+## The details and rating sheet of this version, with the same Play as the row's.
+func _details(row: Dictionary) -> void:
+	CommunityLevelDetails.open(self, row, _play.bind(row))
 
 
 func _play(row: Dictionary) -> void:

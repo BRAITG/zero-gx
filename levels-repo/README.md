@@ -28,16 +28,21 @@ A pull request that only changes `hidden.txt` is also accepted, with or without 
 
 ## Review
 
-Pull requests are reviewed by the `@BRAITG/moderators` team (see `CODEOWNERS`). A pull request is merged only when
-the check has passed and the level is acceptable; the check does not judge content. A failing or missing check must
-never be merged. Merge only level pull requests opened by the bot. Never reopen a rejected pull request after its
-author has resubmitted: the branch now carries the new submission.
+Player submissions are reviewed by the `@BRAITG/moderators` team (see `CODEOWNERS`). A submission is merged only when
+the check has passed and the level is acceptable; the check does not judge content. A failing or missing submission
+check must never be bypassed. Merge only level pull requests opened by the bot. Never reopen a rejected submission
+after its author has resubmitted: the branch now carries the new submission.
 
 Moderators rate each version by adding exactly one `difficulty:<label>` label to the pull request before merging (`difficulty:easy`, `difficulty:normal`, `difficulty:hard` or `difficulty:expert`). The check runs again when labels change. The merge stores that label as the version's reviewed difficulty; the author's suggestion is never used. A merge without exactly one such label, which only a bypass of the check allows, publishes the version as Not rated. Versions published before this rule are Not rated too.
 
 The workflow runs from the pull request's own merge commit, so a pull request can edit or delete `check.yml` to skip
 the check. The checker fails any change under `.github/` and the submission bot never touches it, so moderators
-must reject any pull request that does. The ruleset on the default branch must require the `check` status.
+must reject any player submission that does. The ruleset on the default branch must require the `check` status.
+
+### Repository maintenance
+
+Workflow and documentation maintenance is not a player submission and cannot pass the data-only file allowlist. Use a separate pull request, independent workflow/CLI/security review, `actionlint`, and a real valid-proof checker smoke test. A repository admin may then use the existing **For pull requests only** bypass to merge that maintenance PR. Do not disable the ruleset, expand the submission allowlist, or use this exception for player levels or proofs.
+
 
 ## Hiding a level
 

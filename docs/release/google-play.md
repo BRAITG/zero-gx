@@ -18,7 +18,7 @@ Status: the build side is ready; the Play Console account is being set up. The f
 | Feature graphic | `store/feature-graphic.png` (1024 × 500) |
 | Screenshots | `store/screenshots/` (four 1920 × 1080 landscape shots) |
 | Listing text | `store/listing.md` (draft) |
-| Privacy policy | `PRIVACY.md` (covers the community features and Play Games), published at `https://braitg.dev/zero-gx/privacy/` from the `BRAITG/braitg.github.io` repository. Update both copies together: the published copy must carry the 21 October 2026 text on Play Games signing in at launch before the first release. |
+| Privacy policy | `PRIVACY.md` (covers the community features, Play Games, community play history and difficulty ratings), published at `https://braitg.dev/zero-gx/privacy/` from the `BRAITG/braitg.github.io` repository. Update both copies together: the published copy must carry the 23 October 2026 text (Play Games sign-in at launch, play history and difficulty ratings) before the first release. |
 | License | AGPL-3.0-or-later (`LICENSE`) with an additional permission under section 7 for Google Play's client libraries (`LICENSE-EXCEPTION`); third-party assets in `assets/LICENSES.md` |
 
 ## Building the bundle locally
@@ -58,10 +58,13 @@ These match `PRIVACY.md` from the community release on. Play counts data as coll
 | Do you provide a way for users to request that their data is deleted? | Yes: in the app (Community → Settings → Account → Delete my community account) and by email |
 | Account deletion URL | `https://braitg.dev/zero-gx/privacy/#deleting-your-data` |
 | Personal info → **Name** (Play Games display name) | Collected, not shared, optional, purposes: App functionality, Account management |
-| Personal info → **User IDs** (Play Games player ID, Zero-GX player ID) | Collected, not shared, optional, purposes: App functionality, Account management, Fraud prevention, security and compliance |
-| App activity → **Other user-generated content** (submitted levels, report reasons) | Collected, not shared, optional, purposes: App functionality |
+| Personal info → **User IDs** (Play Games player ID, Zero-GX player ID) | Collected, not shared, optional, purposes: App functionality, Account management, Fraud prevention, security and compliance, Analytics |
+| App activity → **Other user-generated content** (submitted levels with their suggested difficulty, report reasons) | Collected, not shared, optional, purposes: App functionality |
 | App activity → **Other actions** (scores with run recordings, likes) | Collected, not shared, optional, purposes: App functionality, Fraud prevention, security and compliance |
+| App activity → **Other actions** (community play history: attempt starts, outcomes and times; difficulty ratings) | Collected, not shared, optional, purposes: App functionality, Analytics |
 | Every other data type (location, contacts, email, device IDs, diagnostics, …) | Not collected |
+
+The new rows cover the community play history and difficulty ratings. The play history is keyed by the Zero-GX player ID, a pseudonymous identifier that must be declared; that is why the User IDs row gains the Analytics purpose. Analytics here covers only the community play and difficulty statistics. This change adds no SDK and no advertising, so declare nothing new for any SDK.
 
 "Optional" is right because every community feature is opt-in: the game is fully playable without signing in.
 

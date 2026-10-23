@@ -2,7 +2,7 @@ class_name CommunityTransport
 extends Node
 ## The real HTTP layer of `Community`: one HTTPRequest child per call. Tests replace it with tests/support/fake_transport.gd.
 
-const METHODS := {"GET": HTTPClient.METHOD_GET, "POST": HTTPClient.METHOD_POST, "DELETE": HTTPClient.METHOD_DELETE}
+const METHODS := {"GET": HTTPClient.METHOD_GET, "POST": HTTPClient.METHOD_POST, "PUT": HTTPClient.METHOD_PUT, "DELETE": HTTPClient.METHOD_DELETE}
 const TIMEOUT_SECONDS := 30.0  # a request that never answers must end as "no connection"
 # shortcut: answers are read into memory whole, uncapped; the server and the levels CDN are ours and the server limits levels to 64 KB, so cap `body_size_limit` if another host is ever called
 

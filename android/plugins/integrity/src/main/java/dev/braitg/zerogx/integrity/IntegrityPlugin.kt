@@ -9,16 +9,16 @@ import org.godotengine.godot.plugin.UsedByGodot
 
 /** One classic Play Integrity request, so the server can check `requestDetails.nonce`. */
 class IntegrityPlugin(godot: Godot) : GodotPlugin(godot) {
-    private val tokenSignal = SignalInfo("integrity_token", String::class.java)
-    private val failedSignal = SignalInfo("integrity_failed", String::class.java)
+    // Boxed, as the Play Games plugin declares its signal types.
+    private val resultSignal = SignalInfo("integrity_result", Long::class.javaObjectType, String::class.java, String::class.java)
 
     override fun getPluginName() = "ZeroGxIntegrity"
 
-    override fun getPluginSignals() = setOf(tokenSignal, failedSignal)
+    override fun getPluginSignals() = setOf(resultSignal)
 
-    /** Answers with exactly one signal: `integrity_token(token)` or `integrity_failed(message)`. */
+    /** Answers once with `integrity_result(requestId, token, error)`: the token, or else an empty token and the error text. */
     @UsedByGodot
-    fun request(nonce: String, cloudProjectNumber: Long) {
+    fun request(nonce: String, cloudProjectNumber: Long, requestId: Long) {
         try {
             val host = activity ?: throw IllegalStateException("The game has no activity.")
             IntegrityManagerFactory.create(host)
@@ -28,10 +28,10 @@ class IntegrityPlugin(godot: Godot) : GodotPlugin(godot) {
                         .setCloudProjectNumber(cloudProjectNumber)
                         .build()
                 )
-                .addOnSuccessListener { emitSignal(tokenSignal, it.token()) }
-                .addOnFailureListener { emitSignal(failedSignal, it.message ?: it.toString()) }
+                .addOnSuccessListener { emitSignal(resultSignal, requestId, it.token(), "") }
+                .addOnFailureListener { emitSignal(resultSignal, requestId, "", it.message ?: it.toString()) }
         } catch (e: Exception) {
-            emitSignal(failedSignal, e.message ?: e.toString())
+            emitSignal(resultSignal, requestId, "", e.message ?: e.toString())
         }
     }
 }

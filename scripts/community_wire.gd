@@ -38,5 +38,6 @@ static func sha256_hex(bytes: PackedByteArray) -> String:
 static func _sha256(bytes: PackedByteArray) -> PackedByteArray:
 	var hash := HashingContext.new()
 	hash.start(HashingContext.HASH_SHA256)
-	hash.update(bytes)
+	if not bytes.is_empty():
+		hash.update(bytes)
 	return hash.finish()

@@ -55,6 +55,18 @@ Repository secrets of `BRAITG/zero-gx` the job reads (GitHub forbids secret name
 
 After the first deploy, set the repository variable `COMMUNITY_API` to `https://zerogx.braitg.dev` (no trailing slash) so releases register official level hashes. The API token also needs **Zone → Workers Routes → Edit** on `braitg.dev` (included in the "Edit Cloudflare Workers" template) for the custom domain.
 
+### Community feedback rollout and rollback
+
+1. Merge and deploy the backend first. Verify `deploy-server` applied migrations `0004_play_history.sql` and `0005_feedback.sql`; keep production `ALLOW_TEST_VERIFIER = "0"`. The existing two-part submission protocol remains valid.
+2. Provision the four difficulty labels and update the check workflow in `BRAITG/zero-gx-levels` only after its checker is on this repository's `master`. Player submissions still require the proof check, exactly one moderator label and code-owner review. Repository maintenance follows the separate admin procedure in that repository's README.
+3. Publish the matching privacy policy from `BRAITG/braitg.github.io` and update Play Console Data safety before releasing collection. Include account-linked community play history and difficulty votes, with the Analytics purpose for User IDs and Other actions.
+4. Release the client through the normal PR/CI and Play internal-testing pipeline. Verify five attempts or a clear unlock feedback, offline sync survives restart, practice does not change first-clear statistics, and account deletion clears the new data. Desktop and sideload builds remain offline-only.
+
+For rollback, keep the additive schema and collected data; do not drop the new tables. Keep the backend routes and local account-erasure logic available to already released clients. Fix forward or revert only the affected UI, preserving matching Integrity script/AAR contracts, and produce a new higher-version-code Play build. Restore a moderator workflow only through a reviewed maintenance PR, never by weakening the submission allowlist or ruleset.
+
+Device UTC timestamps are ordering hints for these statistics. Clock skew can change cross-device first-clear cutoffs; these times never replace server clocks for sessions, nonces or score freshness.
+
+
 ### Manual deploy
 
 All commands run in `server/`.
