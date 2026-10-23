@@ -69,18 +69,18 @@ func _close_sheet(e: LevelEditor) -> void:  # before the editor goes, whose came
 	await frames(2)
 
 
-func test_a_radius_change_keeps_the_pull_valid() -> void:
+func test_radius_and_mass_change_independently() -> void:
 	var e := editor()
 	await frames(1)
 	e.doc.place("star", Vector2(8000, 4000))
 	e._open_sheet({"type": "body", "index": 0})
-	var sliders := _sheet_sliders(e)
-	sliders[1].value = sliders[1].max_value  # strongest pull at the preset radius
-	sliders[0].value = sliders[0].max_value  # then the largest star
+	var sliders := _sheet_sliders(e)  # radius, mass, reach
 	var star: Dictionary = e.doc.data.bodies[0]
-	check(LevelFormat.total_pull(star) <= LevelFormat.KIND_LIMITS.star.total_pull.y + 0.001, "the pull follows the radius: %s" % [star])
-	sliders[0].value = sliders[0].min_value
-	check(sliders[1].min_value <= sliders[1].max_value and e.doc.errors().is_empty(), "smallest star: %s %s" % [star, e.doc.errors()])
+	for corner: Array in [[0, 0], [0, 1], [1, 0], [1, 1]]:  # every pairing of smallest and largest
+		sliders[0].value = sliders[0].max_value if corner[0] else sliders[0].min_value
+		sliders[1].value = sliders[1].max_value if corner[1] else sliders[1].min_value
+		check(is_equal_approx(LevelFormat.body_value(star, "radius"), sliders[0].value) and is_equal_approx(LevelFormat.total_pull(star), sliders[1].value), "radius and mass as set: %s" % [star])
+		check(e.doc.errors().is_empty(), "%s: %s" % [star, e.doc.errors()])
 	await _close_sheet(e)
 
 

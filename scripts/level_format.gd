@@ -25,13 +25,14 @@ const MAX_ROUTE := 64
 const MAX_TITLE := 40
 const MAX_TEXT := 200
 const TANK_RANGE := Vector2(1, 1000)  # fuel and hull, unless unlimited
-const BODY_RANGES := {"radius": Vector2(8, 3000), "strength": Vector2(0, 64000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}
-## Per-kind limits so each body keeps its role: a planet never outgrows or out-pulls a star, a
-## black hole always grabs hardest up close. Total pull is the pull at 1000 px.
+const BODY_RANGES := {"radius": Vector2(8, 3000), "strength": Vector2(0, 300000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}  # strength covers the heaviest, smallest black hole
+## Per-kind limits, each independent of the others so radius and pull can be set apart. Total
+## pull is the pull at 1000 px, which acts like mass: strength (the surface pull) is total pull
+## divided by (radius / 1000)².
 const KIND_LIMITS := {
 	"planet": {"radius": Vector2(32, 240), "total_pull": Vector2(0, 100), "reach": Vector2(0, 1500)},
 	"star": {"radius": Vector2(300, 3000), "total_pull": Vector2(150, 6000), "reach": Vector2(0, 8000)},
-	"black_hole": {"radius": Vector2(32, 96), "strength": Vector2(8000, 64000), "reach": Vector2(0, 1500)},
+	"black_hole": {"radius": Vector2(32, 96), "total_pull": Vector2(30, 260), "reach": Vector2(0, 1500)},
 }
 
 const LEVEL_SCRIPT := preload("res://scenes/level.gd")
@@ -147,14 +148,6 @@ static func validate(data: Dictionary, draft := false) -> PackedStringArray:
 				_number(body[key], BODY_RANGES[key].x, BODY_RANGES[key].y, "body %d %s" % [i, key], errors, draft)
 		if not draft and errors.size() == before:  # only well-formed numbers can be compared to the kind's limits
 			_check_kind_limits(i, body, errors)
-	if not draft and errors.is_empty():
-		var strongest_star := 0.0
-		for body in bodies:
-			if body.kind == "star":
-				strongest_star = maxf(strongest_star, body_value(body, "strength"))
-		for i in bodies.size():
-			if bodies[i].kind == "black_hole" and body_value(bodies[i], "strength") <= strongest_star:
-				errors.append("body %d: a black hole must pull harder at its surface than every star" % i)
 	var rocks := _list(data, "asteroids", MAX_ASTEROIDS, errors, draft)
 	for i in rocks.size():
 		var rock: Variant = rocks[i]

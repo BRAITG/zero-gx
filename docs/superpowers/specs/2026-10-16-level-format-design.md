@@ -48,11 +48,11 @@ A level is a JSON object. Official levels and tutorials are plain `*.json` files
 - Counts: at most 300 walls with 2–64 points each, 32 bodies, 150 asteroids, 50 pickups, 12 tour stops, and 64 route points.
 - Text: `title` 1–40 characters; `hint` and tour texts up to 200.
 - Fuel and hull are 1–1000 or `"unlimited"`.
-- Body overrides: radius 8–3000, strength 0–64,000, reach 0–10,000, health 1–10,000. An orbit's body index must exist.
-- Each kind keeps its role (`KIND_LIMITS`; total pull is the pull at 1000 px, `strength × (radius / 1000)²`):
+- Body overrides: radius 8–3000, strength 0–300,000, reach 0–10,000, health 1–10,000. An orbit's body index must exist.
+- Each kind keeps its role (`KIND_LIMITS`). Total pull is the pull at 1000 px, `strength × (radius / 1000)²`, and acts like mass; the limits are independent, so any radius pairs with any total pull in range:
   - planet: radius 32–240, total pull 0–100, reach 0–1500.
   - star: radius 300–3000, total pull 150–6000, reach 0–8000.
-  - black hole: radius 32–96, strength 8000–64,000, reach 0–1500; its strength must exceed every star's.
+  - black hole: radius 32–96, total pull 30–260, reach 0–1500.
 - The ship must not start inside a wall's collision slab or a body, and must not start inside the goal.
 - The file is at most 64 KB uncompressed.
 

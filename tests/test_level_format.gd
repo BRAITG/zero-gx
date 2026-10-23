@@ -158,8 +158,7 @@ func test_body_limits_keep_each_kind_in_its_role() -> void:
 	rejects(with("bodies", [{"kind": "planet", "position": [2000, 0], "radius": 300}]), "a planet as big as a star")
 	rejects(with("bodies", [{"kind": "planet", "position": [2000, 0], "radius": 200, "strength": 5000}]), "a planet pulling like a star from afar")
 	rejects(with("bodies", [{"kind": "star", "position": [9000, 0], "radius": 300, "strength": 1000}]), "a star too weak from afar")
-	rejects(with("bodies", [{"kind": "black_hole", "position": [2000, 900], "strength": 4000}]), "a black hole weaker than its kind allows")
-	rejects(with("bodies", [{"kind": "star", "position": [9000, 0], "radius": 300, "strength": 30000}, {"kind": "black_hole", "position": [2000, 900], "strength": 20000}]), "a black hole weaker up close than a star in the level")
+	rejects(with("bodies", [{"kind": "black_hole", "position": [2000, 900], "strength": 4000}]), "a black hole lighter than its kind allows")
 	var fine := with("bodies", [{"kind": "planet", "position": [2000, 600]}, {"kind": "star", "position": [9000, 0]}, {"kind": "black_hole", "position": [2000, -900]}])
 	check(LevelFormat.validate(fine).is_empty(), "presets must pass: %s" % LevelFormat.validate(fine))
 

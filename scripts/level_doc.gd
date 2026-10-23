@@ -116,24 +116,6 @@ static func drawn_radius(body: Dictionary) -> float:
 	return r + 7.0
 
 
-## The surface pulls body `index` may take at its current radius: its kind's limits on surface and
-## total pull, a star below every black hole and a black hole above every star. Whole numbers.
-func strength_range(index: int) -> Vector2:
-	var body: Dictionary = data.bodies[index]
-	var limits: Dictionary = LevelFormat.KIND_LIMITS[body.kind]
-	var bounds: Vector2 = limits.get("strength", LevelFormat.BODY_RANGES.strength)
-	if limits.has("total_pull"):  # total pull = strength × (radius / 1000)²
-		var area := pow(LevelFormat.body_value(body, "radius") / 1000.0, 2)
-		bounds = Vector2(maxf(bounds.x, limits.total_pull.x / area), minf(bounds.y, limits.total_pull.y / area))
-	for other: Dictionary in data.bodies:
-		if body.kind == "star" and other.kind == "black_hole":
-			bounds.y = minf(bounds.y, LevelFormat.body_value(other, "strength") - 1.0)
-		elif body.kind == "black_hole" and other.kind == "star":
-			bounds.x = maxf(bounds.x, LevelFormat.body_value(other, "strength") + 1.0)
-	bounds = Vector2(ceilf(bounds.x), floorf(bounds.y))
-	return Vector2(minf(bounds.x, bounds.y), bounds.y)  # empty only when a star out-pulls every black hole's maximum
-
-
 ## Where `ref` is: its position, a wall point, or a wall's first point.
 func position_of(ref: Dictionary) -> Vector2:
 	match ref.type:

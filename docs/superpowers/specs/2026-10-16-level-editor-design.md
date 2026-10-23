@@ -44,7 +44,7 @@ With these limits a planet can never be bigger than a star or out-pull it from a
     - **Erase**.
   - Grid: lines every 10 m (100 px); snapping to 10 m, or 1 m with a toggle.
   - Gestures: one finger runs the current tool; two fingers pan and pinch-zoom (zoom 0.1–1.5).
-- **Object sheet**: sliders, each with a box for typing an exact value, bound to the limits above (radius, surface pull, reach; destructible and health for planets; orbit speed and direction for orbiting asteroids; drift speed; pickup kind; wall colour). The surface pull's bounds follow the radius and the other bodies, so a body cannot leave its kind's limits. The ship's sheet sets its starting direction and speed (0 to the speed cap), drawn as an arrow from the start.
+- **Object sheet**: sliders, each with a box for typing an exact value, bound to the limits above (radius, mass as the pull at 1000 px, reach; destructible and health for planets; orbit speed and direction for orbiting asteroids; drift speed; pickup kind; wall colour). Radius and mass are independent: changing one keeps the other, and the surface pull saved in the file follows from both. The ship's sheet sets its starting direction and speed (0 to the speed cap), drawn as an arrow from the start.
 - **Level settings**: title, hint, fuel and hull sliders (1–1000) each with a typing box and an "unlimited" switch, and "show velocity arrow".
 - **Errors**: Test and Back list `LevelFormat.validate` errors in plain text. Test is blocked while errors exist. Back saves anyway and marks the level as not completed.
 - **Test**: builds the level from the current data and plays it. Back or Menu from the test returns to the editor with the same data. Finishing sets the completion mark; editing afterwards clears it.

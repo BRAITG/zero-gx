@@ -476,12 +476,12 @@ func _open_sheet(ref: Dictionary) -> void:
 			var body: Dictionary = doc.data.bodies[ref.index]
 			var limits: Dictionary = LevelFormat.KIND_LIMITS[body.kind]
 			var radius := _slider(o, "Radius (px)", limits.radius, 1, LevelFormat.body_value(body, "radius"))
-			var pull := _slider(o, "Surface pull (px/s²)", doc.strength_range(ref.index), 1, LevelFormat.body_value(body, "strength"), func(v: float) -> void: doc.set_property(ref, "strength", v))
-			radius.value_changed.connect(func(v: float) -> void:
-				doc.set_property(ref, "radius", v)
-				var bounds := doc.strength_range(ref.index)
-				pull.min_value = bounds.x  # a bound that moves past the pull moves the pull, which its slider saves
-				pull.max_value = bounds.y)
+			var mass := _slider(o, "Mass: pull at 100 m (px/s²)", limits.total_pull, 0.1, LevelFormat.total_pull(body))
+			var store := func(_v: float) -> void:  # the format keeps the surface pull, which mass and radius make together
+				doc.set_property(ref, "radius", radius.value)
+				doc.set_property(ref, "strength", mass.value / pow(radius.value / 1000.0, 2))
+			radius.value_changed.connect(store)
+			mass.value_changed.connect(store)
 			_slider(o, "Reach (px)", limits.reach, 1, LevelFormat.body_value(body, "reach"), func(v: float) -> void: doc.set_property(ref, "reach", v))
 			if body.kind == "planet":
 				var breakable := CheckButton.new()
