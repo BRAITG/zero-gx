@@ -570,6 +570,49 @@ func test_a_private_cache_that_cannot_be_removed_is_no_deletion_success_and_is_n
 	_done()
 
 
+func test_a_private_cache_in_an_unlistable_folder_is_no_deletion_success_and_is_never_served_afterwards() -> void:
+	var net := _boot()
+	if net == null:
+		return
+	await _sign_in(net)
+	var row: Dictionary = await _cached(net)
+	net.answer("GET", FEEDBACK_PATH, 200, _dto(row.sha256, {"liked": true, "attempts": 4321}))
+	var live: Dictionary = await _c.feedback(LEVEL_ID, row.sha256)
+	var names := _private_files()
+	check(not live.has("error") and names.size() == 1, "setup: the private payload is cached for this player: %s" % [names])
+	if names.size() != 1:
+		_done()
+		return
+	var known: String = Community.dir + names[0]  # captured while the folder can still be listed
+	if not _lock(Community.dir, "111"):  # search only: a known name opens, nothing can be listed, created or removed
+		_done()
+		return
+	var cache_dir := DirAccess.open(Community.dir)
+	var listing_failed := cache_dir == null or cache_dir.list_dir_begin() != OK
+	if cache_dir != null:
+		cache_dir.list_dir_end()
+	check(FileAccess.get_file_as_string(known).contains("you") and listing_failed, "control: the known private file is readable while the folder cannot be listed (so a listing that looks empty proves nothing)")
+	net.answer("DELETE", "/me", 204)
+	var result: String = await Community.delete_account()
+	check(result != "", "the account is gone on the server but the private cache cannot be listed or removed here: that must not read as a successful deletion")
+	check(FileAccess.get_file_as_string(known).contains("you"), "control: the file is still there, so only the client can keep it from being served")
+	await _sign_in(net, "p_1", "tok9")
+	net.answer("GET", FEEDBACK_PATH, 0)
+	var offline: Dictionary = await _c.feedback(LEVEL_ID, row.sha256)
+	check(offline.has("error") and not offline.has("you") and not offline.has("stats"), "an erased account's cache is never served again: %s" % [offline])
+	_restart(net)  # a relaunch: the files stay
+	net.answer("GET", FEEDBACK_PATH, 0)
+	offline = await _c.feedback(LEVEL_ID, row.sha256)
+	check(offline.has("error") and not offline.has("you") and not offline.has("stats"), "nor after a restart: %s" % [offline])
+	_unlock(Community.dir)
+	await _c.sync_feedback()
+	net.answer("GET", FEEDBACK_PATH, 0)
+	offline = await _c.feedback(LEVEL_ID, row.sha256)
+	check(offline.has("error") and not offline.has("you") and not FileAccess.file_exists(known), "the next explicit entry after the folder is listable again erases the private file: %s" % [offline])
+	check(FileAccess.file_exists(Community.level_path(row.sha256)) and _c.level_info(row.sha256).get(META_LEVEL) == LEVEL_ID, "downloaded public levels are preserved")
+	_done()
+
+
 # --- feedback reads and the per-owner cache ---------------------------------------------------------------------------
 
 
@@ -1011,10 +1054,10 @@ func _wipe() -> void:
 var _locked: Array[String] = []
 
 
-## Makes `path` read-only with a real permission change (a file cannot be created or removed in it, but its files can be read). False, and a failed check, when the platform did not enforce it (no chmod, or the test runs as root).
-func _lock(path: String) -> bool:
+## Makes `path` unwritable with a real permission change (a file cannot be created or removed in it); `mode` 555 leaves it listable, 111 (search only) leaves known file names readable but the listing impossible. False, and a failed check, when the platform did not enforce it (no chmod, or the test runs as root).
+func _lock(path: String, mode := "555") -> bool:
 	_locked.append(path)
-	OS.execute("chmod", ["555", ProjectSettings.globalize_path(path)])
+	OS.execute("chmod", [mode, ProjectSettings.globalize_path(path)])
 	var probe := path.path_join("probe.tmp")
 	var file := FileAccess.open(probe, FileAccess.WRITE)
 	if file != null:

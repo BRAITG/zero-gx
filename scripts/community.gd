@@ -16,7 +16,7 @@ const BAD_LEVEL := "This level cannot be rated."
 const FLUSH_GAP_SECONDS := 30.0
 const MAX_REPORT_BYTES := 16384  # the server refuses a larger report
 const FEEDBACK_TRIES := 5  # counted tries that open the rating of a version without a clear
-const ERASURE_PENDING := "Your account was deleted, but its data could not be erased from this device yet. It will be tried again."
+const ERASURE_PENDING := "This device could not finish erasing your community data yet. It will be tried again."
 const ERASURE_UNSAVED := "Your account was not deleted: this device could not record the deletion."
 
 var transport: CommunityTransport
@@ -324,7 +324,7 @@ func level_info(sha256: String) -> Dictionary:
 	return {"level_id": meta.level_id, "version": int(meta.version)}
 
 
-## Coroutine: deletes the player's community account on the server; `""` once it is gone and the session, statuses, draft level ids, submitted marks, play history, queued votes and private feedback are cleared here too (downloaded public levels stay), else the sentence. Work that was under way (an upload, a sign-in, a feedback read) can no longer write anything or retry. The local erasure is owed from before the request: it is recorded in the session file first (no record, no request), and when the server has deleted the account but this device cannot finish erasing it, the answer is a sentence, nothing of that account is recorded, shown, cached or sent, and the next explicit community action tries again. A refused deletion keeps everything.
+## Coroutine: deletes the player's community account on the server; `""` once it is gone and the session, statuses, draft level ids, submitted marks, play history, queued votes and private feedback are cleared here too (downloaded public levels stay), else a sentence. Work that was under way (an upload, a sign-in, a feedback read) can no longer write anything or retry. The local erasure is owed from before the request: it is recorded in the session file first (no record, no request). When it cannot be finished here, the answer is a sentence about this device's cleanup only (the server's answer may be unknown, for example after an interrupted request), nothing of that account is recorded, shown, cached or sent, and the next explicit community action tries again. A deletion the server refused keeps everything, unless taking back the record also failed.
 func delete_account() -> String:
 	if not _finish_erasure():
 		return ERASURE_PENDING
@@ -793,16 +793,35 @@ func _unmark_erasure() -> Error:
 	return _save_session(file)
 
 
-## Forgets everything private about `account`: its history, queued votes and cached feedback (downloaded public levels stay). True only when every part is durably gone.
+## Forgets everything private about `account`: its history, queued votes and cached feedback (downloaded public levels stay). True only when every part is durably gone: a cache folder that is there but cannot be opened or listed is a failure, not an empty folder, and only a folder that does not exist has nothing to erase.
 func _complete_erasure(account: String) -> bool:
 	var history := _hist()
 	var done := history != null and history.erase_owner(account) == OK
-	if DirAccess.dir_exists_absolute(dir):
-		var prefix := "feedback_%s_" % _owner_tag(account)
-		for file in DirAccess.get_files_at(dir):
-			if file.begins_with(prefix) and DirAccess.remove_absolute(dir + file) != OK:
-				done = false
+	var names: Variant = _private_names(account)
+	if names == null:
+		return false
+	for file: String in names:
+		if DirAccess.remove_absolute(dir + file) != OK:
+			done = false
 	return done
+
+
+## The file names of `account`'s private feedback in the downloads folder: empty when the folder does not exist, null when it exists but cannot be opened or listed (nothing is known then).
+func _private_names(account: String) -> Variant:
+	var names := PackedStringArray()
+	if not DirAccess.dir_exists_absolute(dir):
+		return names
+	var folder := DirAccess.open(dir)
+	if folder == null or folder.list_dir_begin() != OK:
+		return null
+	var prefix := "feedback_%s_" % _owner_tag(account)
+	var file := folder.get_next()
+	while file != "":
+		if not folder.current_is_dir() and file.begins_with(prefix):
+			names.append(file)
+		file = folder.get_next()
+	folder.list_dir_end()
+	return names
 
 
 ## Pays an owed erasure (an explicit community action calls it): true when none is owed any more. Never while the deletion that owes it is still with the server.
