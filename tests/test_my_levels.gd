@@ -157,3 +157,19 @@ func test_export_dialog_suggests_a_safe_file_name() -> void:
 	screen._export("user_x", "a/b:c?")
 	var dialogs := screen.find_children("*", "FileDialog", true, false)
 	check(dialogs.size() == 1 and dialogs[0].current_file == "a_b_c_.json", "suggested name: %s" % [dialogs.map(func(d: FileDialog) -> String: return d.current_file)])
+
+
+func test_an_invalid_draft_says_why_play_is_off() -> void:
+	var draft := LevelFormat.read("res://levels/level_05.json")
+	draft.title = ""  # fails validation, as a half-built level may
+	MyLevels.save(MyLevels.new_id(), draft)
+	var problems := LevelFormat.validate(draft)
+	check(not problems.is_empty(), "control: the draft is invalid")
+	var screen := MyLevelsScreen.new()
+	world.add_child(screen)
+	await frames(2)
+	var plays: Array = screen.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == "Play")
+	check(plays.size() == 1 and plays[0].disabled, "Play is off for the invalid draft")
+	var reasons: Array = screen.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.contains(problems[0]))
+	check(not reasons.is_empty(), "the first problem is shown beside Play: %s" % [problems[0]])
+	screen.queue_free()

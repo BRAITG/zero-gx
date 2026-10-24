@@ -47,6 +47,8 @@ Controls: touch and hold anywhere. The ship turns toward your finger and thrusts
 
 Levels live in `levels/` as level files (see [Level files](#level-files)). Build your own in the app: **My levels** in the main menu opens the level editor (`scenes/editor.gd`). Pick a tool from the bottom palette (walls, planets, black holes, stars, asteroids, pickups, start and goal); one finger places or drags, two fingers pan and pinch-zoom. Walls, the start and the goal snap to a 10 m grid; turn on **Fine grid** for 1 m steps, which also shows the 1 m grid. Everything else goes exactly where you put it, and pressing anywhere on something already placed (a star's glow included) picks it up instead of adding another. Holding still on a thing for half a second, with any tool, opens its sheet, as does a tap with **Select**. Each body has its own radius, mass and reach, each set on its own within its kind's range. Mass is the pull at 100 m, so a smaller body of the same mass pulls harder near its surface. Every slider has a box for typing an exact value. The ship's sheet sets its starting direction and speed, drawn as an arrow from the start. **Settings** sets the title, hint, fuel, hull and velocity arrow. **Test** flies the level: finishing it marks the level completed until its next change, and returning keeps your undo history. Your levels are saved on the device in `user://levels/` (`scripts/my_levels.gd`); the editor's model with undo is `scripts/level_doc.gd`.
 
+The editor shows the draft title, **Saved** or **Unsaved**, and a hint for the selected tool. **Wall** and **Pickup** have explicit type selectors; selecting a tool does not change its type. **Undo** is disabled when there is no history. Back, Test and Ctrl/Cmd+S save the draft; a failed save keeps the editor open and reports the error. In **My levels**, an invalid draft shows why **Play** is disabled.
+
 **Erase** removes what a tap lands on. Erasing a point of a closed wall asks whether the wall stays closed or opens where the point was; a three-point wall always opens, since two points cannot close.
 
 **Import and export.** **Import** in My levels reads a level file (`.json` or `.json.gz`, including the official levels in `levels/`) as a new draft; a file that is not a Zero-GX level, or is malformed, is refused with the reasons. **Export** writes the level as plain `.json`, in the stable layout. Both use the system's file dialog; on Android that is the system picker, which lists Downloads, USB and local storage. In the editor on a computer, the left mouse button acts like a finger, the right or middle button drags the view, the wheel zooms at the cursor (on a Mac trackpad, pinch to zoom and swipe to pan), Ctrl/Cmd+Z undoes, Ctrl/Cmd+S saves, and T test-flies. These shortcuts are off while a sheet or Settings is open.
@@ -63,7 +65,7 @@ The last device you use drives the ship. Every binding can be changed in **Setti
 
 Keys and sticks point the ship in the direction you press, and it holds that heading when you let go. With the mouse, the nose follows the cursor and a button fires; turn off **Mouse cursor aims** to aim and fire with a click instead.
 
-Menus work with the keyboard and a gamepad: the D-pad, left stick or arrow keys move the focus, Enter or A selects, and Esc or B closes an overlay (the level editor's sheets too) or goes back (the main menu ignores it). In a level, Esc or Start opens the pause card, and Esc, Start or B closes it.
+Menus work with the keyboard and a gamepad: the D-pad, left stick or arrow keys move the focus, Enter or A selects, and Esc or B closes an overlay (the level editor's sheets too) or goes back (the main menu ignores it). In a level, **Pause**, Esc or Start opens the pause card, which offers Resume, Settings, Restart and Menu (Edit during a test). Settings and its Controls sheet keep the flight paused; close them before resuming with Resume, Esc, Start or B. Display and control changes apply to the current flight.
 
 On a touchscreen (the touch options are hidden on devices without one), **Controls** offers three layouts, with a diagram of the one you choose:
 
@@ -73,7 +75,9 @@ On a touchscreen (the touch options are hidden on devices without one), **Contro
 
 In the last two you choose which side holds the on-screen fire button. **Change** replaces a binding of the same kind (key, mouse button or gamepad button) and **Add** gives the action one more; Esc cancels. Stick axes are set by the gamepad preset. **Reset to defaults** restores everything on the screen.
 
-While a thumb holds the virtual stick, a second finger cannot press the HUD buttons (Restart, Menu, Tune): Godot turns only the first touch into the clicks buttons need, so lift the thumb first.
+Gamepad bindings use player-facing names such as “Left stick left” and “A / Cross”. Level 1's introduction follows the active input scheme and configured fire bindings; custom level hints remain unchanged.
+
+While a thumb holds the virtual stick, a second finger cannot press **Pause**: Godot turns only the first touch into the clicks buttons need, so lift the thumb first.
 
 ## Tests
 
@@ -121,11 +125,11 @@ Every run of an official level or a draft is recorded as a demo (tutorials are n
 
 ## Scoring and progress
 
-A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Finishing a stage unlocks the next one, tutorials first. Best points are saved in `user://progress.cfg` (`scripts/progress.gd`). The Tune panel can unlock every stage for the session and reset saved progress.
+A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Training and levels unlock independently, each in order. The menu shows stage titles and labelled best scores, highlights and focuses the next unfinished unlocked stage, and moves completed Training below the levels. Best points are saved in `user://progress.cfg` (`scripts/progress.gd`). The Tune panel can unlock every stage for the session and reset saved progress.
 
 ## Tuning
 
-The values you will most often want to change (speed cap, thrust, turn rates, pickup strength and duration, boost, impact spin, planet and black hole pull, points weights) live in `scripts/tuning.gd`. Sound volume is in **Settings** (saved with the other settings). Change the tuning values live on the phone with the **Tune** button in the main menu or the level HUD; the changes last until the app closes. Fixed numbers are named constants:
+The values you will most often want to change (speed cap, thrust, turn rates, pickup strength and duration, boost, impact spin, planet and black hole pull, points weights) live in `scripts/tuning.gd`. Sound volume is in **Settings** (saved with the other settings). Open **Settings → Developer options → Tune** from the main menu or the flight's pause card to change tuning live; changes last until the app closes. Closing Tune returns to the previous pause state. Fixed numbers are named constants:
 
 | File | What it tunes |
 |---|---|

@@ -9,6 +9,7 @@ var _labels := {}
 var _sliders := {}
 var _speedometer: CheckButton
 var _prior_focus: Control
+var _was_paused := false
 
 
 ## Shows the panel on its own top canvas layer under `parent` and pauses the tree.
@@ -18,6 +19,7 @@ static func open(parent: Node) -> TuningPanel:
 	layer.process_mode = Node.PROCESS_MODE_ALWAYS
 	var panel := TuningPanel.new()
 	panel._prior_focus = parent.get_viewport().gui_get_focus_owner()
+	panel._was_paused = parent.get_tree().paused
 	layer.add_child(panel)
 	parent.add_child(layer)
 	parent.get_tree().paused = true
@@ -25,7 +27,7 @@ static func open(parent: Node) -> TuningPanel:
 
 
 func close() -> void:
-	get_tree().paused = false
+	get_tree().paused = _was_paused
 	if is_instance_valid(_prior_focus) and _prior_focus.is_visible_in_tree():
 		_prior_focus.grab_focus(true)
 	get_parent().queue_free()
@@ -38,9 +40,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		close()
 
 
-## A scene change (Android back) can free an open panel; never leave the next scene paused.
+## Restore the host's pause state if a containing sheet closes with the panel still open.
 func _exit_tree() -> void:
-	get_tree().paused = false
+	get_tree().paused = _was_paused
 
 
 func _ready() -> void:

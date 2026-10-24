@@ -11,6 +11,7 @@ var training := false
 
 var _levels: GridContainer
 var _column: VBoxContainer
+var _training_button: Button
 
 ## Set once per run: the menu scene is entered again on every return to it.
 static var _sized := false
@@ -35,9 +36,9 @@ func _ready() -> void:
 	title.add_theme_color_override("font_outline_color", Color(Style.ACCENT, 0.35))
 	title.add_theme_constant_override("outline_size", 14)
 	_column.add_child(title)
-	var top := _button("Back" if training else ("Training · ✓ completed" if Progress.training_completed() else "Training"))
-	top.pressed.connect(func(): get_tree().change_scene_to_node(menu(not training)))
-	_column.add_child(top)
+	_training_button = _button("Back" if training else "Training")
+	_training_button.pressed.connect(func(): get_tree().change_scene_to_node(menu(not training)))
+	_column.add_child(_training_button)
 	_levels = GridContainer.new()
 	_levels.columns = 3  # tutorials, then levels: six rows fit the 720 px screen
 	_levels.add_theme_constant_override("h_separation", 12)
@@ -47,7 +48,7 @@ func _ready() -> void:
 	row.add_theme_constant_override("separation", 12)
 	_column.add_child(row)
 	row.visible = not training
-	var entries := [["My levels", func(): get_tree().change_scene_to_node(MyLevelsScreen.new())], ["Settings", _open_settings], ["Credits", func(): Credits.open(self)], ["Tune", func(): TuningPanel.open(self)]]
+	var entries := [["My levels", func(): get_tree().change_scene_to_node(MyLevelsScreen.new())], ["Settings", SettingsScreen.open.bind(self)], ["Credits", func(): Credits.open(self)]]
 	if Community.available():
 		entries.insert(1, ["Community", _open_community, "Signing in…"])  # the third item is what the button says while it runs
 	for entry in entries:  # all share the grid's width
@@ -73,82 +74,36 @@ func _open_community() -> void:
 	get_tree().change_scene_to_node(CommunityScreen.new())
 
 
-func _open_settings() -> void:
-	var o := Overlay.open(self, "Settings")
-	_setting(o, "Show the velocity arrow in levels",
-		"The arrow points where your ship is going; its length shows how fast. The training stages always show it.",
-		Settings.show_velocity, func(on: bool): Settings.show_velocity = on)
-	_setting(o, "Show gravity fields",
-		"Faint discs show how far each planet, black hole and star pulls.",
-		Settings.show_gravity, func(on: bool): Settings.show_gravity = on)
-	var sound := o.card()
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 16)
-	sound.add_child(row)
-	var label := Label.new()
-	label.add_theme_font_size_override("font_size", 26)
-	label.custom_minimum_size.x = 260
-	row.add_child(label)
-	var slider := HSlider.new()
-	slider.max_value = 1.0
-	slider.step = 0.05
-	slider.value = Settings.volume
-	slider.custom_minimum_size = Vector2(520, 48)
-	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(slider)
-	var show := func(v: float): label.text = "Sound: %d%%" % roundi(v * 100.0)
-	show.call(slider.value)
-	slider.value_changed.connect(show)
-	slider.value_changed.connect(func(v: float): Settings.volume = v)
-	slider.drag_ended.connect(func(_changed: bool): Sfx.play("tap"))
-	var controls := _button("Controls")
-	controls.pressed.connect(func(): ControlsScreen.open(self))
-	o.body.add_child(controls)
-
-
-## One panelled card: an enlarged toggle over a dim explanation of what it does.
-func _setting(o: Overlay, title: String, description: String, on: bool, set_on: Callable) -> void:
-	var box := o.card()
-	var toggle := CheckButton.new()
-	toggle.text = title
-	toggle.add_theme_font_size_override("font_size", 26)
-	toggle.button_pressed = on
-	toggle.toggled.connect(set_on)
-	toggle.toggled.connect(func(_on: bool): Sfx.play("tap"))
-	_big_switch(toggle)
-	box.add_child(toggle)
-	o.paragraph(description, 20, Style.INK_DIM, box)
-
-
-const SWITCH_SCALE := 1.6
-## The engine's default switch graphic is tiny next to 26 px text; redraw it larger.
-func _big_switch(toggle: CheckButton) -> void:
-	for icon_name in ["checked", "unchecked", "checked_disabled", "unchecked_disabled", "checked_mirrored", "unchecked_mirrored"]:
-		var icon: Texture2D = toggle.get_theme_icon(icon_name)
-		if icon == null:
-			continue
-		var image := icon.get_image()
-		if image == null:
-			continue
-		image.resize(int(image.get_width() * SWITCH_SCALE), int(image.get_height() * SWITCH_SCALE), Image.INTERPOLATE_LANCZOS)
-		toggle.add_theme_icon_override(icon_name, ImageTexture.create_from_image(image))
-
-
 func _list_levels() -> void:
 	for old in _levels.get_children():
 		old.free()  # now, not queued: the new buttons replace them in the same frame
+	var suggested: Button
 	for id in Progress.trainings() if training else Progress.levels():
 		var best := Progress.best_points(id)
-		var state := "locked" if not Progress.is_unlocked(id) else ("—" if best < 0 else str(best))
+		var unlocked := Progress.is_unlocked(id)
+		var next := suggested == null and unlocked and best < 0
+		var state := "locked" if not unlocked else ("Not played" if best < 0 else "Best: %d" % best)
 		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
-		var button := _button("%s · %s" % [label, state])
-		button.disabled = not Progress.is_unlocked(id)
+		var data := LevelFormat.read((Progress.TUTORIALS_DIR if training else Progress.LEVELS_DIR) + id + LevelFormat.EXTENSION)
+		var button := _button("%s · %s\n%s%s" % [label, data.get("title", ""), "Next · " if next else "", state])
+		button.disabled = not unlocked
 		button.pressed.connect(func(): Progress.open(id))
+		if next:
+			suggested = button
+			button.add_theme_stylebox_override("normal", button.get_theme_stylebox("pressed"))
 		_levels.add_child(button)
+	if not training:
+		var completed := Progress.training_completed()
+		_training_button.text = "Training · ✓ completed" if completed else "Training"
+		_training_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER if completed else Control.SIZE_FILL
+		_column.move_child(_training_button, 2 if completed else 1)
 	_column.reset_size()
 	_column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	if get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
-		Style.focus_first(_levels)
+		if suggested:
+			suggested.grab_focus(true)
+		else:
+			Style.focus_first(_levels)
 
 
 func _button(text: String) -> Button:

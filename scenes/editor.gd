@@ -17,6 +17,20 @@ const NO_SHEET := ["goal", "wall_point"]  # nothing to set beyond position
 const GRID_COLOR := Color(1, 1, 1, 0.06)
 const MAJOR_GRID_COLOR := Color(1, 1, 1, 0.14)
 const FINE_GRID_MIN_PX := 3.0  # screen px between 1 m lines below which they would merge into a fill
+const PICKUP_LABELS := {"thrust_up": "Thrust up", "thrust_down": "Thrust down", "boost": "Boost"}
+const WALL_LABELS := {"blue": "Blue", "orange": "Orange", "red": "Red"}
+const HINTS := {  # the gestures of each tool, one line above the palette
+	"select": "Tap or hold a thing to edit it · drag to move it",
+	"wall": "Tap to add corners · tap the first corner to close · Done ends the wall",
+	"planet": "Tap to place · drag a thing to move it · hold it to edit it",
+	"black_hole": "Tap to place · drag a thing to move it · hold it to edit it",
+	"star": "Tap to place · drag a thing to move it · hold it to edit it",
+	"asteroid": "Tap to place · drag outward to set its drift · hold it to edit it",
+	"pickup": "Tap to place this kind · drag a pickup to move it · hold it to edit it",
+	"start": "Tap to place the ship · hold it to set its heading and speed",
+	"goal": "Tap to place the goal",
+	"erase": "Tap a thing to erase it",
+}
 
 ## The editor left for a test flight: {id, doc, view}. Only one test flight runs at a time.
 static var _kept := {}
@@ -34,6 +48,13 @@ var _marks: Node2D
 var _error_label: Label
 var _tool_buttons := {}
 var _wall_bar: HBoxContainer
+var _pickup_bar: HBoxContainer
+var _undo_button: Button
+var _title_label: Label
+var _state_label: Label
+var _hint_label: Label
+var _saved := {}  # the level as the file holds it, so a draft knows whether it has unsaved changes
+var _dirty := false
 var _touches := {}  # touch index -> screen position
 var _pinch_start := {}
 var _pressed_at := Vector2.ZERO  # screen
@@ -53,7 +74,9 @@ static func create(id: String) -> LevelEditor:
 	editor.level_id = id
 	var kept: Dictionary = _kept if _kept.get("id") == id else {}
 	_kept = {}
-	editor.doc = kept.get("doc", LevelDoc.new(MyLevels.load_level(id)))
+	var saved := MyLevels.load_level(id)
+	editor.doc = kept.get("doc", LevelDoc.new(saved))
+	editor._saved = saved
 	editor._view = kept.get("view", [])
 	return editor
 
@@ -74,10 +97,17 @@ func _ready() -> void:
 	_refresh()
 
 
-## Save the level to the device.
-func save() -> void:
+## Save the level to the device. False, with a sheet saying so, when the file does not hold what was written.
+func save() -> bool:
 	doc.finish_wall()
 	MyLevels.save(level_id, doc.data)
+	var written := LevelFormat.sha256(MyLevels.load_level(level_id)) == LevelFormat.sha256(doc.data)
+	if written:
+		_saved = doc.data.duplicate(true)
+	else:
+		Overlay.open(self, "Cannot save").paragraph("The level could not be written to the device.")
+	_refresh()
+	return written
 
 
 func select_tool(name: String) -> void:
@@ -86,6 +116,7 @@ func select_tool(name: String) -> void:
 	for key: String in _tool_buttons:
 		_tool_buttons[key].button_pressed = key == name
 	_wall_bar.visible = name == "wall"
+	_pickup_bar.visible = name == "pickup"
 	_refresh()
 
 
@@ -265,6 +296,11 @@ func _refresh() -> void:
 	var problems := doc.errors()
 	_error_label.text = "" if problems.is_empty() else "⚠ " + problems[0] + ("  (+%d more)" % (problems.size() - 1) if problems.size() > 1 else "")
 	_marks.queue_redraw()
+	_undo_button.disabled = not doc.can_undo()
+	_dirty = doc.data != _saved
+	_title_label.text = str(doc.data.get("title", ""))
+	_state_label.text = "Unsaved" if _dirty else "Saved"
+	_hint_label.text = HINTS[tool] + "  ·  " + ("Two fingers pan and pinch to zoom" if DisplayServer.is_touchscreen_available() else "Right-drag pans · wheel zooms")
 
 
 ## Grid lines `step` px apart, their corner snapped to `snap_size`, over the visible area.
@@ -310,9 +346,9 @@ func _build_ui() -> void:
 	top.add_theme_constant_override("separation", 10)
 	ui.add_child(top)
 	_button(top, "Back", func() -> void:
-		save()
-		get_tree().change_scene_to_node(MyLevelsScreen.new()))
-	_button(top, "Undo", func() -> void:
+		if save():
+			get_tree().change_scene_to_node(MyLevelsScreen.new()))
+	_undo_button = _button(top, "Undo", func() -> void:
 		doc.undo()
 		_refresh())
 	_button(top, "Settings", _open_settings)
@@ -322,10 +358,17 @@ func _build_ui() -> void:
 		fine_snap = on
 		_marks.queue_redraw())
 	top.add_child(fine)
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	top.add_child(spacer)
+	_title_label = Label.new()
+	_title_label.add_theme_font_size_override("font_size", 20)
+	_title_label.clip_text = true  # a long title ends in an ellipsis instead of pushing the buttons off the bar
+	_title_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_title_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_title_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(_title_label)
+	_state_label = Label.new()
+	_state_label.add_theme_font_size_override("font_size", 20)
+	_state_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(_state_label)
 	_button(top, "Test", _test)
 	_error_label = Label.new()
 	_error_label.add_theme_color_override("font_color", Color("#ff8a6a"))
@@ -333,19 +376,31 @@ func _build_ui() -> void:
 	_error_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(_error_label)
 	_error_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE, 12)
-	_error_label.offset_top = -120
-	_error_label.offset_bottom = -84
+	_error_label.offset_top = -146
+	_error_label.offset_bottom = -110
+	_hint_label = Label.new()
+	_hint_label.add_theme_font_size_override("font_size", 18)
+	_hint_label.add_theme_color_override("font_color", Style.INK_DIM)
+	_hint_label.clip_text = true
+	_hint_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	ui.add_child(_hint_label)
+	_hint_label.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE, Control.PRESET_MODE_MINSIZE, 12)
+	_hint_label.offset_top = -108
+	_hint_label.offset_bottom = -76
 	_wall_bar = HBoxContainer.new()
 	_wall_bar.add_theme_constant_override("separation", 10)
 	_wall_bar.hide()
 	ui.add_child(_wall_bar)
-	var kind_button := _button(_wall_bar, "Colour: blue", func() -> void: pass)
-	kind_button.pressed.connect(func() -> void:
-		wall_kind = LevelFormat.WALL_KINDS[(LevelFormat.WALL_KINDS.find(wall_kind) + 1) % 3]
-		kind_button.text = "Colour: " + wall_kind)
+	_wall_bar.add_child(_kind_option(LevelFormat.WALL_KINDS, WALL_LABELS, wall_kind, func(kind: String) -> void: wall_kind = kind))
 	_button(_wall_bar, "Done", func() -> void:
 		doc.finish_wall()
 		_refresh())
+	_pickup_bar = HBoxContainer.new()
+	_pickup_bar.add_theme_constant_override("separation", 10)
+	_pickup_bar.hide()
+	ui.add_child(_pickup_bar)
+	_pickup_bar.add_child(_kind_option(LevelFormat.PICKUP_KINDS, PICKUP_LABELS, pickup_kind, func(kind: String) -> void: pickup_kind = kind))
 	var palette := HBoxContainer.new()
 	palette.add_theme_constant_override("separation", 6)
 	ui.add_child(palette)
@@ -357,10 +412,6 @@ func _build_ui() -> void:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.custom_minimum_size = Vector2(0, 64)
 		_tool_buttons[name] = button
-	_tool_buttons.pickup.pressed.connect(func() -> void:
-		if tool == "pickup":  # a second tap cycles the kind
-			pickup_kind = LevelFormat.PICKUP_KINDS[(LevelFormat.PICKUP_KINDS.find(pickup_kind) + 1) % 3]
-		_tool_buttons.pickup.text = "Pickup: " + pickup_kind.replace("_", " "))
 	_tool_buttons.select.button_pressed = true
 	palette.set_anchors_preset(Control.PRESET_BOTTOM_WIDE)
 	palette.offset_left = 8
@@ -368,6 +419,7 @@ func _build_ui() -> void:
 	palette.offset_top = -72
 	palette.offset_bottom = -8
 	_wall_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 84)
+	_pickup_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 84)
 
 
 func _button(parent: Control, text: String, action: Callable) -> Button:
@@ -380,13 +432,25 @@ func _button(parent: Control, text: String, action: Callable) -> Button:
 	parent.add_child(button)
 	return button
 
+## A dropdown of `kinds`, labelled by `labels`; picking one hands its kind to `on_pick`.
+func _kind_option(kinds: Array, labels: Dictionary, current: String, on_pick: Callable) -> OptionButton:
+	var option := OptionButton.new()
+	option.custom_minimum_size = Vector2(240, 56)
+	option.add_theme_font_size_override("font_size", 22)
+	for kind: String in kinds:
+		option.add_item(labels[kind])
+	option.select(kinds.find(current))
+	option.item_selected.connect(func(index: int) -> void: on_pick.call(kinds[index]))
+	return option
+
 
 func _test() -> void:
 	if not doc.errors().is_empty():
 		_error_label.modulate = Color(2, 2, 2)
 		create_tween().tween_property(_error_label, "modulate", Color.WHITE, 0.5)
 		return
-	save()
+	if not save():
+		return
 	_kept = {"id": level_id, "doc": doc, "view": [_camera.position, _camera.zoom]}
 	Progress.open(level_id, true)
 
@@ -565,5 +629,5 @@ func _number_box(slider: Range) -> SpinBox:
 ## Android's back gesture leaves like Back: save, then the level list.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		save()
-		get_tree().change_scene_to_node(MyLevelsScreen.new())
+		if save():
+			get_tree().change_scene_to_node(MyLevelsScreen.new())

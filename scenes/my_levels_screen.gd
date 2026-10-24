@@ -77,10 +77,18 @@ func _fill() -> void:
 		_button(row, "Edit", _edit.bind(id))
 		if MyLevels.has_demo(id):
 			_button(row, "Watch", _watch.bind(id, data))
+		var problems := LevelFormat.validate(data)
 		var play := _button(row, "Play", func() -> void: Progress.open(id))
-		play.disabled = data.is_empty() or not LevelFormat.validate(data).is_empty()
+		play.disabled = not problems.is_empty()
 		_button(row, "Export", _export.bind(id, str(data.get("title", "level"))))
 		_button(row, "Delete", _confirm_delete.bind(id, str(data.get("title", "?"))))
+		if not problems.is_empty():  # says what to fix, so a draft that cannot be played is not a mystery
+			var reason := Label.new()
+			reason.text = "⚠ Cannot play: " + problems[0] + ("  (+%d more)" % (problems.size() - 1) if problems.size() > 1 else "")
+			reason.add_theme_font_size_override("font_size", 20)
+			reason.add_theme_color_override("font_color", Color("#ff8a6a"))
+			reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			card.add_child(reason)
 		if Community.available():
 			_submission_line(card, id)
 

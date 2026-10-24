@@ -308,8 +308,8 @@ func test_pause_toggles_the_tree() -> void:
 func test_accept_in_flight_presses_nothing() -> void:
 	var lvl := level(Vector2(3000, 0))
 	await frames(2)
-	var on_button := lvl.hud.restart_button.get_global_rect().get_center()
-	for at in [on_button, on_button + Vector2(0, 300)]:  # press on Restart, release away from it
+	var on_button := lvl.hud.pause_button.get_global_rect().get_center()
+	for at in [on_button, on_button + Vector2(0, 300)]:  # press on Pause, release away from it
 		var move := InputEventMouseMotion.new()
 		move.position = at
 		tree.root.push_input(move, true)
@@ -515,3 +515,57 @@ func test_held_fire_does_not_press_the_result_card() -> void:
 func test_focused_button_is_visible() -> void:
 	var box := ThemeDB.get_default_theme().get_stylebox("focus", "Button")
 	check(box is StyleBoxFlat and box.get_border_width(SIDE_LEFT) > 0 and not box.draw_center, "a focused button must draw an outline, not %s" % box)
+
+
+func test_ui_pause_settings_keeps_flight_frozen_until_resume() -> void:
+	var lvl := level(Vector2(3000, 0), {"linear_velocity": Vector2(120, 0)})
+	await frames(2)
+	var pause_buttons := lvl.hud.find_children("*", "Button", true, false).filter(func(b: Button): return b.text == "Pause")
+	if pause_buttons.is_empty():
+		check(false, "flight needs a Pause action")
+		return
+	pause_buttons[0].pressed.emit()
+	var stopped_at := lvl.ship.position
+	var settings_buttons := lvl.hud._pause.find_children("*", "Button", true, false).filter(func(b: Button): return b.text == "Settings")
+	if settings_buttons.is_empty():
+		check(false, "pause must offer flight settings")
+		tree.paused = false
+		return
+	settings_buttons[0].grab_focus()
+	settings_buttons[0].pressed.emit()
+	var sheets := lvl.hud.find_children("*", "Overlay", true, false)
+	if sheets.is_empty():
+		check(false, "settings must open while paused")
+		tree.paused = false
+		return
+	Settings.show_velocity = true
+	check(lvl.ship.show_velocity, "display settings must apply to the current ship")
+	send_action(&"pause")
+	send_action(&"pause", false)
+	await frames(3)
+	check(tree.paused and lvl.ship.position == stopped_at, "Start must not resume flight beneath settings")
+	escape()
+	await frames(2)
+	check(tree.paused and lvl.hud.find_children("*", "Overlay", true, false).is_empty(), "Esc closes settings without resuming")
+	check(focused() == settings_buttons[0], "closing settings restores its pause-card action")
+	escape()
+	await frames(3)
+	check(not tree.paused and lvl.ship.position != stopped_at, "a second Esc resumes flight")
+
+
+func test_ui_menu_focus_advances_to_unfinished_level() -> void:
+	Progress.record_win("level_01", 1200, 10.0)
+	var main := menu(false)
+	world.add_child(main)
+	var next := focused()
+	check(next is Button and next.text.begins_with("Level 02"), "returning after a clear must select the next unfinished level")
+	Progress.record_win("level_02", 1300, 9.0)
+	await frames(1)
+	next = focused()
+	check(next is Button and next.text.begins_with("Level 03"), "progress refresh must advance the suggested stage")
+	main.free()
+	Progress.unlock_all = true
+	main = menu(false)
+	world.add_child(main)
+	next = focused()
+	check(next is Button and next.text.begins_with("Level 03"), "unlocking all must not suggest replaying a finished stage")

@@ -110,11 +110,7 @@ func _refresh() -> void:
 	if _diagram:
 		_diagram.queue_redraw()
 	for action in _values:
-		_values[action].text = PROMPT if action == _capturing else ", ".join(InputMap.action_get_events(action).map(_name))
-
-
-func _name(event: InputEvent) -> String:
-	return event.as_text_physical_keycode() if event is InputEventKey and event.physical_keycode != KEY_NONE else event.as_text()
+		_values[action].text = PROMPT if action == _capturing else ", ".join(InputMap.action_get_events(action).map(ShipInput.binding_name))
 
 
 func _row(title: String, label_width := 150) -> HBoxContainer:
