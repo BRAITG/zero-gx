@@ -195,10 +195,10 @@ func test_click_on_hud_button_does_not_fire() -> void:
 	hud.ship = input.ship
 	world.add_child(hud)
 	await frames(2)
-	var on_button := hud.restart_button.get_global_rect().get_center()
+	var on_button := hud.pause_button.get_global_rect().get_center()
 	click(on_button, true)
 	await frames(2)
-	check(not input.fire_held() and not input.ship.thrusting, "a click on Restart reached the ship")
+	check(not input.fire_held() and not input.ship.thrusting, "a click on Pause reached the ship")
 	click(on_button, false)
 
 
@@ -324,12 +324,12 @@ func test_touch_on_hud_button_is_ignored() -> void:
 	world.add_child(hud)
 	input.touch.hud = hud
 	await frames(2)
-	var on_button := hud.restart_button.get_global_rect().get_center()
+	var on_button := hud.pause_button.get_global_rect().get_center()
 	touch(0, on_button, true)
 	drag(0, on_button + Vector2(110, 0))
 	await frames(2)
-	check(not input.touch.fire and not input.ship.thrusting, "a touch on Restart fired")
-	check(input.touch.direction == Vector2.ZERO, "a touch on Restart anchored the stick")
+	check(not input.touch.fire and not input.ship.thrusting, "a touch on Pause fired")
+	check(input.touch.direction == Vector2.ZERO, "a touch on Pause anchored the stick")
 	touch(0, on_button + Vector2(110, 0), false)
 
 

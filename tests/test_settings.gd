@@ -223,3 +223,156 @@ func test_escape_cancelling_capture_keeps_the_overlay() -> void:
 	var close: Button = overlay.find_children("*", "Button", true, false).filter(func(b): return b.text == "Close")[0]
 	check(close.is_visible_in_tree(), "control: the overlay must still show")
 	overlay.close()
+
+
+const SHIP := "res://scenes/ship.tscn"
+const GOAL := "res://scenes/goal.tscn"
+
+
+func joy_button(button: JoyButton) -> InputEventJoypadButton:
+	var event := InputEventJoypadButton.new()
+	event.button_index = button
+	return event
+
+
+func joy_axis(axis: JoyAxis, value: float) -> InputEventJoypadMotion:
+	var event := InputEventJoypadMotion.new()
+	event.axis = axis
+	event.axis_value = value
+	return event
+
+
+func test_every_joy_button_has_its_own_readable_name() -> void:
+	var seen := {}
+	for button in range(JOY_BUTTON_MAX):
+		var label := ShipInput.binding_name(joy_button(button))
+		check(label != "" and not "Joypad" in label, "button %d reads as '%s'" % [button, label])
+		check(not seen.has(label), "button %d shares the name '%s'" % [button, label])
+		seen[label] = true
+	check("99" in ShipInput.binding_name(joy_button(99)), "an unnamed button must keep its number")
+
+
+func test_stick_names_split_by_direction_and_triggers_are_named() -> void:
+	for axis in [JOY_AXIS_LEFT_X, JOY_AXIS_LEFT_Y, JOY_AXIS_RIGHT_X, JOY_AXIS_RIGHT_Y]:
+		var low := ShipInput.binding_name(joy_axis(axis, -1.0))
+		var high := ShipInput.binding_name(joy_axis(axis, 1.0))
+		check(low != high and not ("Joypad" in (low + high)), "axis %d: '%s' and '%s' must name opposite directions" % [axis, low, high])
+	check("trigger" in ShipInput.binding_name(joy_axis(JOY_AXIS_TRIGGER_RIGHT, 1.0)).to_lower(), "a trigger must be named as one")
+	var unnamed := ShipInput.binding_name(joy_axis(9, -1.0))
+	check("9" in unnamed and not "Motion" in unnamed, "an unnamed axis must keep its number: '%s'" % unnamed)
+
+
+## The intro `scheme` shows, from a ShipInput outside the tree: it reads only the scheme and the bindings.
+func intro_for(scheme: String) -> String:
+	var input := ShipInput.new(null)
+	input.scheme = scheme
+	var hint := input.intro_hint()
+	input.free()
+	return hint
+
+
+func test_introduction_names_the_rebound_fire_button() -> void:
+	Settings.set_events(&"fire", [joy_button(JOY_BUTTON_X)])
+	var hint := intro_for("mouse_aim")
+	check("X / Square" in hint and not "Space" in hint, "the intro must name only the rebound fire: '%s'" % hint)
+	Settings.reset_controls()
+
+
+## A real Level (its HUD pauses and shows the intro) with a ship at the origin and a distant goal; `props` are set before it enters the tree.
+func level_with(props: Dictionary) -> Level:
+	var lvl := Node2D.new()
+	lvl.set_script(load("res://scenes/level.gd"))
+	for prop in props:
+		lvl.set(prop, props[prop])
+	lvl.add_child(load(SHIP).instantiate())
+	var goal: Node2D = load(GOAL).instantiate()
+	goal.position = Vector2(3000, 0)
+	lvl.add_child(goal)
+	world.add_child(lvl)
+	return lvl
+
+
+func mouse_move() -> void:
+	var move := InputEventMouseMotion.new()
+	move.position = Vector2(400, 300)
+	tree.root.push_input(move, true)
+
+
+func touch_at(index: int, at: Vector2, down: bool) -> void:
+	var event := InputEventScreenTouch.new()
+	event.index = index
+	event.position = at
+	event.pressed = down
+	tree.root.push_input(event, true)
+
+
+func test_level_one_introduction_follows_the_controls_in_use() -> void:
+	Settings.mouse_aims = true
+	var lvl := level_with({"level_id": "level_01", "title": "Drift"})
+	await frames(1)
+	mouse_move()
+	await frames(1)
+	check("mouse" in lvl.hud.intro_text().to_lower(), "the desktop intro must describe mouse aim: '%s'" % lvl.hud.intro_text())
+	check(not "Touch" in lvl.hud.intro_text(), "the desktop intro must not describe touch: '%s'" % lvl.hud.intro_text())
+	Settings.mouse_aims = false
+	check("click" in lvl.hud.intro_text().to_lower(), "a mouse setting changed under the open intro must reach it: '%s'" % lvl.hud.intro_text())
+	Settings.reset_controls()
+
+
+func test_a_custom_levels_hint_is_shown_as_written() -> void:
+	var lvl := level_with({"level_id": MyLevels.PREFIX + "draft", "title": "Mine", "hint": "Touch and hold the ring."})
+	await frames(1)
+	mouse_move()
+	await frames(1)
+	check("Touch and hold the ring." in lvl.hud.intro_text(), "a player's own hint must show unchanged: '%s'" % lvl.hud.intro_text())
+
+
+func test_velocity_arrow_setting_reaches_the_ship_at_once() -> void:
+	Settings.show_velocity = false
+	var lvl := level_with({})
+	await frames(1)
+	Settings.show_velocity = true
+	check(lvl.ship.show_velocity, "turning the velocity arrow on must reach the ship")
+	Settings.show_velocity = false
+	check(not lvl.ship.show_velocity, "turning the velocity arrow off must reach the ship")
+
+
+func test_tutorial_velocity_arrow_stays_on_whatever_the_setting() -> void:
+	Settings.show_velocity = false
+	var lvl := level_with({"show_velocity": true})
+	await frames(1)
+	Settings.show_velocity = true
+	Settings.show_velocity = false
+	check(lvl.ship.show_velocity, "a level that always shows its arrow must keep it when the setting is off")
+
+
+func test_mouse_setting_changed_in_the_pause_takes_effect_on_resume() -> void:
+	Settings.mouse_aims = true
+	var lvl := level_with({})
+	await frames(1)
+	mouse_move()
+	await frames(1)
+	check(lvl.input.scheme == "mouse_aim", "scheme %s after a mouse move, expected mouse_aim" % lvl.input.scheme)
+	lvl.hud.toggle_pause()
+	Settings.mouse_aims = false
+	lvl.hud.toggle_pause()
+	await frames(1)
+	check(lvl.input.scheme == "mouse_click", "the scheme must follow the setting on resume, not the next click: %s" % lvl.input.scheme)
+	Settings.reset_controls()
+
+
+func test_touch_setting_changed_in_the_pause_shows_its_overlay_on_resume() -> void:
+	Settings.touch_scheme = "finger"
+	var lvl := level_with({})
+	await frames(1)
+	var centre := tree.root.get_visible_rect().size / 2.0
+	touch_at(0, centre, true)
+	touch_at(0, centre, false)
+	await frames(1)
+	check(lvl.input.scheme == "finger" and not lvl.input.touch.visible, "one finger must show no overlay (scheme %s, overlay %s)" % [lvl.input.scheme, lvl.input.touch.visible])
+	lvl.hud.toggle_pause()
+	Settings.touch_scheme = "stick"
+	lvl.hud.toggle_pause()
+	await frames(1)
+	check(lvl.input.scheme == "stick" and lvl.input.touch.visible, "the stick's overlay must show on resume (scheme %s, overlay %s)" % [lvl.input.scheme, lvl.input.touch.visible])
+	Settings.reset_controls()

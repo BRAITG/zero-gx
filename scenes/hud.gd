@@ -1,6 +1,6 @@
 class_name Hud
 extends CanvasLayer
-## Fuel and health bars, flight time, Restart/Menu/Tune buttons, and the end-of-level panel.
+## Fuel and health bars, flight time, Pause, and the end-of-level panel.
 
 signal retry_requested
 signal menu_requested
@@ -35,7 +35,7 @@ var menu_text := "Menu"
 var next_text := "Next"
 var ship: Ship
 var goal: Node2D
-var restart_button: Button
+var pause_button: Button
 ## Whether the end panel offers a Replay (the level recorded a demo).
 var can_replay := false
 var _fuel: ProgressBar
@@ -101,9 +101,7 @@ func _ready() -> void:
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(spacer)
-	restart_button = _button(top, "Restart", retry_requested.emit, false)
-	_button(top, menu_text, menu_requested.emit, false)
-	_button(top, "Tune", func(): TuningPanel.open(self), false)
+	pause_button = _button(top, "Pause", toggle_pause, false)
 	_effect = Label.new()
 	_effect.position = Vector2(16, 64)
 	_effect.add_theme_font_size_override("font_size", 24)
@@ -214,6 +212,7 @@ func _ready() -> void:
 	pause_column.add_theme_constant_override("separation", 12)
 	_pause.add_child(pause_column)
 	_resume = _button(pause_column, "Resume", toggle_pause)
+	_button(pause_column, "Settings", SettingsScreen.open.bind(_pause))
 	_button(pause_column, "Restart", retry_requested.emit)
 	_button(pause_column, menu_text, menu_requested.emit)
 	_arrow = Control.new()
@@ -253,7 +252,7 @@ func _process(_delta: float) -> void:
 
 ## Shows or hides the pause card, pausing or unpausing the tree. Does nothing on the end panel.
 func toggle_pause() -> void:
-	if _result.visible:
+	if _result.visible or not _pause.find_children("*", "Overlay", true, false).is_empty():
 		return
 	_pause.visible = not _pause.visible
 	get_tree().paused = _pause.visible

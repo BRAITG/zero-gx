@@ -65,6 +65,7 @@ func _ready() -> void:
 	add_child(hud)
 	input = ShipInput.new(ship)
 	add_child(input)
+	input.scheme_changed.connect(_refresh_intro)
 	if Tuning.tours and not testing and has_node("Tour") and Progress.best_points(level_id) < 0 and not Progress.toured.has(level_id):
 		Progress.toured[level_id] = true
 		hud.visible = false
@@ -81,6 +82,7 @@ func _ready() -> void:
 	goal.reached.connect(finish.bind(true))
 	ship.destroyed.connect(_ship_lost)
 	ship.stranded.connect(_ship_stranded)
+	Settings.changed.connect(_settings_changed)
 
 
 ## A run goes live on its first physics tick that is not paused and has no tour: physics callbacks run before the ship's step, so nothing has moved yet.
@@ -124,7 +126,25 @@ func _ship_stranded() -> void:
 ## The title card; tutorials skip it, as their lesson is the introduction.
 func _show_intro() -> void:
 	if title != "":
-		hud.show_intro(display_name(), hint)
+		hud.show_intro(display_name(), _intro_text())
+
+
+## The intro card's hint: level 1's names the controls in use; other levels keep their own words.
+func _intro_text() -> String:
+	return input.intro_hint() if level_id == "level_01" else hint
+
+
+## Settings can change on the pause card: the velocity arrow and the intro's controls follow at once.
+func _settings_changed() -> void:
+	ship.show_velocity = show_velocity or Settings.show_velocity
+	ship.queue_redraw()  # the arrow must clear when it is switched off
+	_refresh_intro()
+
+
+## The intro card is redrawn while shown, so the controls it names stay current.
+func _refresh_intro() -> void:
+	if hud.intro_text() != "":
+		hud.show_intro(display_name(), _intro_text())
 
 
 ## How the stage is named to the player: "Level 2 · Drift", "Training 6 · Black holes", or

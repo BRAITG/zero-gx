@@ -78,3 +78,12 @@ func test_panel_freed_by_scene_change_unpauses() -> void:
 	TuningPanel.open(holder)
 	holder.free()  # what a scene change (e.g. Android back from a level) does to an open panel
 	check(not tree.paused, "game stays paused after the panel's scene was freed")
+
+
+func test_tuning_from_pause_preserves_pause_on_close() -> void:
+	tree.paused = true
+	var panel := TuningPanel.open(world)
+	panel.close()
+	await frames(2)
+	check(tree.paused, "closing developer tuning must not resume beneath Settings")
+	tree.paused = false

@@ -407,3 +407,54 @@ func test_select_moves_a_ship_beside_a_planet_not_the_planet() -> void:
 	e.release(spot + Vector2(0, 500), true)
 	check(LevelDoc._v(e.doc.data.ship.position).distance_to(spot) > 400, "the ship must move: %s" % [e.doc.data.ship])
 	check(LevelDoc._v(e.doc.data.bodies[0].position) == Vector2(1200, 0), "the planet must stay: %s" % [e.doc.data.bodies])
+
+
+func test_pickup_reselecting_keeps_its_kind_and_the_picker_sets_the_next_one() -> void:
+	var e := editor()
+	await frames(1)
+	var pickup: Button = e._tool_buttons.pickup
+	pickup.pressed.emit()  # the first tap selects the tool
+	pickup.pressed.emit()  # a second tap must not change the kind
+	check(e.tool == "pickup" and e.pickup_kind == "thrust_up", "selecting Pickup keeps its kind: %s %s" % [e.tool, e.pickup_kind])
+	e.press(Vector2(3000, 0))
+	e.release(Vector2(3000, 0), false)
+	var kind_picker: OptionButton = e._pickup_bar.find_children("*", "OptionButton", true, false)[0]
+	kind_picker.select(2)
+	kind_picker.item_selected.emit(2)
+	check(e.pickup_kind == "boost", "the kind picker sets the next kind: %s" % e.pickup_kind)
+	check(e.doc.data.pickups.size() == 1 and e.doc.data.pickups[0].kind == "thrust_up", "the picker changes no placed pickup: %s" % [e.doc.data.get("pickups")])
+	e.press(Vector2(3000, 2000))
+	e.release(Vector2(3000, 2000), false)
+	check(e.doc.data.pickups.size() == 2 and e.doc.data.pickups[1].kind == "boost", "the next placement uses the picked kind: %s" % [e.doc.data.get("pickups")])
+
+
+func test_saved_state_follows_the_file_and_undo_returns_to_it() -> void:
+	var id := MyLevels.new_id()
+	var e := LevelEditor.create(id)  # a new draft: nothing in the file yet
+	world.add_child(e)
+	await frames(1)
+	check(e._dirty and e._undo_button.disabled, "a new draft is unsaved, with nothing to undo")
+	e.select_tool("planet")
+	e.press(Vector2(3000, 0))
+	e.release(Vector2(3000, 0), false)
+	check(e._dirty and not e._undo_button.disabled, "an edit is unsaved and can be undone")
+	e.save()
+	check(not e._dirty and MyLevels.load_level(id).bodies.size() == 1, "saving makes the draft saved, and the file holds the edit")
+	e.select_tool("select")
+	e.press(Vector2(3000, 0))  # grab the planet and drop it where it was
+	e.drag(Vector2(3000, 0))
+	e.release(Vector2(3000, 0), true)
+	check(not e._dirty, "a move that changes nothing stays saved")
+	e.select_tool("planet")
+	e.press(Vector2(3000, 2000))
+	e.release(Vector2(3000, 2000), false)
+	check(e._dirty, "an edit after saving is unsaved")
+	e._unhandled_input(_key(KEY_Z, true))
+	check(not e._dirty, "undoing back to the saved level is saved, even with history left")
+	check(not e._undo_button.disabled, "undo stays available while there is history")
+	world.remove_child(e)
+	e.free()
+	var reopened := LevelEditor.create(id)
+	world.add_child(reopened)
+	await frames(1)
+	check(not reopened._dirty and reopened._undo_button.disabled, "a saved draft reopens saved, with nothing to undo")
