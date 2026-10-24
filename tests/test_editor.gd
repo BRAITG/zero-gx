@@ -34,6 +34,83 @@ func test_placing_on_a_thing_drags_it() -> void:
 	check(e.doc.data.bodies.size() == 1 and LevelDoc._v(e.doc.data.bodies[0].position) == Vector2(3500, 500), "the planet must move, not multiply: %s" % [e.doc.data.bodies])
 
 
+func test_tapping_a_stars_glow_grabs_it() -> void:
+	var e := editor()
+	await frames(1)
+	e.select_tool("star")
+	e.press(Vector2(8000, 4000))
+	e.release(Vector2(8000, 4000), false)
+	e.press(Vector2(8000 + 700, 4000))  # on the prominences, 100 px past the rim
+	check(e._moving, "the tap grabs the star")
+	e.release(Vector2(8000 + 700, 4000), false)
+	check(e.doc.data.bodies.size() == 1, "no second star beside the first: %s" % [e.doc.data.bodies])
+
+
+func test_long_press_opens_the_sheet_whatever_the_tool() -> void:
+	var e := editor()
+	await frames(1)
+	var screen := Vector2(500, 300)
+	e.doc.place("planet", e._to_world(screen))
+	e.select_tool("wall")
+	e._one_finger(true, screen)
+	await frames(40)  # past LONG_PRESS at 60 FPS
+	check(e.find_children("*", "Overlay", true, false).size() == 1, "holding still on the planet opens its sheet")
+	e._one_finger(false, screen)
+	check(e.doc.data.get("walls", []).is_empty(), "the release after a long press adds no wall point")
+	await _close_sheet(e)
+
+
+func _sheet_sliders(e: LevelEditor) -> Array:
+	return e.find_children("*", "Overlay", true, false)[0].find_children("*", "HSlider", true, false)
+
+
+func _close_sheet(e: LevelEditor) -> void:  # before the editor goes, whose camera a closing sheet refreshes
+	e.find_children("*", "Overlay", true, false)[0].close()
+	await frames(2)
+
+
+func test_radius_and_mass_change_independently() -> void:
+	var e := editor()
+	await frames(1)
+	e.doc.place("star", Vector2(8000, 4000))
+	e._open_sheet({"type": "body", "index": 0})
+	var sliders := _sheet_sliders(e)  # radius, mass, reach
+	var star: Dictionary = e.doc.data.bodies[0]
+	for corner: Array in [[0, 0], [0, 1], [1, 0], [1, 1]]:  # every pairing of smallest and largest
+		sliders[0].value = sliders[0].max_value if corner[0] else sliders[0].min_value
+		sliders[1].value = sliders[1].max_value if corner[1] else sliders[1].min_value
+		check(is_equal_approx(LevelFormat.body_value(star, "radius"), sliders[0].value) and is_equal_approx(LevelFormat.total_pull(star), sliders[1].value), "radius and mass as set: %s" % [star])
+		check(e.doc.errors().is_empty(), "%s: %s" % [star, e.doc.errors()])
+	await _close_sheet(e)
+
+
+func test_opening_an_old_out_of_range_star_brings_it_in_range() -> void:
+	var e := editor()
+	await frames(1)
+	e.doc.place("star", Vector2(8000, 4000))
+	e.doc.set_property({"type": "body", "index": 0}, "radius", 300)  # valid under the old limits
+	e.doc.set_property({"type": "body", "index": 0}, "strength", 60000)
+	check(not e.doc.errors().is_empty(), "the old star breaks the new limits")
+	e._open_sheet({"type": "body", "index": 0})
+	check(e.doc.errors().is_empty(), "opening its sheet stores the in-range values it shows: %s %s" % [e.doc.data.bodies[0], e.doc.errors()])
+	await _close_sheet(e)
+
+
+func test_ship_starting_velocity_is_saved() -> void:
+	var e := editor()
+	await frames(1)
+	e._open_sheet({"type": "ship", "index": 0})
+	var sliders := _sheet_sliders(e)
+	sliders[0].value = 90  # down
+	sliders[1].value = 250
+	e.save()
+	var ship: Dictionary = MyLevels.load_level(e.level_id).ship
+	check(LevelDoc._v(ship.get("velocity", [0, 0])) == Vector2(0, 250), "velocity saved and loaded back: %s" % [ship])
+	sliders[1].value = 0
+	check(not e.doc.data.ship.has("velocity"), "speed 0 removes it: %s" % [e.doc.data.ship])
+	await _close_sheet(e)
+
+
 func test_things_go_where_they_are_put_and_walls_snap() -> void:
 	var e := editor()
 	await frames(1)

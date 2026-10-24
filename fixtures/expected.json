@@ -130,8 +130,8 @@
   },
   "levels": {
     "floor.json": [],
-    "invalid.black_hole_weak.json": [
-      "black hole must pull harder"
+    "invalid.black_hole_light.json": [
+      "total pull must be"
     ],
     "invalid.oversized.json": [
       "larger than"

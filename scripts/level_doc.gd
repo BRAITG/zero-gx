@@ -96,7 +96,7 @@ func hit(at: Vector2, slop := HIT_SLOP) -> Dictionary:
 				return {"type": type, "index": i}
 	var bodies: Array = data.get("bodies", [])
 	for i in bodies.size():
-		if _v(bodies[i].position).distance_to(at) <= LevelFormat.body_value(bodies[i], "radius") + slop:
+		if _v(bodies[i].position).distance_to(at) <= drawn_radius(bodies[i]) + slop:
 			return {"type": "body", "index": i}
 	for i in walls.size():
 		var points: Array = walls[i].points
@@ -104,6 +104,16 @@ func hit(at: Vector2, slop := HIT_SLOP) -> Dictionary:
 			if Geometry2D.get_closest_point_to_segment(at, _v(points[k]), _v(points[k + 1])).distance_to(at) <= slop:
 				return {"type": "wall", "index": i}
 	return {}
+
+
+## How far a body's drawing reaches from its centre: a star's corona and prominences, a black
+## hole's accretion disk, a planet's atmosphere (see GravityBody._draw).
+static func drawn_radius(body: Dictionary) -> float:
+	var r := LevelFormat.body_value(body, "radius")
+	match body.kind:
+		"star": return maxf(r * 1.36, r + GravityBody.PROMINENCE_SIZE.y)
+		"black_hole": return r * 1.79
+	return r + 7.0
 
 
 ## Where `ref` is: its position, a wall point, or a wall's first point.
@@ -169,10 +179,13 @@ func set_property(ref: Dictionary, key: String, value: Variant) -> void:
 	_entry(ref)[key] = value
 
 
-## Title, hint, show_velocity, or the ship's fuel and hull (a number or LevelFormat.UNLIMITED).
+## Title, hint, show_velocity, or the ship's fuel and hull (a number or LevelFormat.UNLIMITED) and
+## velocity ([x, y] px/s; [0, 0] removes it).
 func set_setting(key: String, value: Variant) -> void:
 	_remember()
-	if key in ["fuel", "hull"]:
+	if key == "velocity" and value == [0, 0]:
+		data.ship.erase("velocity")
+	elif key in ["fuel", "hull", "velocity"]:
 		data.ship[key] = value
 	elif key == "hint" and value == "":
 		data.erase("hint")

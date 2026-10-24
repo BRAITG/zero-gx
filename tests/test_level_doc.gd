@@ -65,6 +65,21 @@ func test_ship_next_to_a_planet_is_picked_before_the_planet() -> void:
 	check(doc.hit(Vector2(1200, 0), 40.0) == {"type": "body", "index": 0}, "the planet's centre is still the planet: %s" % doc.hit(Vector2(1200, 0), 40.0))
 
 
+func test_a_tap_on_a_stars_glow_picks_the_star() -> void:
+	var doc := LevelDoc.new()
+	doc.place("star", Vector2(5000, 2000))
+	check(doc.hit(Vector2(5000 + 600 + 120, 2000), 40.0) == {"type": "body", "index": 0}, "120 px past the rim is still the star's prominences")
+	check(doc.hit(Vector2(5000 + 600 + 400, 2000), 40.0).is_empty(), "400 px past the rim is empty space")
+
+
+func test_ship_velocity_setting() -> void:
+	var doc := LevelDoc.new()
+	doc.set_setting("velocity", [300, -400])
+	check(LevelFormat.validate(doc.data).is_empty() and doc.data.ship.velocity == [300, -400], "the ship starts moving: %s" % doc.data.ship)
+	doc.set_setting("velocity", [0, 0])
+	check(not doc.data.ship.has("velocity"), "speed 0 stores no velocity: %s" % doc.data.ship)
+
+
 func test_settings_and_validity() -> void:
 	var doc := LevelDoc.new()
 	check(doc.errors().is_empty(), "a new level must be valid: %s" % doc.errors())
