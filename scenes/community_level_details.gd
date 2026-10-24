@@ -35,6 +35,8 @@ var _option: OptionButton
 var _remove: Button
 var _progress: Label
 var _pending_label: Label
+var _sync_icon: SyncIndicator
+var _sync_row: HBoxContainer
 var _refusal_label: Label
 var _hint: Label
 var _refresh: Button
@@ -78,7 +80,14 @@ func _build(parent: Node, row: Dictionary, on_play: Callable) -> Overlay:
 	vote.add_child(_option)
 	_remove = _button(vote, "Remove my vote", _choose.bind("difficulty", ""))
 	_progress = _overlay.paragraph("", 22, Style.INK_DIM, mine)
-	_pending_label = _overlay.paragraph("", 22, Style.ACCENT, mine)
+	_sync_row = HBoxContainer.new()
+	_sync_row.add_theme_constant_override("separation", 12)
+	mine.add_child(_sync_row)
+	_sync_icon = SyncIndicator.new()
+	_sync_icon.name = "SyncIndicator"
+	_sync_icon.expired.connect(_render)
+	_sync_row.add_child(_sync_icon)
+	_pending_label = _overlay.paragraph("", 22, Style.ACCENT, _sync_row)
 	_refusal_label = _overlay.paragraph("", 22, Style.INK, mine)
 	_hint = _overlay.paragraph("", 22, Style.INK_DIM, mine)
 	_refresh = _button(mine, "Refresh", _refresh_now, "Refreshing…")
@@ -163,6 +172,7 @@ func _forget_owner() -> void:
 	_pending = {"like": false, "difficulty": false}
 	_note = ""
 	_refusal = ""
+	_sync_icon.clear()
 
 
 ## Whether the signed-in player is still the one shown; if not, the answer in hand is not used and the sheet starts over for the new player.
@@ -229,6 +239,8 @@ func _vote_result(account: String, kind: String, level: String, sha256: String, 
 		if _pending[kind] and shown == _want[kind] and not queued:
 			_pending[kind] = false
 			_note = ""
+		if not queued:
+			_confirm_sync()
 		_render()
 		_read_feedback()
 		return
@@ -246,6 +258,7 @@ func _vote_result(account: String, kind: String, level: String, sha256: String, 
 ## Reports of this player on this version reached the server (Community.play_history_synced): eligibility may have opened.
 func _plays_synced(account: String, sha256: String) -> void:
 	if _alive() and sha256 == _sha and account == Community.player_id():
+		_confirm_sync()
 		_read_feedback()
 
 
@@ -280,6 +293,7 @@ func _settle(target: String, result: Dictionary) -> void:
 	else:
 		_vote = _want.difficulty
 	_settled[target] = true
+	_confirm_sync()
 	_render()
 	_read_feedback()  # the acknowledgement does not rewrite the cached answer; counts and eligibility move too
 
@@ -291,6 +305,11 @@ func _refresh_now() -> void:
 	if not _alive() or not _owner_kept(account):
 		return
 	await _read_feedback()
+
+
+func _confirm_sync() -> void:
+	if not Community.play_progress(_sha).pending and Community.pending_feedback(_level, _sha).is_empty():
+		_sync_icon.confirm()
 
 
 # --- showing ------------------------------------------------------------------------------------------------------------
@@ -321,12 +340,15 @@ func _render() -> void:
 	_remove.disabled = _shown_vote() == ""
 	_progress.text = "Counted tries: %d%s" % [_count(you.get("attempts")), " · Cleared" if you.get("cleared") == true else ""] if ready else ""
 	var queued: bool = _pending.like or _pending.difficulty
-	_pending_label.text = "Pending sync" + (" · " + _note if _note != "" else "") if queued else ""
+	var play_pending: bool = Community.play_progress(_sha).pending
+	_pending_label.text = "Pending sync" + (" · " + _note if _note != "" else "") if queued or play_pending else ""
+	_sync_icon.set_pending(queued or play_pending, _error != "" or _note != "" or _refusal != "")
 	_refusal_label.text = _refusal
 	var local_wait: bool = ready and not vote_ok and Community.play_progress(_sha).can_offer_rating
 	_hint.text = _hint_text(ready, local_wait, like_ok, vote_ok)
 	for label: Label in [_progress, _pending_label, _refusal_label, _hint]:
 		label.visible = label.text != ""
+	_sync_row.visible = _sync_icon.visible or _pending_label.visible
 	_refresh.visible = queued or local_wait or _error != ""
 	_show_facts()
 	if _overlay.get_viewport().gui_get_focus_owner() == null:
@@ -342,7 +364,7 @@ func _hint_text(ready: bool, local_wait: bool, like_ok: bool, vote_ok: bool) -> 
 	if _error != "":
 		lines.append(_error)
 	if local_wait:
-		lines.append("Pending sync: your latest tries have not reached the server yet. Voting opens once they have.")
+		lines.append("Voting opens once your play history reaches the server.")
 	elif ready and not vote_ok:
 		if like_ok or _liked:
 			lines.append("Difficulty voting opens after you clear this version or try it %d times." % Community.FEEDBACK_TRIES)
@@ -448,3 +470,62 @@ func _button(parent: Control, text: String, action: Callable, busy := "") -> But
 	button.pressed.connect(action if busy == "" else Style.busy.bind(button, busy, action))
 	parent.add_child(button)
 	return button
+
+
+class SyncIndicator extends Control:
+	signal expired
+	var confirmed := false
+	var _remaining := 0.0
+	var _stalled := false
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(28, 28)
+		pivot_offset = Vector2(14, 14)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		process_mode = Node.PROCESS_MODE_ALWAYS
+		set_process(false)
+		hide()
+
+	func clear() -> void:
+		confirmed = false
+		_remaining = 0.0
+		rotation = 0.0
+		set_process(false)
+		hide()
+
+	func set_pending(pending: bool, stalled: bool) -> void:
+		if pending:
+			confirmed = false
+		_stalled = stalled
+		visible = pending or confirmed
+		set_process((pending and not stalled) or confirmed)
+		if confirmed or stalled:
+			rotation = 0.0
+		queue_redraw()
+
+	func confirm() -> void:
+		confirmed = true
+		_remaining = 2.0
+		rotation = 0.0
+		show()
+		set_process(true)
+		queue_redraw()
+
+	func _process(delta: float) -> void:
+		if confirmed:
+			_remaining -= delta
+			if _remaining <= 0.0:
+				clear()
+				expired.emit()
+		else:
+			rotation = fmod(rotation + TAU * delta, TAU)
+
+	func _draw() -> void:
+		if confirmed:
+			draw_line(Vector2(4, 14), Vector2(11, 21), Hud.GOAL_GREEN, 3.0, true)
+			draw_line(Vector2(11, 21), Vector2(24, 6), Hud.GOAL_GREEN, 3.0, true)
+		elif _stalled:
+			draw_line(Vector2(10, 5), Vector2(10, 23), Style.INK_DIM, 3.0, true)
+			draw_line(Vector2(18, 5), Vector2(18, 23), Style.INK_DIM, 3.0, true)
+		else:
+			draw_arc(Vector2(14, 14), 10.0, 0.0, TAU * 0.75, 24, Style.ACCENT, 3.0, true)

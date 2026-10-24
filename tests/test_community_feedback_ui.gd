@@ -1349,3 +1349,64 @@ func test_a_start_whose_report_answer_was_lost_still_counts_toward_the_fifth_try
 	var second: Level = await _lose(stage)
 	check(net.count("POST", "/plays") == 1, "setup: the report went out once and its answer was lost: %d" % net.count("POST", "/plays"))
 	check(_buttons(second.hud, "Rate level").size() == 1, "three tries elsewhere and two here are the fifth, whatever the lost answer said")
+
+
+func test_play_upload_shows_motion_then_a_brief_confirmation_without_reopening_details() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row: Dictionary = await _download(net, _level())
+	_serve(_reply({}, {}, null, {}, row.sha256))
+	var id := Community.record_play_start(row.sha256)
+	Community.record_play_finish(id, "cleared")
+	var sheet: Overlay = await _sheet(row)
+	var icon: Control = sheet.find_child("SyncIndicator", true, false)
+	check(icon != null, "pending play history needs a visual sync indicator")
+	if icon == null:
+		return
+	check(icon.is_visible_in_tree() and icon.is_processing(), "the queued clear visibly animates while voting waits")
+	var turn := icon.rotation
+	await frames(4)
+	check(icon.rotation != turn, "the pending indicator must move, not merely exist")
+	net.hold("POST", "/plays")
+	Community.activate_feedback()
+	await frames(3)
+	check(icon.is_visible_in_tree() and not icon.get("confirmed"), "sending is not confirmation")
+	_serve(_reply({"cleared": true, "like_eligible": true, "difficulty_eligible": true}, {}, null, {}, row.sha256))
+	net.answer("POST", "/plays", 200, {"acknowledged": [{"id": id, "revision": 2}], "discarded": [], "cleared": [row.sha256]})
+	net.release_hold("POST", "/plays")
+	await frames(4)
+	check(icon.is_visible_in_tree() and icon.get("confirmed") == true and icon.rotation == 0.0, "durable acknowledgement replaces motion with the check")
+	check(not _controls(sheet).difficulty.disabled, "the same sheet unlocks voting")
+	Engine.time_scale = 10.0
+	await tree.create_timer(1.5).timeout
+	check(icon.is_visible_in_tree() and icon.get("confirmed") == true, "confirmation remains visible before two seconds")
+	await tree.create_timer(0.7).timeout
+	Engine.time_scale = 1.0
+	check(not icon.visible and not icon.is_processing(), "confirmation disappears after two seconds and stops processing")
+
+
+func test_a_vote_error_stops_motion_without_claiming_success_and_retry_confirms() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"difficulty_eligible": true, "attempts": 5}))
+	var sheet: Overlay = await _sheet(_row())
+	var icon: Control = sheet.find_child("SyncIndicator", true, false)
+	check(icon != null, "the feedback sheet needs its sync indicator")
+	if icon == null:
+		return
+	check(not icon.visible, "opening already-confirmed feedback does not invent an upload")
+	net.hold("PUT", DIFFICULTY)
+	_pick(_controls(sheet).difficulty, "hard")
+	await frames(3)
+	check(icon.is_visible_in_tree() and icon.is_processing(), "an unconfirmed choice shows motion")
+	net.answer("PUT", DIFFICULTY, 0)
+	net.release_hold("PUT", DIFFICULTY)
+	await frames(3)
+	check(icon.is_visible_in_tree() and not icon.is_processing() and not icon.get("confirmed"), "offline feedback remains visibly queued without endless motion or a success check")
+	await _cooldown()
+	_containing(sheet, "refresh")[0].pressed.emit()
+	await frames(4)
+	check(icon.is_visible_in_tree() and icon.get("confirmed") == true, "a successful retry shows confirmation")
+	Community.identity_changed.emit("")
+	await frames(1)
+	check(not icon.visible, "account erasure clears the prior account's confirmation")
