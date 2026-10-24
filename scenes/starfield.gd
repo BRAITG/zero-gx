@@ -12,6 +12,7 @@ const LAYERS := [
 ]
 const NEBULA_COLORS := [Color("#3a2a7a"), Color("#1d4a7a"), Color("#5a2050")]
 const MAX_STREAK := 24.0  # px of streak on the nearest layer at full blur; a hint, not a smear
+const STAR_SHADER := preload("res://scenes/starfield.gdshader")
 
 ## px/s of drift when nothing moves the camera, as on the menu.
 @export var drift := Vector2.ZERO
@@ -54,28 +55,52 @@ func _process(_delta: float) -> void:
 		var streak: Vector2 = dir * b * MAX_STREAK * layer.spec[0] / 0.5
 		if streak.distance_to(layer.streak) > 0.5:
 			layer.streak = streak
-			layer.queue_redraw()
 
 
 class _StarLayer extends Node2D:
 	var seed_value := 0
 	var spec: Array
-	var streak := Vector2.ZERO
+	var streak := Vector2.ZERO:
+		set(value):
+			streak = value
+			_material.set_shader_parameter("streak", value)
+	var _material := ShaderMaterial.new()
+	var _nebulae: Array[Array] = []
 
-	func _draw() -> void:
+	func _ready() -> void:
+		_material.shader = STAR_SHADER
+		var mesh := QuadMesh.new()
+		mesh.size = Vector2(2, 2)
+		var batch := MultiMesh.new()
+		batch.transform_format = MultiMesh.TRANSFORM_2D
+		batch.use_colors = true
+		batch.use_custom_data = true
+		batch.mesh = mesh
+		batch.instance_count = spec[1]
+		# Shader-expanded quads must stay visible across tile edges in either streak direction.
+		var margin: float = MAX_STREAK + spec[2].y + 1.0
+		batch.custom_aabb = AABB(Vector3(-margin, -margin, -1), Vector3(TILE.x + margin * 2, TILE.y + margin * 2, 2))
 		var rng := RandomNumberGenerator.new()
 		rng.seed = seed_value
 		for blob in spec[4]:
 			var centre := Vector2(rng.randf() * TILE.x, rng.randf() * TILE.y)
 			var radius := rng.randf_range(250.0, 520.0)
 			var tint: Color = NEBULA_COLORS[rng.randi() % NEBULA_COLORS.size()]
-			for ring in 6:  # soft edge: stacked translucent discs
-				draw_circle(centre, radius * (1.0 - ring * 0.14), Color(tint, 0.035))
+			_nebulae.append([centre, radius, tint])
 		for star in spec[1]:
 			var at := Vector2(rng.randf() * TILE.x, rng.randf() * TILE.y)
 			var size := rng.randf_range(spec[2].x, spec[2].y)
 			var tint := Color("#cfe0ff").lerp(Color("#fff2d8"), rng.randf())
 			var c := Color(tint, spec[3] * rng.randf_range(0.5, 1.0))
-			draw_circle(at, size, c)
-			if streak.length() >= 0.5:  # a moving ship smears each star back along the track it came from
-				draw_polyline_colors(PackedVector2Array([at, at + streak]), PackedColorArray([c, Color(c, 0.0)]), size * 2.0, true)
+			batch.set_instance_transform_2d(star, Transform2D(0.0, at))
+			batch.set_instance_color(star, c)
+			batch.set_instance_custom_data(star, Color(size, 0, 0, 0))
+		var stars := MultiMeshInstance2D.new()
+		stars.multimesh = batch
+		stars.material = _material
+		add_child(stars)
+
+	func _draw() -> void:
+		for blob in _nebulae:
+			for ring in 6:  # soft edge: stacked translucent discs
+				draw_circle(blob[0], blob[1] * (1.0 - ring * 0.14), Color(blob[2], 0.035))
