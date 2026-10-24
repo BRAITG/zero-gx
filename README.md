@@ -83,6 +83,14 @@ tests/run.sh   # needs `godot` on PATH, or GODOT=/path/to/godot
 
 The suite runs headless at a fixed 60 FPS. `tests/test_levels.gd` checks the level-design rules: every level is well formed, and with no player input no asteroid ever hits a planet within 60 seconds.
 
+The starfield uses GPU-instanced stars and shader-drawn motion streaks, rather than separate draw calls for each dot and line. Check its rendering budget in a real window (not headless):
+
+```sh
+godot --path . -s res://tools/check_starfield.gd
+```
+
+The check fails above 1,000 draw calls at rest or with streaks in either direction. On an M1 Pro, batching reduced this check from about 18,100 to 533 draw calls while moving. A separate Level 1 benchmark at 5120×2880 improved from about 16 to 134 FPS with bloom enabled and VSync disabled; disabling bloom alone before batching only reached 17 FPS.
+
 ## Build pipeline
 
 `.github/workflows/build.yml` runs the tests, exports the APK and the desktop builds (Windows, macOS, Linux), and uploads them as a workflow artifact on every pull request. On `master`, and on a manual run with `publish` checked, it also publishes a prerelease with all of them. The desktop builds are unsigned. On macOS, open System Settings → Privacy & Security and choose Open Anyway (macOS 15 and later; on older versions, right-click the app and choose Open). On Windows, SmartScreen warns, so choose More info → Run anyway. On Linux, run `chmod +x` on the file first. The debug keystore is the `ANDROID_DEBUG_KEYSTORE_B64` repository secret.
@@ -130,6 +138,7 @@ The values you will most often want to change (speed cap, thrust, turn rates, pi
 | `scripts/sfx.gd` | which sound plays for what, and the synthesized ambient drone |
 | `scripts/style.gd` | UI theme (fonts, panels, buttons) and the 2D bloom |
 | `scenes/starfield.gd` | parallax star layers and nebulae |
+| `scenes/starfield.gdshader` | instanced star shapes and fading motion streaks |
 
 ## Assets
 
