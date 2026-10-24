@@ -84,6 +84,18 @@ func test_radius_and_mass_change_independently() -> void:
 	await _close_sheet(e)
 
 
+func test_opening_an_old_out_of_range_star_brings_it_in_range() -> void:
+	var e := editor()
+	await frames(1)
+	e.doc.place("star", Vector2(8000, 4000))
+	e.doc.set_property({"type": "body", "index": 0}, "radius", 300)  # valid under the old limits
+	e.doc.set_property({"type": "body", "index": 0}, "strength", 60000)
+	check(not e.doc.errors().is_empty(), "the old star breaks the new limits")
+	e._open_sheet({"type": "body", "index": 0})
+	check(e.doc.errors().is_empty(), "opening its sheet stores the in-range values it shows: %s %s" % [e.doc.data.bodies[0], e.doc.errors()])
+	await _close_sheet(e)
+
+
 func test_ship_starting_velocity_is_saved() -> void:
 	var e := editor()
 	await frames(1)

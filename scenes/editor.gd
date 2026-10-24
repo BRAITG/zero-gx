@@ -482,6 +482,10 @@ func _open_sheet(ref: Dictionary) -> void:
 				doc.set_property(ref, "strength", mass.value / pow(radius.value / 1000.0, 2))
 			radius.value_changed.connect(store)
 			mass.value_changed.connect(store)
+			var old_radius := LevelFormat.body_value(body, "radius")
+			var old_mass := LevelFormat.total_pull(body)
+			if old_radius != clampf(old_radius, limits.radius.x, limits.radius.y) or old_mass != clampf(old_mass, limits.total_pull.x, limits.total_pull.y):
+				store.call(0.0)  # a body from older limits takes the in-range values its sliders show
 			_slider(o, "Reach (px)", limits.reach, 1, LevelFormat.body_value(body, "reach"), func(v: float) -> void: doc.set_property(ref, "reach", v))
 			if body.kind == "planet":
 				var breakable := CheckButton.new()
