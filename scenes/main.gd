@@ -1,17 +1,22 @@
 extends Control
-## The main menu: a Training button, then one button per level in `Progress.levels()` with its
-## best points, locked until the level before it is finished. With `training` set it lists the
-## training stages the same way instead, under a Back button.
+## The main menu, on one of three pages. HOME is the hub: Official levels, Community levels (where
+## `Community.available()`), Training, then a smaller row of My levels, Settings and Credits. OFFICIAL
+## and TRAINING list their stages in a grid, each locked until the stage before it is finished, under a
+## Back button that returns to HOME.
+
+enum Page { HOME, OFFICIAL, TRAINING }
 
 const SCENE := "res://scenes/main.tscn"
 const MENU_DRIFT := Vector2(-40, -12)  # px/s
+const HOME_WIDTH := 440.0  # px: the column of home buttons
 
-## Show the training stages instead of the levels.
-var training := false
+## Which page this scene shows; the main scene opens on HOME.
+var page := Page.HOME
 
-var _levels: GridContainer
 var _column: VBoxContainer
+var _official: Button  # the home page's primary: it takes focus when HOME opens
 var _training_button: Button
+var _levels: GridContainer  # the stage buttons of OFFICIAL or TRAINING
 
 ## Set once per run: the menu scene is entered again on every return to it.
 static var _sized := false
@@ -27,38 +32,53 @@ func _ready() -> void:
 	add_child(ui)
 	_column = VBoxContainer.new()
 	_column.add_theme_constant_override("separation", 12)
-	ui.add_child(_column)
-	var title := Label.new()
-	title.text = "TRAINING" if training else "ZERO-GX"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_override("font", Style.display_font)
-	title.add_theme_font_size_override("font_size", 64)
-	title.add_theme_color_override("font_outline_color", Color(Style.ACCENT, 0.35))
-	title.add_theme_constant_override("outline_size", 14)
-	_column.add_child(title)
-	_training_button = _button("Back" if training else "Training")
-	_training_button.pressed.connect(func(): get_tree().change_scene_to_node(menu(not training)))
+	Style.menu_frame(ui).add_child(_column)  # the content lives in the safe 16:9 frame
+	if page == Page.HOME:
+		_build_home()
+	else:
+		_build_list()
+	Progress.changed.connect(_refresh)
+	_refresh()
+	if page == Page.HOME and get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
+		_official.grab_focus(true)
+
+
+func _build_home() -> void:
+	_column.add_child(_title("ZERO-GX"))
+	_official = _button("Official levels", Vector2(HOME_WIDTH, 96), 30)
+	_official.add_theme_stylebox_override("normal", _official.get_theme_stylebox("pressed"))  # the strongest look, at rest
+	_official.pressed.connect(_go_to.bind(Page.OFFICIAL))
+	_column.add_child(_official)
+	if Community.available():
+		var community := _button("Community levels", Vector2(HOME_WIDTH, 64), 24)
+		community.pressed.connect(Style.busy.bind(community, "Signing in…", _open_community))  # the label while the sign-in runs
+		_column.add_child(community)
+	_training_button = _button("Training", Vector2(HOME_WIDTH, 56), 22)
+	_training_button.pressed.connect(_go_to.bind(Page.TRAINING))
 	_column.add_child(_training_button)
+	var utility := HBoxContainer.new()
+	utility.add_theme_constant_override("separation", 12)
+	utility.custom_minimum_size.x = HOME_WIDTH
+	utility.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_column.add_child(utility)
+	var entries := [["My levels", func(): get_tree().change_scene_to_node(MyLevelsScreen.new())], ["Settings", SettingsScreen.open.bind(self)], ["Credits", func(): Credits.open(self)]]
+	for entry in entries:  # all share the row's width
+		var button := _button(entry[0], Vector2(0, 44), 18)
+		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		button.pressed.connect(entry[1])
+		utility.add_child(button)
+
+
+func _build_list() -> void:
+	_column.add_child(_title("OFFICIAL LEVELS" if page == Page.OFFICIAL else "TRAINING"))
+	var back := _button("Back")
+	back.pressed.connect(_go_to.bind(Page.HOME))
+	_column.add_child(back)
 	_levels = GridContainer.new()
-	_levels.columns = 3  # tutorials, then levels: six rows fit the 720 px screen
+	_levels.columns = 3
 	_levels.add_theme_constant_override("h_separation", 12)
 	_levels.add_theme_constant_override("v_separation", 12)
 	_column.add_child(_levels)
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	_column.add_child(row)
-	row.visible = not training
-	var entries := [["My levels", func(): get_tree().change_scene_to_node(MyLevelsScreen.new())], ["Settings", SettingsScreen.open.bind(self)], ["Credits", func(): Credits.open(self)]]
-	if Community.available():
-		entries.insert(1, ["Community", _open_community, "Signing in…"])  # the third item is what the button says while it runs
-	for entry in entries:  # all share the grid's width
-		var button := _button(entry[0])
-		button.custom_minimum_size.x = 0
-		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		button.pressed.connect(entry[1] if entry.size() == 2 else Style.busy.bind(button, entry[2], entry[1]))
-		row.add_child(button)
-	Progress.changed.connect(_list_levels)
-	_list_levels()
 
 
 ## The first tap signs in, and so does a session saved before its player was stored, to learn who it belongs to. If that fails, the reason shows and the menu stays. Offline it opens anyway: the screen shows what is cached.
@@ -74,9 +94,20 @@ func _open_community() -> void:
 	get_tree().change_scene_to_node(CommunityScreen.new())
 
 
+## Brings the page up to date with the player's progress: the Training label on HOME, the stage buttons on a list.
+func _refresh() -> void:
+	if page == Page.HOME:
+		var completed := Progress.training_completed()
+		_training_button.text = "Training · ✓ completed" if completed else "Training"
+	else:
+		_list_levels()
+	_center_column()
+
+
 func _list_levels() -> void:
 	for old in _levels.get_children():
 		old.free()  # now, not queued: the new buttons replace them in the same frame
+	var training := page == Page.TRAINING
 	var suggested: Button
 	for id in Progress.trainings() if training else Progress.levels():
 		var best := Progress.best_points(id)
@@ -92,13 +123,6 @@ func _list_levels() -> void:
 			suggested = button
 			button.add_theme_stylebox_override("normal", button.get_theme_stylebox("pressed"))
 		_levels.add_child(button)
-	if not training:
-		var completed := Progress.training_completed()
-		_training_button.text = "Training · ✓ completed" if completed else "Training"
-		_training_button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER if completed else Control.SIZE_FILL
-		_column.move_child(_training_button, 2 if completed else 1)
-	_column.reset_size()
-	_column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	if get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
 		if suggested:
 			suggested.grab_focus(true)
@@ -106,19 +130,41 @@ func _list_levels() -> void:
 			Style.focus_first(_levels)
 
 
-func _button(text: String) -> Button:
+## Centres the column in the frame. Anchored to the frame's centre, it stays centred when the viewport changes.
+func _center_column() -> void:
+	_column.reset_size()
+	_column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+
+
+func _title(text: String) -> Label:
+	var title := Label.new()
+	title.text = text
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_override("font", Style.display_font)
+	title.add_theme_font_size_override("font_size", 64)
+	title.add_theme_color_override("font_outline_color", Color(Style.ACCENT, 0.35))
+	title.add_theme_constant_override("outline_size", 14)
+	return title
+
+
+func _button(text: String, min_size := Vector2(300, 52), font_size := 22) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size = Vector2(300, 52)
-	button.add_theme_font_size_override("font_size", 22)
+	button.custom_minimum_size = min_size
+	button.add_theme_font_size_override("font_size", font_size)
 	button.pressed.connect(Sfx.play.bind("tap"))
 	return button
 
 
-## The main menu, or the training list.
-static func menu(show_training: bool) -> Control:
+## Replaces this page with `target`.
+func _go_to(target: Page) -> void:
+	get_tree().change_scene_to_node(menu(target))
+
+
+## The main menu on `target`'s page.
+static func menu(target: Page = Page.HOME) -> Control:
 	var main: Control = load(SCENE).instantiate()
-	main.training = show_training
+	main.page = target
 	return main
 
 
@@ -142,22 +188,17 @@ static func window_size(scale: float, usable: Vector2i) -> Vector2i:
 	return Vector2i(roundi(fitted.x), roundi(fitted.y))
 
 
-## project.godot turns off quit_on_go_back so levels can return here; the training list goes
-## back to the menu, and the menu quits.
+## project.godot turns off quit_on_go_back so levels can return here: a list goes back to HOME, and HOME quits.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
-		if training:
-			_to_menu()
-		else:
+		if page == Page.HOME:
 			get_tree().quit()
+		else:
+			_go_to(Page.HOME)
 
 
-## Esc and B go back from the training list; on the menu they do nothing (Esc must not quit).
+## Esc and B go back from a list to HOME; on HOME they do nothing (Esc must not quit).
 func _unhandled_input(event: InputEvent) -> void:
-	if training and event.is_action_pressed(&"ui_cancel"):
+	if page != Page.HOME and event.is_action_pressed(&"ui_cancel"):
 		get_viewport().set_input_as_handled()
-		_to_menu()
-
-
-func _to_menu() -> void:
-	get_tree().change_scene_to_node(menu(false))
+		_go_to(Page.HOME)

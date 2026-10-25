@@ -2,6 +2,7 @@ extends "res://tests/test_case.gd"
 
 const SHIP := "res://scenes/ship.tscn"
 const GOAL := "res://scenes/goal.tscn"
+const MAIN := preload("res://scenes/main.gd")
 
 
 ## A level root with a ship at the origin and a goal at `goal_at`, added to the world.
@@ -49,12 +50,20 @@ func test_finish_is_idempotent() -> void:
 	check(seen == [false], "results %s, expected exactly one loss" % [seen])
 
 
-func test_main_lists_levels() -> void:
-	var main: Control = load("res://scenes/main.tscn").instantiate()
+func test_the_main_scene_opens_on_home() -> void:
+	var main = load("res://scenes/main.tscn").instantiate()
 	world.add_child(main)
+	check(main.page == MAIN.Page.HOME, "the main scene must open on the home page, not %s" % main.page)
+	check(stage_rows(main).is_empty(), "the home page must list no levels or training stages")
+	main.free()
+
+
+func test_official_lists_every_level() -> void:
+	var list := menu(MAIN.Page.OFFICIAL)
+	world.add_child(list)
 	var levels := Progress.levels()
-	var buttons := main.find_children("*", "Button", true, false).filter(func(b: Button): return b.text.begins_with("Level"))
-	check(buttons.size() == levels.size(), "%d buttons for %d levels" % [buttons.size(), levels.size()])
+	check(stage_rows(list).size() == levels.size(), "%d rows for %d levels" % [stage_rows(list).size(), levels.size()])
+	list.free()
 
 
 ## A scored level: like `level`, but with an id so wins are saved.
@@ -110,30 +119,40 @@ func test_clock_waits_for_first_thrust() -> void:
 	check(absf(lvl.ship.flight_time - 1.0) < 0.05, "clock %f s after 1 s of thrust" % lvl.ship.flight_time)
 
 
-func level_buttons(main: Control) -> Dictionary:
-	var by_level := {}
-	for button: Button in main.find_children("*", "Button", true, false):
-		if button.text.begins_with("Level") or button.text.begins_with("Training"):
-			by_level[button.text.get_slice(" · ", 0)] = button
-	return by_level
+## The stage rows under `node`, by name ("Level 01", "Training 2"); the home page's Training button is not one.
+func stage_rows(node: Node) -> Dictionary:
+	var rows := {}
+	for button: Button in node.find_children("*", "Button", true, false):
+		var label := button.text.get_slice(" · ", 0)
+		if label.begins_with("Level ") or (label.begins_with("Training ") and label.get_slice(" ", 1).is_valid_int()):
+			rows[label] = button
+	return rows
+
+
+## The first button under `node` whose label starts with `prefix`, or null.
+func button_starting(node: Node, prefix: String) -> Button:
+	for button: Button in node.find_children("*", "Button", true, false):
+		if button.text.begins_with(prefix):
+			return button
+	return null
 
 
 func test_menu_locks_levels() -> void:
-	var main: Control = load("res://scenes/main.tscn").instantiate()
-	world.add_child(main)
-	var buttons := level_buttons(main)
-	check(not buttons.has("Training 1"), "the main menu must not list training stages")
-	check(not buttons["Level 01"].disabled and buttons["Level 02"].text.contains("locked"), "fresh progress: only level 1 open")
-	main.queue_free()
-	main = load("res://scenes/main.gd").menu(true)
-	world.add_child(main)
-	buttons = level_buttons(main)
+	var list := menu(MAIN.Page.OFFICIAL)
+	world.add_child(list)
+	var buttons := stage_rows(list)
+	check(not buttons.has("Training 1"), "the official list must not list training stages")
+	check(not buttons["Level 01"].disabled and buttons["Level 02"].disabled, "fresh progress: only level 1 open")
+	list.queue_free()
+	var training := menu(MAIN.Page.TRAINING)
+	world.add_child(training)
+	buttons = stage_rows(training)
 	check(not buttons.has("Level 01"), "the training list must not list levels")
 	check(not buttons["Training 1"].disabled and buttons["Training 2"].disabled, "fresh progress: only training 1 open")
 	Progress.record_win("tutorial_1", 1780, 30.0)
 	await frames(1)
-	buttons = level_buttons(main)
-	check(not buttons["Training 2"].disabled, "winning training 1 must open training 2 on the menu")
+	buttons = stage_rows(training)
+	check(not buttons["Training 2"].disabled, "winning training 1 must open training 2 on the list")
 	check(buttons["Training 1"].text.contains("1780"), "best points missing: %s" % buttons["Training 1"].text)
 
 
@@ -384,8 +403,8 @@ func test_resume_returns_focus_to_the_caption() -> void:
 	check(focused() == ok, "after resuming, focus must return to OK, not %s" % focused())
 
 
-func menu(show_training: bool) -> Control:
-	return load("res://scenes/main.gd").menu(show_training)
+func menu(page: int) -> Control:
+	return MAIN.menu(page)
 
 
 ## An action sent through Input, as a gamepad button or a mapped key would.
@@ -401,21 +420,30 @@ func focused() -> Control:
 	return tree.root.gui_get_focus_owner()
 
 
-func test_menu_opens_with_focus() -> void:
-	var main := menu(false)
-	world.add_child(main)
+func test_home_opens_with_official_focused() -> void:
+	var home := menu(MAIN.Page.HOME)
+	world.add_child(home)
 	var focus := focused()
-	check(focus is Button and focus.text.begins_with("Level 01"), "the main menu must focus the first level, not %s" % focus)
+	check(focus is Button and focus.text.begins_with("Official"), "the home page must focus Official levels, not %s" % focus)
 	check(focus and not focus.has_focus(true), "a screen must open with its focus ring hidden, for phones")
-	main.free()
-	var training := menu(true)
+	home.free()
+
+
+func test_list_pages_focus_their_first_stage() -> void:
+	var list := menu(MAIN.Page.OFFICIAL)
+	world.add_child(list)
+	var focus := focused()
+	check(focus is Button and focus.text.begins_with("Level 01"), "the official list must focus the first level, not %s" % focus)
+	list.free()
+	var training := menu(MAIN.Page.TRAINING)
 	world.add_child(training)
 	focus = focused()
 	check(focus is Button and focus.text.begins_with("Training 1"), "the training list must focus the first stage, not %s" % focus)
+	training.free()
 
 
 func test_overlay_closes_on_cancel_and_restores_focus() -> void:
-	var main := menu(false)
+	var main := menu(MAIN.Page.HOME)
 	world.add_child(main)
 	var settings: Button = main.find_children("*", "Button", true, false).filter(func(b: Button): return b.text == "Settings")[0]
 	settings.grab_focus()
@@ -429,7 +457,7 @@ func test_overlay_closes_on_cancel_and_restores_focus() -> void:
 
 
 func test_overlay_keeps_focus_inside() -> void:
-	var main := menu(false)
+	var main := menu(MAIN.Page.HOME)
 	world.add_child(main)
 	var overlay := Overlay.open(main, "Test")
 	for i in 8:
@@ -438,15 +466,70 @@ func test_overlay_keeps_focus_inside() -> void:
 	check(overlay.is_ancestor_of(focused()), "focus left the overlay for %s" % focused())
 
 
-func test_cancel_on_training_list_returns_to_menu() -> void:
-	var main := menu(true)
-	world.add_child(main)
+func test_cancel_on_a_list_returns_home() -> void:
+	for page in [MAIN.Page.OFFICIAL, MAIN.Page.TRAINING]:
+		var list := menu(page)
+		world.add_child(list)
+		send_action(&"ui_cancel")
+		await frames(2)
+		var scene := tree.current_scene
+		check(scene != null and scene.scene_file_path == "res://scenes/main.tscn" and scene.page == MAIN.Page.HOME, "ui_cancel on a list must open the home page: %s" % scene)
+		list.free()
+		if scene:
+			scene.free()
+			tree.current_scene = null
+
+
+func test_cancel_on_home_does_nothing() -> void:
+	var home := menu(MAIN.Page.HOME)
+	world.add_child(home)
 	send_action(&"ui_cancel")
 	await frames(2)
-	var scene := tree.current_scene
-	check(scene != null and scene.scene_file_path == "res://scenes/main.tscn" and not scene.training, "ui_cancel on the training list must open the main menu: %s" % scene)
-	if scene:
-		scene.free()
+	check(tree.current_scene == null and home.is_inside_tree(), "ui_cancel on home must leave it open")
+	home.free()
+
+
+func test_home_opens_each_list_and_back_returns_home() -> void:
+	for entry in [["Official", MAIN.Page.OFFICIAL], ["Training", MAIN.Page.TRAINING]]:
+		var home := menu(MAIN.Page.HOME)
+		world.add_child(home)
+		button_starting(home, entry[0]).pressed.emit()
+		home.free()
+		await frames(2)
+		var list = tree.current_scene
+		check(list != null and list.page == entry[1], "%s must open its list: %s" % [entry[0], list])
+		if list == null:
+			continue
+		button_starting(list, "Back").pressed.emit()
+		await frames(2)
+		var back = tree.current_scene
+		check(back != null and back.page == MAIN.Page.HOME, "Back must return to home: %s" % back)
+		if back:
+			back.free()
+			tree.current_scene = null
+
+
+func test_menu_from_a_level_reopens_the_official_list() -> void:
+	var lvl := scored_level(Vector2(3000, 0))
+	await frames(2)
+	lvl.hud.menu_requested.emit()
+	await frames(2)
+	var list = tree.current_scene
+	check(list != null and list.page == MAIN.Page.OFFICIAL, "Menu from an official level must reopen the official list: %s" % list)
+	if list:
+		list.free()
+		tree.current_scene = null
+
+
+func test_menu_from_a_training_stage_reopens_the_training_list() -> void:
+	var lvl := training_stage(Progress.trainings()[0])
+	await frames(2)
+	lvl.hud.menu_requested.emit()
+	await frames(2)
+	var list = tree.current_scene
+	check(list != null and list.page == MAIN.Page.TRAINING, "Menu from a training stage must reopen the training list: %s" % list)
+	if list:
+		list.free()
 		tree.current_scene = null
 
 
@@ -553,9 +636,9 @@ func test_ui_pause_settings_keeps_flight_frozen_until_resume() -> void:
 	check(not tree.paused and lvl.ship.position != stopped_at, "a second Esc resumes flight")
 
 
-func test_ui_menu_focus_advances_to_unfinished_level() -> void:
+func test_official_focus_advances_to_unfinished_level() -> void:
 	Progress.record_win("level_01", 1200, 10.0)
-	var main := menu(false)
+	var main := menu(MAIN.Page.OFFICIAL)
 	world.add_child(main)
 	var next := focused()
 	check(next is Button and next.text.begins_with("Level 02"), "returning after a clear must select the next unfinished level")
@@ -565,7 +648,7 @@ func test_ui_menu_focus_advances_to_unfinished_level() -> void:
 	check(next is Button and next.text.begins_with("Level 03"), "progress refresh must advance the suggested stage")
 	main.free()
 	Progress.unlock_all = true
-	main = menu(false)
+	main = menu(MAIN.Page.OFFICIAL)
 	world.add_child(main)
 	next = focused()
 	check(next is Button and next.text.begins_with("Level 03"), "unlocking all must not suggest replaying a finished stage")

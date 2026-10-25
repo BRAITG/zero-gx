@@ -39,6 +39,8 @@ Every push to `master` publishes a debug-signed APK as a prerelease on the [Rele
 
 Controls: touch and hold anywhere. The ship turns toward your finger and thrusts while you hold; release to coast. Other touch layouts, a keyboard, a mouse and a gamepad also work; see [Controls](#controls).
 
+The home screen separates **Official levels**, **Community levels** (where supported), and **Training**, with My levels, Settings and Credits in a smaller utility row. Official levels and Training open their own stage-selection grids; Back returns home. Menu content stays inside a centered 16:9 frame, fitted within the device's reported safe area on mobile. Backgrounds, gameplay, the flight HUD and the editor canvas still use the full screen.
+
 ## Play or edit on a computer
 
 1. Install [Godot 4.7.2](https://godotengine.org/download/archive/4.7.2-stable/).
@@ -103,7 +105,7 @@ The check fails above 1,000 draw calls at rest or with streaks in either directi
 
 Players share levels and compete on boards through a Cloudflare Worker with a D1 database and R2 storage, under [`server/`](server/). Setup, routes and the operations runbook are in [`server/README.md`](server/README.md). Submitted levels live in a separate public repository, `BRAITG/zero-gx-levels`, created from the template in [`levels-repo/`](levels-repo/). The design is in [`docs/superpowers/specs/2026-10-16-community-design.md`](docs/superpowers/specs/2026-10-16-community-design.md).
 
-**In the app (Android Play only).** On Android with Play Games, the main menu has a **Community** button beside My levels. The first tap signs in with Play Games; **Community** then lists the Top and New levels (50 a page), and **Play** downloads a level, checks it against the list and plays it, also offline once it is cached. **Community → Settings → Account → Delete my community account** removes your scores, likes, reports and name from the server after confirmation. Windows, macOS and Linux builds have none of this and never contact the server. Setup for sign-in is in [`docs/release/play-games-setup.md`](docs/release/play-games-setup.md).
+**In the app (Android Play only).** On Android with Play Games, the home screen has a prominent **Community levels** entry below Official levels. The first tap signs in with Play Games; the Community screen then lists the Top and New levels (50 a page), and **Play** downloads a level, checks it against the list and plays it, also offline once it is cached. **Community levels → Settings → Account → Delete my community account** removes your scores, likes, reports and name from the server after confirmation. Windows, macOS and Linux builds have none of this and never contact the server. Setup for sign-in is in [`docs/release/play-games-setup.md`](docs/release/play-games-setup.md).
 
 **Publishing a level.** In **My levels**, **Publish** appears on the second row, even before a draft's first Test. Invalid drafts show their validation errors instead of starting publication. If your last successful app-made Test recording still matches the draft, choose **Use previous run** or **Play again**; otherwise choose **Play to prove it**. These flights use the existing Test recorder without recording a score; Retry keeps the Publish intent. A win offers **Publish**, opening the final confirmation back in My levels; losing or leaving never opens it or sends anything. The confirmation asks for a **Suggested difficulty** (Easy, Normal, Hard or Expert), which **Submit for review** waits for. Only **Submit for review** uploads the level, the finishing recording and that suggestion, which travels beside the level and never changes it (signing in if needed). A moderator must approve it, and chooses the **Reviewed** difficulty, before it appears in Community. The row then shows Submitted, Pending, Approved vN, or Rejected with the moderator's comment, without another Publish until the draft changes. Editing invalidates the old proof; desktop Test, local demos and import/export are unchanged.
 
@@ -125,7 +127,7 @@ Every run of an official level or a draft is recorded as a demo (tutorials are n
 
 ## Scoring and progress
 
-A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Training and levels unlock independently, each in order. The menu shows stage titles and labelled best scores, highlights and focuses the next unfinished unlocked stage, and moves completed Training below the levels. Best points are saved in `user://progress.cfg` (`scripts/progress.gd`). The Tune panel can unlock every stage for the session and reset saved progress.
+A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Training and levels unlock independently, each in order. The Official levels and Training lists show stage titles and labelled best scores, and highlight and focus the next unfinished unlocked stage. Training's home entry marks completion once every training stage is finished. The flight's Menu action returns to its own selection list. Best points are saved in `user://progress.cfg` (`scripts/progress.gd`). The Tune panel can unlock every stage for the session and reset saved progress.
 
 ## Tuning
 

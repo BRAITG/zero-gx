@@ -195,8 +195,9 @@ static func leave_to(tree: SceneTree, level_id: String, testing: bool, publishin
 		tree.change_scene_to_node(MyLevelsScreen.new())
 	elif level_id.begins_with(Community.STAGE_PREFIX):
 		tree.change_scene_to_node(CommunityScreen.new())
-	elif level_id.begins_with("tutorial_"):
-		tree.change_scene_to_node(load("res://scenes/main.gd").menu(true))
+	elif level_id.begins_with("tutorial_") or level_id.begins_with("level_"):
+		var main := load("res://scenes/main.gd")
+		tree.change_scene_to_node(main.menu(main.Page.TRAINING if level_id.begins_with("tutorial_") else main.Page.OFFICIAL))
 	else:
 		tree.change_scene_to_file(MENU)
 

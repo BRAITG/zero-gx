@@ -77,10 +77,11 @@ func _build(title: String) -> void:
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(backdrop)
+	var frame := Style.menu_frame(self)
 	var column := VBoxContainer.new()
 	column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 24)
 	column.add_theme_constant_override("separation", 16)
-	add_child(column)
+	frame.add_child(column)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 24)
 	column.add_child(top)
