@@ -43,6 +43,39 @@ func busy(button: Button, label: String, work: Callable) -> void:
 		button.disabled = false
 
 
+## A shared content frame; backgrounds and modal input blockers stay outside it.
+func menu_frame(parent: Node) -> Control:
+	var frame := MenuFrame.new()
+	parent.add_child(frame)
+	return frame
+
+
+## Fit menu content without stretching it or entering cutout/system-bar insets.
+static func menu_rect(viewport: Rect2, safe_area := Rect2()) -> Rect2:
+	var available := viewport.intersection(safe_area) if safe_area.has_area() else viewport
+	var fitted := available.size
+	fitted.x = minf(fitted.x, fitted.y * 16.0 / 9.0)
+	fitted.y = minf(fitted.y, fitted.x * 9.0 / 16.0)
+	return Rect2(available.position + (available.size - fitted) / 2.0, fitted)
+
+
+class MenuFrame extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _ready() -> void:
+		get_viewport().size_changed.connect(_layout)
+		_layout()
+
+	func _layout() -> void:
+		var safe := Rect2()
+		if OS.has_feature("mobile"):
+			safe = get_viewport().get_screen_transform().affine_inverse() * Rect2(DisplayServer.get_display_safe_area())
+		var area := Style.menu_rect(get_viewport_rect(), safe)
+		position = area.position
+		size = area.size
+
+
 ## Bright things (lasers, flames, the ship) glow. Only the game world blooms: HUD and menus sit
 ## on canvas layers above `background_canvas_max_layer` and stay crisp.
 func _bloom() -> WorldEnvironment:

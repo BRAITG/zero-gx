@@ -4,6 +4,7 @@ extends "res://tests/test_case.gd"
 const LEVEL_ID := "lvl_abcdefghij"
 const SESSION := {"token": "tok1", "player": {"id": "p_1", "name": "Pilot"}}
 const DELETE_WARNING := "This removes your scores, likes, reports and your name from Zero-GX's servers. Levels you shared stay, shown as by Deleted player."
+const MAIN := preload("res://scenes/main.gd")
 
 var pilot := FakePlatform.new()
 
@@ -126,7 +127,7 @@ func _settings(screen: CommunityScreen) -> Overlay:
 
 
 func _menu() -> Control:
-	var main: Control = load("res://scenes/main.gd").menu(false)
+	var main: Control = MAIN.menu(MAIN.Page.HOME)
 	world.add_child(main)
 	return main
 
@@ -148,15 +149,19 @@ func _send_action(action: StringName, pressed := true) -> void:
 func test_the_main_menu_has_no_community_button_on_desktop() -> void:
 	var main := _menu()
 	check(Community.platform is CommunityPlatform and not Community.available(), "control: the default platform is unavailable")
-	check(_buttons(main, "Community").is_empty(), "desktop must not show Community")
+	check(_buttons(main, "Community levels").is_empty(), "desktop must not show Community")
 	check(not _buttons(main, "My levels").is_empty(), "control: My levels stays")
 
 
-func test_the_main_menu_shows_community_next_to_my_levels_where_available() -> void:
+func test_community_is_offered_on_home_and_not_on_the_lists() -> void:
 	_fake()
-	var main := _menu()
-	var labels: Array = main.find_children("*", "Button", true, false).map(func(b: Button) -> String: return b.text)
-	check(labels.find("Community") == labels.find("My levels") + 1 and labels.has("Community"), "Community must follow My levels: %s" % [labels])
+	var home := _menu()
+	check(not _buttons(home, "Community levels").is_empty(), "home must offer Community where it is available")
+	home.free()
+	var list := MAIN.menu(MAIN.Page.OFFICIAL)
+	world.add_child(list)
+	check(_buttons(list, "Community levels").is_empty(), "the official list must not offer Community")
+	list.free()
 
 
 func test_the_first_tap_on_community_signs_in_and_opens_it() -> void:
@@ -165,7 +170,7 @@ func test_the_first_tap_on_community_signs_in_and_opens_it() -> void:
 	net.answer("POST", "/session", 200, SESSION)
 	net.answer("GET", "/levels", 200, [])
 	var main := _menu()
-	_buttons(main, "Community")[0].pressed.emit()
+	_buttons(main, "Community levels")[0].pressed.emit()
 	await frames(2)
 	check(Community.signed_in(), "the tap must sign in")
 	check(tree.current_scene is CommunityScreen, "Community must open: %s" % tree.current_scene)
@@ -177,11 +182,27 @@ func test_a_failed_sign_in_shows_why_and_the_menu_stays() -> void:
 	pilot.sign_in_error = "Play Games sign-in was cancelled"
 	net.answer("GET", "/nonce", 200, {"nonce": "n1"})
 	var main := _menu()
-	_buttons(main, "Community")[0].pressed.emit()
+	_buttons(main, "Community levels")[0].pressed.emit()
 	await frames(2)
 	var sheets := main.find_children("*", "Overlay", true, false)
 	check(sheets.size() == 1 and "Play Games sign-in was cancelled" in _texts(sheets[0]), "the reason must show in a sheet: %s" % [sheets.map(_texts)])
 	check(tree.current_scene == null and net.count("POST", "/session") == 0, "the menu must stay and no session be posted")
+
+
+func test_a_failed_sign_in_gives_the_community_button_back() -> void:
+	var net := _fake()
+	pilot.sign_in_error = "Play Games sign-in was cancelled"
+	pilot.sign_in_held = true
+	net.answer("GET", "/nonce", 200, {"nonce": "n1"})
+	var main := _menu()
+	var button: Button = _buttons(main, "Community levels")[0]
+	button.pressed.emit()
+	check(button.disabled, "while it waits the button must be off")
+	pilot.release_sign_in()
+	await frames(2)
+	check(not button.disabled and button.text == "Community levels", "a failed sign-in must give the button back: %s" % button.text)
+	check(main.find_children("*", "Overlay", true, false).size() == 1, "the failure must show in a sheet")
+	main.free()
 
 
 func test_offline_with_an_expired_session_opens_community_and_plays_from_the_cache() -> void:
@@ -202,7 +223,7 @@ func test_offline_with_an_expired_session_opens_community_and_plays_from_the_cac
 	net.answer("GET", "/nonce", 0)  # the menu's sign-in
 	net.answer("GET", "/nonce", 0)  # the screen's list
 	var main := _menu()
-	_buttons(main, "Community")[0].pressed.emit()
+	_buttons(main, "Community levels")[0].pressed.emit()
 	await frames(2)
 	var screen := tree.current_scene
 	check(screen is CommunityScreen, "offline must still open Community: %s" % screen)
@@ -831,12 +852,12 @@ func test_the_community_button_says_signing_in_and_is_off_while_it_waits() -> vo
 	net.answer("GET", "/levels", 200, [])
 	net.held = true
 	var main := _menu()
-	var button: Button = _buttons(main, "Community")[0]
+	var button: Button = _buttons(main, "Community levels")[0]
 	button.pressed.emit()
 	check(button.text == "Signing in…" and button.disabled, "while it waits: %s, disabled %s" % [button.text, button.disabled])
 	net.release()
 	await frames(2)
-	check(button.text == "Community" and not button.disabled, "afterwards the button is as before: %s" % button.text)
+	check(button.text == "Community levels" and not button.disabled, "afterwards the button is as before: %s" % button.text)
 	check(tree.current_scene is CommunityScreen, "Community must open: %s" % tree.current_scene)
 	_leave_scene()
 
