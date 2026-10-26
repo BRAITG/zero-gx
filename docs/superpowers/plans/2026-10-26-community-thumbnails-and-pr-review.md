@@ -253,9 +253,9 @@ func test_community_rows_show_a_sketch_thumbnail() -> void:
 
   ![Level render](https://raw.githubusercontent.com/BRAITG/zero-gx-levels/previews/<number>/<head_sha>.png)
 
-  [Watch the proof run in the browser](https://braitg.github.io/zero-gx/viewer/?level=https://raw.githubusercontent.com/BRAITG/zero-gx-levels/<head_sha>/levels/<level>/v<version>.json&demo=https://raw.githubusercontent.com/BRAITG/zero-gx-levels/<head_sha>/proof/<level>/v<version>.demo.gz)
+  [Watch the proof run in the browser](https://braitg.dev/zero-gx/viewer/?level=https://raw.githubusercontent.com/BRAITG/zero-gx-levels/<head_sha>/levels/<level>/v<version>.json&demo=https://raw.githubusercontent.com/BRAITG/zero-gx-levels/<head_sha>/proof/<level>/v<version>.demo.gz)
   ```
-  When the PR is closed or merged (`pull_request` `closed` trigger in the same workflow, trusted context), delete `<number>/` from `previews`.
+  The image and the comment stay after the PR is merged or closed (owner ruling: no cleanup job).
 
 - [ ] **Step 1: Write the workflow** with all actions pinned by SHA like `check.yml`.
 
@@ -314,7 +314,7 @@ func test_viewer_refuses_a_demo_of_another_level() -> void:
 
 - [ ] **Step 6: Enable Pages** on `BRAITG/zero-gx` (Settings → Pages → Source: GitHub Actions). User step; ask once, then continue.
 
-- [ ] **Step 7: Add the `web` job** to `build.yml`; push; expected: the job deploys and `https://braitg.github.io/zero-gx/viewer/` loads.
+- [ ] **Step 7: Add the `web` job** to `build.yml`; push; expected: the job deploys and `https://braitg.dev/zero-gx/viewer/` loads.
 
 - [ ] **Step 8: Commit** `feat(web): browser demo viewer on GitHub Pages`.
 

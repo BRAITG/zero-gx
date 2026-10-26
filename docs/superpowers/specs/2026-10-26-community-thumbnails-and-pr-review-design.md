@@ -86,8 +86,8 @@ workflow, so it is part of what the moderator reviews and merges.
    - commits `levels/<id>/v<N>.sketch.json` to the PR's branch (the bot's branch in this repository) if
      the file differs from what is there. The sketch is now part of the submission;
    - commits `preview.png` to the orphan branch `previews` as `<pr>/<head_sha>.png` (earlier SHAs of the
-     same PR are deleted in the same commit, so the branch holds one image per open PR; merged and closed
-     PRs are cleaned up by the same job when it runs for them);
+     same PR are deleted in the same commit, so the branch holds one image per PR; images and comments
+     stay after the PR is merged or closed);
    - posts, or edits, the one comment it owns on the PR (found by a hidden marker): the render as an
      image, the viewer link, and the head SHA it was made from. An updated PR gets an updated comment;
      a stale proof is never shown because the link carries the SHA.
@@ -120,7 +120,7 @@ deploy step; Pages is enabled on `zero-gx` with the Actions source).
   screen. Any failure shows the reason in plain text. Nothing else in the game is reachable from the
   viewer: no community sign-in, no progress, no sounds.
 - The PR comment links
-  `https://braitg.github.io/zero-gx/viewer/?level=<raw level URL at head SHA>&demo=<raw demo URL at head SHA>`.
+  `https://braitg.dev/zero-gx/viewer/?level=<raw level URL at head SHA>&demo=<raw demo URL at head SHA>`.
   The export is about 30 MB on first load and cached by the browser afterwards.
 - The viewer is also useful outside PRs (a moderator can paste any two such URLs), but nothing else
   depends on it.
