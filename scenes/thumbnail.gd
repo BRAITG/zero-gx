@@ -36,7 +36,7 @@ static func of_sketch(value: Variant) -> Thumbnail:
 	return thumbnail
 
 
-## True for a sketch whose bounds are four numbers with a positive width and height: all a drawing needs.
+## True for a sketch whose bounds are four numbers with a width and height of at least 1 (a real level's are larger): all a drawing needs, and a hostile sketch cannot scale it to a crawl.
 static func _has_bounds(data: Dictionary) -> bool:
 	var box: Variant = data.get("bounds")
 	if not (box is Array and box.size() == 4):
@@ -44,7 +44,7 @@ static func _has_bounds(data: Dictionary) -> bool:
 	for value in box:
 		if not _is_number(value):
 			return false
-	return box[2] > 0 and box[3] > 0
+	return box[2] >= 1 and box[3] >= 1
 
 
 static func _is_number(value: Variant) -> bool:
@@ -297,7 +297,7 @@ func _draw_sketch() -> void:
 		if not (_is_point(body.get("position")) and _is_number(body.get("radius"))):
 			continue
 		var at := _fit(body.get("position"))
-		var radius := maxf(4.0, float(body.get("radius")) * _scale())
+		var radius := clampf(float(body.get("radius")) * _scale(), 4.0, CANVAS.y)  # the cap keeps a hostile radius from turning a star's flares into billions of draws
 		match body.get("kind"):
 			"planet": _planet(at, radius)
 			"black_hole": _black_hole(at, radius)

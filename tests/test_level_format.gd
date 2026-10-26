@@ -235,7 +235,7 @@ func full_level() -> Dictionary:
 func test_sketch_of_a_maximal_level_fits() -> void:
 	var sketch := LevelFormat.sketch(full_level())
 	check(LevelFormat.sketch_json(sketch).length() < 2048, "maximal level must fit")
-	check(not sketch.walls.is_empty(), "walls survive the cap while asteroids can go: %d walls" % sketch.walls.size())
+	check(not sketch.walls.is_empty(), "at least one wall survives the cap: %d walls" % sketch.walls.size())
 
 
 func test_sketch_of_a_level_full_of_pickups_and_bodies_fits() -> void:
@@ -256,3 +256,30 @@ func test_sketch_drops_a_straight_run_and_keeps_corners() -> void:
 	data.walls = [{"kind": "blue", "points": [[0, 500], [100, 500], [200, 500], [300, 500], [300, 900]]}]
 	var kept: Array = LevelFormat.sketch(data).walls[0].points
 	check(kept == [[0, 500], [300, 500], [300, 900]], "a straight run collapses to its ends and the corner stays: %s" % [kept])
+
+
+func test_a_cut_takes_asteroids_before_walls() -> void:
+	var data := minimal()
+	data.walls = [{"kind": "blue", "points": [[0, 500], [300, 900]]}, {"kind": "red", "points": [[0, -500], [300, -900]]}]
+	data.asteroids = []
+	for i in LevelFormat.MAX_ASTEROIDS:
+		data.asteroids.append({"position": [i * 600 - 50000, (i * 7907) % 90000 - 45000]})
+	var sketch := LevelFormat.sketch(data)
+	check(sketch.asteroids.size() < LevelFormat.MAX_ASTEROIDS, "the asteroids alone overflow, so some are cut: %d left" % sketch.asteroids.size())
+	check(sketch.walls == data.walls, "every wall survives while asteroids are cut: %s" % [sketch.walls])
+
+
+func test_sketch_keeps_closed_only_on_a_closed_wall() -> void:
+	var data := minimal()
+	data.walls = [{"kind": "blue", "points": [[0, 500], [300, 500], [300, 900]], "closed": true}, {"kind": "red", "points": [[0, -500], [300, -500]]}]
+	var walls: Array = LevelFormat.sketch(data).walls
+	check(walls[0].get("closed") == true, "a closed wall stays closed: %s" % [walls[0]])
+	check(not walls[1].has("closed"), "an open wall carries no closed key: %s" % [walls[1]])
+
+
+func test_sketch_bounds_grow_by_the_ships_radius() -> void:
+	var data := minimal()  # ship at [0, 0], goal at [3000, 0]
+	data.walls = [{"kind": "blue", "points": [[-400, -200], [300, 500]]}]
+	var bounds: Array = LevelFormat.sketch(data).bounds
+	check(bounds[0] == roundi(-400 - Ship.RADIUS) and bounds[1] == roundi(-200 - Ship.RADIUS), "the box starts a ship radius before the lowest point: %s" % [bounds])
+	check(bounds[0] + bounds[2] == roundi(3000 + Ship.RADIUS) and bounds[1] + bounds[3] == roundi(500 + Ship.RADIUS), "and ends a ship radius after the highest: %s" % [bounds])
