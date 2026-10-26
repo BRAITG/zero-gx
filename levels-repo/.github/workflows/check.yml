@@ -78,7 +78,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: BRAITG/zero-gx
-          ref: feat/community-previews  # TODO: master once #42 and this branch merge
+          ref: master
           path: tool
           persist-credentials: false
       - name: Cache Godot
