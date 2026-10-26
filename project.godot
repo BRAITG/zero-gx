@@ -6,6 +6,7 @@ config_version=5
 config/name="Zero-GX"
 config/icon="res://assets/icon.svg"
 run/main_scene="res://scenes/main.tscn"
+run/main_scene.web="res://scenes/viewer_main.tscn"
 config/features=PackedStringArray("4.7", "GL Compatibility")
 config/quit_on_go_back=false
 
