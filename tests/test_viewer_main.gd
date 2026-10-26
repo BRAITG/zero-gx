@@ -36,3 +36,16 @@ func test_viewer_refuses_files_that_are_not_a_level_or_a_demo() -> void:
 	check(viewer.start(FileAccess.get_file_as_bytes("res://fixtures/levels/invalid.planet_radius.json"), demo_01) == "The level file is not a valid Zero-GX level.", "an invalid level is refused")
 	check(viewer.start(level_01, "not a demo".to_utf8_buffer()) == "The demo file is not a valid Zero-GX demo.", "text is not a demo")
 	check(viewer.find_children("*", "DemoViewer", true, false).is_empty(), "nothing plays after a refusal")
+
+
+func test_viewer_refuses_oversized_bodies() -> void:
+	var viewer := ViewerMain.new()
+	world.add_child(viewer)
+	var level_01 := FileAccess.get_file_as_bytes("res://fixtures/levels/level_01.json")
+	var demo_01 := FileAccess.get_file_as_bytes("res://fixtures/demos/level_01.demo.gz")
+	var padded_level := level_01.duplicate()  # still valid JSON: only the size is wrong
+	padded_level.append_array(" ".repeat(LevelFormat.MAX_BYTES).to_utf8_buffer())
+	check(viewer.start(padded_level, demo_01) == "The level file is not a valid Zero-GX level.", "a level over the size cap is refused")
+	var padded_demo := demo_01.duplicate()
+	padded_demo.resize(Demo.MAX_BYTES + 1)
+	check(viewer.start(level_01, padded_demo) == "The demo file is not a valid Zero-GX demo.", "a demo over the size cap is refused")

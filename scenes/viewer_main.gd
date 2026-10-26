@@ -1,6 +1,6 @@
 class_name ViewerMain
 extends Control
-## The browser page at https://braitg.github.io/zero-gx/viewer/: plays a community level's demo. `?level=<URL>&demo=<URL>` name the two
+## The browser page at https://braitg.dev/zero-gx/viewer/: plays a community level's demo. `?level=<URL>&demo=<URL>` name the two
 ## files; they must be raw files of BRAITG/zero-gx-levels at a commit. A Godot run off the web reads `level=<URL> demo=<URL>` after `--`.
 
 const SCENE := "res://scenes/viewer_main.tscn"
@@ -45,8 +45,10 @@ func _ready() -> void:
 ## Shows the demo played over its level and returns "", or shows why it cannot be and returns that reason.
 func start(level_bytes: PackedByteArray, demo_bytes: PackedByteArray) -> String:
 	var json := JSON.new()
-	var data: Dictionary = json.data if json.parse(level_bytes.get_string_from_utf8()) == OK and json.data is Dictionary else {}
-	var demo := Demo.decode(demo_bytes)
+	var data := {}
+	if level_bytes.size() <= LevelFormat.MAX_BYTES and json.parse(level_bytes.get_string_from_utf8()) == OK and json.data is Dictionary:  # the size is checked before the parse
+		data = json.data
+	var demo := Demo.decode(demo_bytes)  # null for a body over Demo.MAX_BYTES, before anything is decompressed
 	var reason := ""
 	if data.is_empty() or not LevelFormat.validate(data).is_empty():
 		reason = BAD_LEVEL
