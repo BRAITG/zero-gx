@@ -32,10 +32,13 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
 
-  # Renders what a submission PR changes, for a moderator to look at. It runs the game's own tools on the level and publishes
-  # sketch.json, preview.png and pr.json as an artifact.
+  # Renders what a submission PR changes, for a moderator to look at: it runs the game's own tools on the level and publishes
+  # sketch.json, preview.png and pr.json as an artifact. It runs even when `check` fails, because `check` fails until a moderator
+  # sets the difficulty label and the preview is what they choose it from. So its first step refuses any path a submission may
+  # not touch: a PR that `check` has not passed cannot plant tool/, out/ or symlinks for the steps after it.
   preview:
     needs: check
+    if: always() && needs.check.result != 'cancelled'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -47,6 +50,24 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Allow only submission paths
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          allowed='^(levels/lvl_[a-z0-9]{10}/(v[1-9][0-9]*\.json|v[1-9][0-9]*\.sketch\.json|meta\.json)|proof/lvl_[a-z0-9]{10}/v[1-9][0-9]*\.demo\.gz|hidden\.txt)$'
+          bad=$(git diff --name-only --diff-filter=ACMRD "origin/$BASE_REF...HEAD" | grep -Ev "$allowed" | sed 's/^/  /' || true)
+          if [ -n "$bad" ]; then
+            echo "::error::The pull request changes paths a submission may not touch:"
+            echo "$bad"
+            exit 1
+          fi
+          # only regular files: the tools below would follow a symlink out of the checkout
+          odd=$(git diff -z --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" | xargs -0 -r git ls-files -s -- | grep -v '^100644 ' | sed 's/^/  /' || true)
+          if [ -n "$odd" ]; then
+            echo "::error::The pull request adds something that is not a regular file:"
+            echo "$odd"
+            exit 1
+          fi
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: BRAITG/zero-gx
@@ -75,25 +96,31 @@ jobs:
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          files=$(git diff --name-only --diff-filter=A "origin/$BASE_REF...$HEAD_SHA" | grep -E '^levels/lvl_[a-z0-9]{10}/v[0-9]+\.json$' || true)
-          if [ "$(printf '%s' "$files" | grep -c .)" != 1 ]; then
-            echo "::error::Expected exactly one added level file, found: ${files:-none}"
+          files=$(git diff --name-only --diff-filter=A "origin/$BASE_REF...$HEAD_SHA" | grep -E '^levels/lvl_[a-z0-9]{10}/v[1-9][0-9]*\.json$' || true)
+          n=$(printf '%s' "$files" | grep -c . || true)
+          if [ "$n" = 0 ]; then  # hidden.txt, or a sketch or proof only
+            echo "::notice::No level added; nothing to preview."
+            exit 0
+          fi
+          if [ "$n" != 1 ]; then
+            echo "::error::Expected one added level file, found: ${files//$'\n'/ }"
             exit 1
           fi
           level=$(basename "$(dirname "$files")")
           version=${files##*/v}
           version=${version%.json}
           mkdir out
-          ~/godot/godot --headless --path tool -s res://tools/sketch_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/sketch.json"
+          timeout -k 10 120 ~/godot/godot --headless --path tool -s res://tools/sketch_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/sketch.json"
           if [ -e "levels/$level/v$version.sketch.json" ] && ! cmp -s "levels/$level/v$version.sketch.json" out/sketch.json; then
             echo "::error::The sketch in the pull request does not match the level."
             exit 1
           fi
-          xvfb-run -a ~/godot/godot --path tool --rendering-driver opengl3 -s res://tools/render_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/preview.png"
+          xvfb-run -a timeout -k 10 120 ~/godot/godot --path tool --rendering-driver opengl3 -s res://tools/render_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/preview.png"
           test -s out/sketch.json && test -s out/preview.png  # a -s script that fails to load still exits 0
           jq -n --argjson number "$PR_NUMBER" --arg head_sha "$HEAD_SHA" --arg level "$level" --argjson version "$version" \
             '{number: $number, head_sha: $head_sha, level: $level, version: $version}' > out/pr.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: hashFiles('out/pr.json') != ''
         with:
           name: preview-${{ github.event.pull_request.head.sha }}
           path: out
