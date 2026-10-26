@@ -4,7 +4,7 @@
 
 **Goal:** Community levels get a bird's-eye thumbnail drawn from a sketch derived in GitHub Actions, and a submission PR gets a rendered image and a browser player link in a comment.
 
-**Architecture:** The game owns sketch derivation (`LevelFormat.sketch`) and drawing (`Thumbnail.of_sketch`); a `pull_request` job in `zero-gx-levels` derives the sketch and renders the level with the Godot editor binary; a trusted `workflow_run` job commits the sketch to the PR branch, the image to a `previews` branch, and posts one comment. The Worker stores the sketch at merge and returns it in `GET /levels`. A Web export of a viewer-only scene on `zero-gx` GitHub Pages plays a proof run from raw URLs at a commit SHA.
+**Architecture:** The game owns sketch derivation (`LevelFormat.sketch`) and drawing (`Thumbnail.of_sketch`); a `pull_request` job in `zero-gx-levels` derives the sketch and renders the level with the Godot editor binary; a trusted `workflow_run` job commits the sketch to the PR branch, the image to a `previews` branch, and posts one comment. The Worker stores the sketch at merge and returns it in `GET /levels`. A Web export of a viewer-only scene, built and published by a workflow of `zero-gx-levels` on that repository's GitHub Pages, plays a proof run from raw URLs at a commit SHA.
 
 **Tech Stack:** Godot 4.7.2 (GDScript), Cloudflare Worker (TypeScript, D1, vitest), GitHub Actions (`xvfb-run`, `actions/github-script`), Godot Web export without threads.
 
@@ -253,7 +253,7 @@ func test_community_rows_show_a_sketch_thumbnail() -> void:
 
   ![Level render](https://raw.githubusercontent.com/BRAITG/zero-gx-levels/previews/<number>/<head_sha>.png)
 
-  [Watch the proof run in the browser](https://braitg.dev/zero-gx/viewer/?level=https://raw.githubusercontent.com/BRAITG/zero-gx-levels/<head_sha>/levels/<level>/v<version>.json&demo=https://raw.githubusercontent.com/BRAITG/zero-gx-levels/<head_sha>/proof/<level>/v<version>.demo.gz)
+  [Watch the proof run in the browser](https://braitg.dev/zero-gx-levels/viewer/?level=https://raw.githubusercontent.com/BRAITG/zero-gx-levels/<head_sha>/levels/<level>/v<version>.json&demo=https://raw.githubusercontent.com/BRAITG/zero-gx-levels/<head_sha>/proof/<level>/v<version>.demo.gz)
   ```
   The image and the comment stay after the PR is merged or closed (owner ruling: no cleanup job).
 
@@ -261,9 +261,7 @@ func test_community_rows_show_a_sketch_thumbnail() -> void:
 
 - [ ] **Step 2: Verify on the test PR** from Task 6: after `check.yml` completes, exactly one comment appears with a visible image and the viewer link; the PR branch gains `v<N>.sketch.json`; `check.yml` reruns and the comment is edited, not duplicated; `previews/<number>/` holds one PNG.
 
-- [ ] **Step 3: Verify cleanup**: close the test PR → `previews/<number>/` is gone.
-
-- [ ] **Step 4: Commit** `feat(levels-repo): preview comment with render and viewer link`.
+- [ ] **Step 3: Commit** `feat(levels-repo): preview comment with render and viewer link`.
 
 ---
 
@@ -271,7 +269,8 @@ func test_community_rows_show_a_sketch_thumbnail() -> void:
 
 **Files:**
 - Create: `scenes/viewer_main.gd`, `scenes/viewer_main.tscn` (root `Control` with the script)
-- Modify: `export_presets.cfg` (preset `Web`, `variant/thread_support=false`, `export_path="build/web/index.html"`, main scene override to `res://scenes/viewer_main.tscn` via `application/run/main_scene` feature override in `project.godot` for feature `web`), `.github/workflows/build.yml` (templates `web_nothreads_release.zip` in the unzip list, cache key suffix `-web`, a `web` job on push to `master`: export, `actions/upload-pages-artifact` from `build/web` under `viewer/`, `actions/deploy-pages`, permissions `pages: write`, `id-token: write`)
+- Modify: `export_presets.cfg` (preset `Web`, `variant/thread_support=false`, `export_path="build/web/index.html"`, main scene override to `res://scenes/viewer_main.tscn` via `application/run/main_scene` feature override in `project.godot` for feature `web`)
+- Create: `levels-repo/.github/workflows/viewer.yml` (the template of the workflow `zero-gx-levels` runs on `workflow_dispatch`, daily and on a push to `main` that changes it: checks out `BRAITG/zero-gx@master` into `tool`, cached Godot editor and `web_nothreads_release.zip`, exports the `Web` preset to `tool/build/pages/viewer/`, `actions/upload-pages-artifact`, `actions/deploy-pages`, permissions `pages: write`, `id-token: write`). Pages stays off on `BRAITG/zero-gx`: its site would shadow the organisation site's `/zero-gx/privacy/` page, which Google Play requires.
 - Test: `tests/test_viewer_main.gd` (new)
 
 **Interfaces:**
@@ -312,11 +311,11 @@ func test_viewer_refuses_a_demo_of_another_level() -> void:
 
 - [ ] **Step 5: Export locally** after installing the 4.7.2 web templates: `godot --headless --path . --export-release "Web" build/web/index.html`; serve `build/web` with `python3 -m http.server 8080`; open `http://localhost:8080/?level=<GOOD-style URL of a real merged level>&demo=<its proof>` in the browser tool; expected: the run plays; also open with no query → the refusal sentence shows. Check the console for errors from `GodotPlayGameServices` or `Community` autoloads; guard them with `OS.has_feature("web")` if they log.
 
-- [ ] **Step 6: Enable Pages** on `BRAITG/zero-gx` (Settings → Pages → Source: GitHub Actions). User step; ask once, then continue.
+- [ ] **Step 6: Enable Pages** on `BRAITG/zero-gx-levels` with the Actions source: `gh api -X POST repos/BRAITG/zero-gx-levels/pages -f build_type=workflow`.
 
-- [ ] **Step 7: Add the `web` job** to `build.yml`; push; expected: the job deploys and `https://braitg.dev/zero-gx/viewer/` loads.
+- [ ] **Step 7: Add `viewer.yml`** to `zero-gx-levels` in a maintenance PR; once it and the game's `master` carry the viewer, run it; expected: the run deploys and `https://braitg.dev/zero-gx-levels/viewer/` loads.
 
-- [ ] **Step 8: Commit** `feat(web): browser demo viewer on GitHub Pages`.
+- [ ] **Step 8: Commit** `feat(web): browser demo viewer on the levels repository's GitHub Pages`.
 
 ---
 

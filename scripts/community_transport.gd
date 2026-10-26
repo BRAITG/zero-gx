@@ -4,7 +4,7 @@ extends Node
 
 const METHODS := {"GET": HTTPClient.METHOD_GET, "POST": HTTPClient.METHOD_POST, "PUT": HTTPClient.METHOD_PUT, "DELETE": HTTPClient.METHOD_DELETE}
 const TIMEOUT_SECONDS := 30.0  # a request that never answers must end as "no connection"
-# shortcut: answers are read into memory whole, uncapped; the server and the levels CDN are ours and the server limits levels to 64 KB, so cap `body_size_limit` if another host is ever called
+# shortcut: answers are read into memory whole, uncapped; every host called is ours (the server, the levels CDN and, for the web viewer, raw files of the levels repository, whose size `ViewerMain` checks before parsing), so cap `body_size_limit` if another host is ever called
 
 
 ## Coroutine: `{"status": int, "body": PackedByteArray}`; status 0 means the request never got an answer within `TIMEOUT_SECONDS`.

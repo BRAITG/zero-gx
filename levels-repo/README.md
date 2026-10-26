@@ -38,6 +38,8 @@ Moderators rate each version by adding exactly one `difficulty:<label>` label to
 
 A submission's pull request gets one preview comment from `preview-comment.yml`, marked `<!-- zero-gx-preview -->`: a render of the level (`tools/render_level.gd`, under xvfb) and a link that plays the proof run in the browser viewer. The comment is updated for each new head and kept after the pull request closes. The `preview` job runs even while `check` fails, because `check` waits for a label that the preview helps choose. A bot sketch commit parks the next "Check submission" run as `action_required`; the next label or unlabel event runs it, so a moderator who labelled before the comment appeared relabels once.
 
+The viewer is the game's Web export, published at https://braitg.dev/zero-gx-levels/viewer/ by `viewer.yml` from the game's `master`: daily, on demand (Actions → Viewer → Run workflow) and when that file changes on `main`.
+
 The workflow runs from the pull request's own merge commit, so a pull request can edit or delete `check.yml` to skip
 the check. The checker fails any change under `.github/` and the submission bot never touches it, so moderators
 must reject any player submission that does. The ruleset on the default branch must require the `check` status.

@@ -1,0 +1,77 @@
+name: Viewer
+
+# Publishes the browser viewer that the preview comment links to, at https://braitg.dev/zero-gx-levels/viewer/. It is the game's
+# Web export (BRAITG/zero-gx, scenes/viewer_main.gd) and lives here because this repository's Pages site has a free path under
+# braitg.dev; the zero-gx path belongs to the organisation's site. The viewer follows the game's master: it is rebuilt daily.
+# The job holds no secret; the viewer shows only raw files of this repository at a commit.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * *'
+  push:
+    branches: [main]
+    paths: [.github/workflows/viewer.yml]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  viewer:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    env:
+      GODOT_VERSION: 4.7.2  # keep in step with the game's .github/workflows/build.yml
+      GODOT_SILENCE_ROOT_WARNING: "1"
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: BRAITG/zero-gx
+          ref: master
+          path: tool
+          persist-credentials: false
+      - name: Cache Godot and the web template
+        id: godot-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/godot
+            ~/.local/share/godot/export_templates
+          key: godot-${{ env.GODOT_VERSION }}-editor-web
+      - name: Install Godot and the web template
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable"
+          mkdir -p ~/godot
+          curl -fsSL -o /tmp/godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          mv ~/godot/"Godot_v${GODOT_VERSION}-stable_linux.x86_64" ~/godot/godot
+          # Only the template the Web preset uses: the full bundle is ~1 GB of other platforms.
+          curl -fsSL -o /tmp/templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+          mkdir -p "$dest"
+          unzip -q -j /tmp/templates.tpz templates/web_nothreads_release.zip templates/version.txt -d "$dest"
+          rm /tmp/godot.zip /tmp/templates.tpz
+      - name: Export the viewer
+        run: |
+          ~/godot/godot --headless --path tool --import
+          mkdir -p tool/build/pages/viewer tool/android/build/res/values  # the Play Games export plugin writes there on every export
+          ~/godot/godot --headless --path tool --export-release "Web" build/pages/viewer/index.html
+          ls -lh tool/build/pages/viewer/index.wasm tool/build/pages/viewer/index.pck
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: tool/build/pages
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

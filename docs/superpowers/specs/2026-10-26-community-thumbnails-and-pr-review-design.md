@@ -69,8 +69,9 @@ workflow, so it is part of what the moderator reviews and merges.
 1. The Worker opens the submission PR as today: `levels/<id>/v<N>.json`, `proof/<id>/v<N>.demo.gz`,
    `meta.json`. Submission branches live in `BRAITG/zero-gx-levels` itself (the bot pushes them), so
    `pull_request` workflows run with the repository's own `GITHUB_TOKEN`.
-2. `check.yml` (the existing `pull_request` job, `contents: read`) gains a `preview` job that runs after
-   `check` passes:
+2. `check.yml` (the existing `pull_request` job, `contents: read`) gains a `preview` job that runs regardless of
+   `check`'s result (`check` fails until a moderator sets the difficulty label, and the preview is what they set it from),
+   behind a first step that refuses any path a submission may not touch:
    - checks out the PR head and `BRAITG/zero-gx` at `master` into `tool/`, downloads the pinned Godot
      Linux editor (the same download `build.yml` uses, cached);
    - derives `levels/<id>/v<N>.sketch.json` with `tools/sketch_level.gd`;
@@ -109,9 +110,11 @@ PR when `levels/<id>/v<N>.json` is in the same PR.
 
 ## The browser player
 
-A Godot **Web** export of a viewer-only entry scene, published from `BRAITG/zero-gx` to that
-repository's GitHub Pages site on every `master` build (`build.yml` gains a `web` export and a Pages
-deploy step; Pages is enabled on `zero-gx` with the Actions source).
+A Godot **Web** export of a viewer-only entry scene, published to `BRAITG/zero-gx-levels`'s GitHub Pages
+site by that repository's own `viewer` workflow (template `levels-repo/.github/workflows/viewer.yml`): it
+checks out `BRAITG/zero-gx` at `master`, exports the `Web` preset and deploys it, daily and on demand.
+Pages stays off on `zero-gx`: its site would shadow the organisation site's `/zero-gx/privacy/` page, which
+Google Play requires.
 
 - Export preset `Web` with threads disabled (`variant/thread_support=false`): GitHub Pages cannot set the
   cross-origin isolation headers threads need. Main scene for the preset: `scenes/viewer_main.gd`.
@@ -119,9 +122,9 @@ deploy step; Pages is enabled on `zero-gx` with the Actions source).
   only `https://raw.githubusercontent.com/BRAITG/zero-gx-levels/<40-hex sha>/...` URLs, fetches both with
   `HTTPRequest`, checks the demo's level hash against the fetched level, then shows `DemoViewer` full
   screen. Any failure shows the reason in plain text. Nothing else in the game is reachable from the
-  viewer: no community sign-in, no progress, no sounds.
+  viewer: no community sign-in, no progress.
 - The PR comment links
-  `https://braitg.dev/zero-gx/viewer/?level=<raw level URL at head SHA>&demo=<raw demo URL at head SHA>`.
+  `https://braitg.dev/zero-gx-levels/viewer/?level=<raw level URL at head SHA>&demo=<raw demo URL at head SHA>`.
   The export is about 30 MB on first load and cached by the browser afterwards.
 - The viewer is also useful outside PRs (a moderator can paste any two such URLs), but nothing else
   depends on it.

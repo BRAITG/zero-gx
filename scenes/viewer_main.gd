@@ -1,9 +1,8 @@
 class_name ViewerMain
 extends Control
-## The browser page at https://braitg.dev/zero-gx/viewer/: plays a community level's demo. `?level=<URL>&demo=<URL>` name the two
+## The browser page at https://braitg.dev/zero-gx-levels/viewer/: plays a community level's demo. `?level=<URL>&demo=<URL>` name the two
 ## files; they must be raw files of BRAITG/zero-gx-levels at a commit. A Godot run off the web reads `level=<URL> demo=<URL>` after `--`.
 
-const SCENE := "res://scenes/viewer_main.tscn"
 const REFUSED := "Only files from BRAITG/zero-gx-levels at a commit can be shown."
 const NOT_LOADED := "The level or its demo could not be loaded."
 const WRONG_LEVEL := "The demo was recorded on a different level."

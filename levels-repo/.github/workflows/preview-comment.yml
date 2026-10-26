@@ -11,9 +11,9 @@ name: Preview comment
 # It does not look at the conclusion of the checked run: `check` fails until a moderator sets the difficulty label, and the
 # preview is what they set it from. A run without the artifact (no level added, or the guard refused) is skipped.
 #
-# A commit made with GITHUB_TOKEN starts no checks of its own, but GitHub parks the "Check submission" run it creates as
-# `action_required`, so the new head has no `check` status. The next label or unlabel event runs `check` on that head, and that
-# run keeps the comment up to date.
+# A commit made with GITHUB_TOKEN starts no workflow directly; GitHub records a parked `action_required` "Check submission" run
+# for it, so the new head has no `check` status. The next label or unlabel event runs `check` on that head, and that run keeps
+# the comment up to date.
 
 on:
   workflow_run:
@@ -135,7 +135,7 @@ jobs:
             const demoUrl = `${raw}/${sha}/proof/${level}/v${version}.demo.gz`;
             const body = `${marker}\n**Preview of \`${level}\` v${version}** at \`${sha}\`\n\n` +
               `![Level render](${raw}/previews/${number}/${sha}.png)\n\n` +
-              `[Watch the proof run in the browser](https://braitg.dev/zero-gx/viewer/?level=${levelUrl}&demo=${demoUrl})`;
+              `[Watch the proof run in the browser](https://braitg.dev/zero-gx-levels/viewer/?level=${levelUrl}&demo=${demoUrl})`;
             const comments = await github.paginate(github.rest.issues.listComments, {owner, repo, issue_number: number});
             const mine = comments.find(c => c.user.login === 'github-actions[bot]' && c.body.startsWith(marker));
             if (mine) await github.rest.issues.updateComment({owner, repo, comment_id: mine.id, body});
