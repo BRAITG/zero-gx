@@ -31,3 +31,70 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+  # Renders what a submission PR changes, for a moderator to look at. It runs the game's own tools on the level and publishes
+  # sketch.json, preview.png and pr.json as an artifact.
+  preview:
+    needs: check
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GODOT_VERSION: 4.7.2  # keep in step with the game's .github/workflows/build.yml
+      GODOT_SILENCE_ROOT_WARNING: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: BRAITG/zero-gx
+          ref: feat/community-previews  # TODO: master once #42 and this branch merge
+          path: tool
+          persist-credentials: false
+      - name: Cache Godot
+        id: godot-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-editor
+      - name: Install Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot
+          curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          mv ~/godot/"Godot_v${GODOT_VERSION}-stable_linux.x86_64" ~/godot/godot
+          rm /tmp/godot.zip
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb mesa-utils libgl1-mesa-dri
+      - run: ~/godot/godot --headless --path tool --import
+      - name: Sketch and render the level
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(git diff --name-only --diff-filter=A "origin/$BASE_REF...$HEAD_SHA" | grep -E '^levels/lvl_[a-z0-9]{10}/v[0-9]+\.json$' || true)
+          if [ "$(printf '%s' "$files" | grep -c .)" != 1 ]; then
+            echo "::error::Expected exactly one added level file, found: ${files:-none}"
+            exit 1
+          fi
+          level=$(basename "$(dirname "$files")")
+          version=${files##*/v}
+          version=${version%.json}
+          mkdir out
+          ~/godot/godot --headless --path tool -s res://tools/sketch_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/sketch.json"
+          if [ -e "levels/$level/v$version.sketch.json" ] && ! cmp -s "levels/$level/v$version.sketch.json" out/sketch.json; then
+            echo "::error::The sketch in the pull request does not match the level."
+            exit 1
+          fi
+          xvfb-run -a ~/godot/godot --path tool --rendering-driver opengl3 -s res://tools/render_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/preview.png"
+          test -s out/sketch.json && test -s out/preview.png  # a -s script that fails to load still exits 0
+          jq -n --argjson number "$PR_NUMBER" --arg head_sha "$HEAD_SHA" --arg level "$level" --argjson version "$version" \
+            '{number: $number, head_sha: $head_sha, level: $level, version: $version}' > out/pr.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: preview-${{ github.event.pull_request.head.sha }}
+          path: out
+          if-no-files-found: error
