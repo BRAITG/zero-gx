@@ -114,10 +114,13 @@ func _add_row(row: Dictionary) -> Button:
 	label.text = "%s · v%d · by %s · ♥ %d" % [row.get("title", "?"), int(row.get("latest", 1)), row.get("author", "?"), int(row.get("likes", 0))]
 	label.add_theme_font_size_override("font_size", 24)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	line.add_child(label)
-	_button(line, "Details", _details.bind(row))
+	var details := _button(line, "Details", _details.bind(row))
+	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var play := _button(line, "Play", _play.bind(row), "Loading…")
+	play.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var ratings := Label.new()  # Reviewed and Community side by side, each its own value
 	ratings.text = CommunityLevelDetails.summary(row)
 	ratings.add_theme_font_size_override("font_size", 20)
