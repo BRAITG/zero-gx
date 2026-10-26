@@ -1,14 +1,17 @@
 extends Control
 ## The main menu, on one of three pages. HOME is the hub: Official levels, Community levels (where
 ## `Community.available()`), Training, then a smaller row of My levels, Settings and Credits. OFFICIAL
-## and TRAINING list their stages in a grid, each locked until the stage before it is finished, under a
-## Back button that returns to HOME.
+## and TRAINING list their stages in a scrolling column of rows (thumbnail, title, best-score breakdown),
+## each locked until the stage before it is finished, under a Back button that returns to HOME.
 
 enum Page { HOME, OFFICIAL, TRAINING }
 
 const SCENE := "res://scenes/main.tscn"
 const MENU_DRIFT := Vector2(-40, -12)  # px/s
 const HOME_WIDTH := 440.0  # px: the column of home buttons
+const LIST_SIZE := Vector2(760, 520)  # px: the scrolling stage list
+const ROW_HEIGHT := 108.0  # px: a stage row; its thumbnail fills the height less the margins
+const ROW_MARGIN := 8.0
 
 ## Which page this scene shows; the main scene opens on HOME.
 var page := Page.HOME
@@ -16,7 +19,7 @@ var page := Page.HOME
 var _column: VBoxContainer
 var _official: Button  # the home page's primary: it takes focus when HOME opens
 var _training_button: Button
-var _levels: GridContainer  # the stage buttons of OFFICIAL or TRAINING
+var _levels: VBoxContainer  # the stage rows of OFFICIAL or TRAINING
 
 ## Set once per run: the menu scene is entered again on every return to it.
 static var _sized := false
@@ -74,11 +77,15 @@ func _build_list() -> void:
 	var back := _button("Back")
 	back.pressed.connect(_go_to.bind(Page.HOME))
 	_column.add_child(back)
-	_levels = GridContainer.new()
-	_levels.columns = 3
-	_levels.add_theme_constant_override("h_separation", 12)
-	_levels.add_theme_constant_override("v_separation", 12)
-	_column.add_child(_levels)
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = LIST_SIZE
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true  # keyboard and gamepad navigation scrolls the focused row into view
+	_column.add_child(scroll)
+	_levels = VBoxContainer.new()
+	_levels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_levels.add_theme_constant_override("separation", 12)
+	scroll.add_child(_levels)
 
 
 ## The first tap signs in, and so does a session saved before its player was stored, to learn who it belongs to. If that fails, the reason shows and the menu stays. Offline it opens anyway: the screen shows what is cached.
@@ -106,18 +113,19 @@ func _refresh() -> void:
 
 func _list_levels() -> void:
 	for old in _levels.get_children():
-		old.free()  # now, not queued: the new buttons replace them in the same frame
+		old.free()  # now, not queued: the new rows replace them in the same frame
 	var training := page == Page.TRAINING
 	var suggested: Button
 	for id in Progress.trainings() if training else Progress.levels():
 		var best := Progress.best_points(id)
 		var unlocked := Progress.is_unlocked(id)
 		var next := suggested == null and unlocked and best < 0
-		var state := "locked" if not unlocked else ("Not played" if best < 0 else "Best: %d" % best)
-		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
 		var data := LevelFormat.read((Progress.TUTORIALS_DIR if training else Progress.LEVELS_DIR) + id + LevelFormat.EXTENSION)
-		var button := _button("%s · %s\n%s%s" % [label, data.get("title", ""), "Next · " if next else "", state])
+		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
+		var button := _row(id, "%s · %s" % [label, data.get("title", "")], _breakdown(id, unlocked, next))
 		button.disabled = not unlocked
+		if not unlocked:
+			button.modulate = Color(1, 1, 1, 0.55)  # the thumbnail dims with the text
 		button.pressed.connect(func(): Progress.open(id))
 		if next:
 			suggested = button
@@ -128,6 +136,65 @@ func _list_levels() -> void:
 			suggested.grab_focus(true)
 		else:
 			Style.focus_first(_levels)
+
+
+## The four cells under a row's title: best and time on one line, fuel and hull points on the next.
+## Bests saved before the breakdown was kept show "—" for fuel and hull rather than an invented value.
+func _breakdown(id: String, unlocked: bool, next: bool) -> PackedStringArray:
+	var best := Progress.best_points(id)
+	if not unlocked:
+		return PackedStringArray(["Locked"])
+	if best < 0:
+		return PackedStringArray(["Next · Not played" if next else "Not played"])
+	var fuel := Progress.best_fuel(id)
+	var hull := Progress.best_hull(id)
+	return PackedStringArray([
+		"Best %d" % best,
+		"Time %.1f s" % Progress.best_time(id),
+		"Fuel —" if fuel < 0 else "Fuel +%d" % roundi(fuel * Tuning.points_fuel),
+		"Hull —" if hull < 0 else "Hull +%d" % roundi(hull * Tuning.points_hull),
+	])
+
+
+## A stage row: the stage's thumbnail on the left, its title and the breakdown cells on the right.
+## The title Label is named "Title" so tests and tools can read the row's name.
+func _row(id: String, title: String, cells: PackedStringArray) -> Button:
+	var button := _button("", Vector2(LIST_SIZE.x - 24, ROW_HEIGHT))  # less the scrollbar
+	var content := HBoxContainer.new()
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, ROW_MARGIN)
+	content.add_theme_constant_override("separation", 20)
+	button.add_child(content)
+	var thumbnail := Thumbnail.new(id)
+	thumbnail.custom_minimum_size = Vector2(Thumbnail.CANVAS.x / Thumbnail.CANVAS.y, 1.0) * (ROW_HEIGHT - 2 * ROW_MARGIN)
+	content.add_child(thumbnail)
+	var text := VBoxContainer.new()
+	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.alignment = BoxContainer.ALIGNMENT_CENTER
+	content.add_child(text)
+	var name_label := _label(title, 24)
+	name_label.name = "Title"
+	text.add_child(name_label)
+	var grid := GridContainer.new()
+	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 24)
+	text.add_child(grid)
+	for cell in cells:
+		var cell_label := _label(cell, 18)
+		cell_label.custom_minimum_size.x = 150  # the two columns line up across rows
+		cell_label.modulate = Style.INK_DIM
+		grid.add_child(cell_label)
+	return button
+
+
+func _label(text: String, font_size: int) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", font_size)
+	return label
 
 
 ## Centres the column in the frame. Anchored to the frame's centre, it stays centred when the viewport changes.

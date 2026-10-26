@@ -92,12 +92,24 @@ func best_time(id: String) -> float:
 	return _file.get_value(id, "best_time", 0.0)
 
 
-## Saves the run if it beats the best; returns whether it did.
-func record_win(id: String, run_points: int, seconds: float) -> bool:
+## Fuel left on the best run, or −1 when that best was saved before fuel was kept.
+func best_fuel(id: String) -> float:
+	return _file.get_value(id, "best_fuel", -1.0)
+
+
+## Hull left on the best run, or −1 when that best was saved before hull was kept.
+func best_hull(id: String) -> float:
+	return _file.get_value(id, "best_hull", -1.0)
+
+
+## Saves the run if it beats the best; returns whether it did. `fuel` and `hull` are what was left at the goal.
+func record_win(id: String, run_points: int, seconds: float, fuel := -1.0, hull := -1.0) -> bool:
 	if run_points <= best_points(id):
 		return false
 	_file.set_value(id, "best_points", run_points)
 	_file.set_value(id, "best_time", seconds)
+	_file.set_value(id, "best_fuel", fuel)
+	_file.set_value(id, "best_hull", hull)
 	_save()
 	return true
 

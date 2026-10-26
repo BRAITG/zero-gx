@@ -39,7 +39,9 @@ Every push to `master` publishes a debug-signed APK as a prerelease on the [Rele
 
 Controls: touch and hold anywhere. The ship turns toward your finger and thrusts while you hold; release to coast. Other touch layouts, a keyboard, a mouse and a gamepad also work; see [Controls](#controls).
 
-The home screen separates **Official levels**, **Community levels** (where supported), and **Training**, with My levels, Settings and Credits in a smaller utility row. Official levels and Training open their own stage-selection grids; Back returns home. Menu content stays inside a centered 16:9 frame, fitted within the device's reported safe area on mobile. Backgrounds, gameplay, the flight HUD and the editor canvas still use the full screen.
+The home screen separates **Official levels**, **Community levels** (where supported), and **Training**, with My levels, Settings and Credits in a smaller utility row. Official levels and Training open their own scrolling stage lists: each row shows the stage's thumbnail, its number and title, and its best score with the time, fuel and hull points under it; Back returns home. Menu content stays inside a centered 16:9 frame, fitted within the device's reported safe area on mobile. Backgrounds, gameplay, the flight HUD and the editor canvas still use the full screen.
+
+**Thumbnails.** Each official level and training stage has a composed scene that shows what it is about (a swing around a planet, a gap between asteroids, a black hole), not a map of the stage. They are drawn in code, one scene per stage in `scenes/thumbnail.gd`, in the game's own ship, wall, pickup and gravity-body shapes, so they stay crisp at any size and can be tweaked like any other drawing. To look at them all without opening the menu, render them to `build/thumbnails/` (full size and phone size) in a real window: `godot --path . -s res://tools/render_thumbnails.gd`.
 
 ## Play or edit on a computer
 
@@ -127,7 +129,7 @@ Every run of an official level or a draft is recorded as a demo (tutorials are n
 
 ## Scoring and progress
 
-A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Training and levels unlock independently, each in order. The Official levels and Training lists show stage titles and labelled best scores, and highlight and focus the next unfinished unlocked stage. Training's home entry marks completion once every training stage is finished. The flight's Menu action returns to its own selection list. Best points are saved in `user://progress.cfg` (`scripts/progress.gd`). The Tune panel can unlock every stage for the session and reset saved progress.
+A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Training and levels unlock independently, each in order. The Official levels and Training lists show each stage's best score with its time and its fuel and hull points, and highlight and focus the next unfinished unlocked stage; bests saved by versions that kept only the total and time show "—" for fuel and hull until they are beaten. Training's home entry marks completion once every training stage is finished. The flight's Menu action returns to its own selection list.
 
 ## Tuning
 
@@ -143,6 +145,7 @@ The values you will most often want to change (speed cap, thrust, turn rates, pi
 | `scenes/pickup.gd` | pickup size and colours |
 | `scripts/sfx.gd` | which sound plays for what, and the synthesized ambient drone |
 | `scripts/style.gd` | UI theme (fonts, panels, buttons) and the 2D bloom |
+| `scenes/thumbnail.gd` | the composed stage thumbnails of the Official levels and Training lists |
 | `scenes/starfield.gd` | parallax star layers and nebulae |
 | `scenes/starfield.gdshader` | instanced star shapes and fading motion streaks |
 

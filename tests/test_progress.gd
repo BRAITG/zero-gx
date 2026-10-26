@@ -13,6 +13,16 @@ func test_record_and_reload() -> void:
 	check(is_equal_approx(Progress.best_time("level_01"), 30.0), "best time %f after reload" % Progress.best_time("level_01"))
 
 
+func test_best_keeps_fuel_and_hull_and_old_bests_have_none() -> void:
+	Progress.record_win("level_01", 1500, 30.0)  # saved before the breakdown was kept
+	check(Progress.best_fuel("level_01") < 0 and Progress.best_hull("level_01") < 0, "an old best must not invent fuel or hull")
+	Progress.record_win("level_01", 1600, 25.0, 40.0, 90.0)
+	Progress.load_file()
+	check(is_equal_approx(Progress.best_fuel("level_01"), 40.0) and is_equal_approx(Progress.best_hull("level_01"), 90.0), "fuel %f hull %f after reload" % [Progress.best_fuel("level_01"), Progress.best_hull("level_01")])
+	Progress.record_win("level_01", 1000, 20.0, 99.0, 99.0)
+	check(is_equal_approx(Progress.best_fuel("level_01"), 40.0), "a lower run must not replace the best's fuel")
+
+
 func test_lower_score_keeps_best() -> void:
 	Progress.record_win("level_01", 1500, 30.0)
 	check(not Progress.record_win("level_01", 1200, 20.0), "a lower score must not be a new best")

@@ -123,10 +123,21 @@ func test_clock_waits_for_first_thrust() -> void:
 func stage_rows(node: Node) -> Dictionary:
 	var rows := {}
 	for button: Button in node.find_children("*", "Button", true, false):
-		var label := button.text.get_slice(" · ", 0)
+		var label := row_title(button).get_slice(" · ", 0)
 		if label.begins_with("Level ") or (label.begins_with("Training ") and label.get_slice(" ", 1).is_valid_int()):
 			rows[label] = button
 	return rows
+
+
+## A stage row's title ("Level 01 · Launch"), or a plain button's text.
+func row_title(button: Button) -> String:
+	var title := button.find_child("Title", true, false)
+	return title.text if title else button.text
+
+
+## Everything a stage row says: its title and the best-score cells.
+func row_text(button: Button) -> String:
+	return " ".join(button.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text))
 
 
 ## The first button under `node` whose label starts with `prefix`, or null.
@@ -153,7 +164,7 @@ func test_menu_locks_levels() -> void:
 	await frames(1)
 	buttons = stage_rows(training)
 	check(not buttons["Training 2"].disabled, "winning training 1 must open training 2 on the list")
-	check(buttons["Training 1"].text.contains("1780"), "best points missing: %s" % buttons["Training 1"].text)
+	check(row_text(buttons["Training 1"]).contains("1780"), "best points missing: %s" % row_text(buttons["Training 1"]))
 
 
 func test_intro_card_until_first_thrust() -> void:
@@ -433,12 +444,12 @@ func test_list_pages_focus_their_first_stage() -> void:
 	var list := menu(MAIN.Page.OFFICIAL)
 	world.add_child(list)
 	var focus := focused()
-	check(focus is Button and focus.text.begins_with("Level 01"), "the official list must focus the first level, not %s" % focus)
+	check(focus is Button and row_title(focus).begins_with("Level 01"), "the official list must focus the first level, not %s" % focus)
 	list.free()
 	var training := menu(MAIN.Page.TRAINING)
 	world.add_child(training)
 	focus = focused()
-	check(focus is Button and focus.text.begins_with("Training 1"), "the training list must focus the first stage, not %s" % focus)
+	check(focus is Button and row_title(focus).begins_with("Training 1"), "the training list must focus the first stage, not %s" % focus)
 	training.free()
 
 
@@ -641,14 +652,14 @@ func test_official_focus_advances_to_unfinished_level() -> void:
 	var main := menu(MAIN.Page.OFFICIAL)
 	world.add_child(main)
 	var next := focused()
-	check(next is Button and next.text.begins_with("Level 02"), "returning after a clear must select the next unfinished level")
+	check(next is Button and row_title(next).begins_with("Level 02"), "returning after a clear must select the next unfinished level")
 	Progress.record_win("level_02", 1300, 9.0)
 	await frames(1)
 	next = focused()
-	check(next is Button and next.text.begins_with("Level 03"), "progress refresh must advance the suggested stage")
+	check(next is Button and row_title(next).begins_with("Level 03"), "progress refresh must advance the suggested stage")
 	main.free()
 	Progress.unlock_all = true
 	main = menu(MAIN.Page.OFFICIAL)
 	world.add_child(main)
 	next = focused()
-	check(next is Button and next.text.begins_with("Level 03"), "unlocking all must not suggest replaying a finished stage")
+	check(next is Button and row_title(next).begins_with("Level 03"), "unlocking all must not suggest replaying a finished stage")
