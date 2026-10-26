@@ -91,9 +91,10 @@ workflow, so it is part of what the moderator reviews and merges.
    - posts, or edits, the one comment it owns on the PR (found by a hidden marker): the render as an
      image, the viewer link, and the head SHA it was made from. An updated PR gets an updated comment;
      a stale proof is never shown because the link carries the SHA.
-   The sketch commit retriggers `check.yml` on the PR; the `preview` job sees the sketch already present
-   and identical, uploads an artifact anyway, and the comment job finds nothing to change. The loop ends
-   there.
+   The sketch commit is made with `GITHUB_TOKEN`: GitHub creates a "Check submission" run for it but parks it as
+   `action_required`, so the new head has no `check` status until the next label or unlabel event runs `check`
+   there (that run then finds the sketch present and identical and only refreshes the comment). A moderator who
+   labelled before the comment appeared relabels once.
 4. At merge, the Worker (which already fetches the merged `v<N>.json` to hash it) also fetches
    `v<N>.sketch.json` from the default branch and stores it in a new `versions.sketch TEXT` column
    (migration `0007_version_sketch.sql`). A missing sketch (a PR merged before this shipped, or merged
