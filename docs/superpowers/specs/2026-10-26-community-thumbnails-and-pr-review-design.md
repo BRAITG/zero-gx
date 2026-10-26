@@ -40,10 +40,9 @@ A JSON object derived from a level file by the game, under 2 KB:
 - Walls keep their kind; their points are simplified with Ramer–Douglas–Peucker. The tolerance starts
   at `max(w, h) / 320` (one thumbnail pixel) and doubles until the whole sketch serialises under 2 KB.
   Closed walls stay closed.
-- Bodies keep kind, position and radius. Pickups keep kind and position. Asteroids keep position only.
-  Routes, tours, hints and titles are not in the sketch.
-- Numbers are rounded to integers; the file is written in the stable layout `LevelFormat.to_json` uses,
-  so the same level always gives the same bytes.
+- Numbers are rounded to integers; the file is one line of JSON with sorted keys and no spaces
+  (`JSON.stringify(sketch, "", true)`), so the same level always gives the same bytes. If walls alone
+  cannot bring it under 2 KB after eight tolerance doublings, asteroids are dropped from the end until it fits.
 
 `LevelFormat.sketch(data: Dictionary) -> Dictionary` derives it. `tools/sketch_level.gd` is the
 command-line wrapper: `godot --headless --path . -s res://tools/sketch_level.gd -- <level.json> <out.json>`.
@@ -59,8 +58,8 @@ small rocks, `_goal` at a fixed 10-unit radius, `_ship` at scale 1.2 pointing ri
 background is the same. A sketch that fails to parse draws the background only and logs a warning; the
 list never breaks on a bad sketch.
 
-The community list row uses the same row layout as the official list (`Main._row`), with the sketch
-thumbnail on the left.
+The community list row keeps its current card (`CommunityScreen._add_row`) and gains the sketch
+thumbnail at the left of its title line, at the official rows' thumbnail size.
 
 ## Submission flow
 
