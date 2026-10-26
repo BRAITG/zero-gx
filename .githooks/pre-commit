@@ -1,0 +1,9 @@
+#!/bin/sh
+# Keep graphify-out/graph.json in step with the commit: any other staged change rebuilds the
+# graph (with a fixed hash seed, so the output is reproducible) and stages it. A missing or
+# failing Graphify fails the commit; bypass in an emergency with `git commit --no-verify`.
+# Enable with: sh tools/setup-hooks.sh
+set -eu
+git diff --cached --quiet -- . ':!graphify-out/graph.json' && exit 0
+PYTHONHASHSEED=0 graphify update . >/dev/null
+git add -- graphify-out/graph.json
