@@ -1,7 +1,8 @@
 name: Preview comment
 
 # Publishes what "Check submission" rendered: commits the level's sketch to the PR branch, stores the render on the `previews`
-# branch and keeps one comment on the PR with the image and a viewer link. When the PR closes, its renders are removed.
+# branch (one image per PR) and keeps one comment on the PR with the image and a viewer link. The comment and image stay after
+# the PR closes.
 #
 # This runs in the trusted context of the default branch with a write token, so it never checks out or runs PR code, and it
 # treats the artifact as untrusted: a PR runs its own copy of check.yml and can upload anything. It verifies number and head_sha
@@ -17,30 +18,24 @@ on:
   workflow_run:
     workflows: ["Check submission"]
     types: [completed]
-  pull_request:
-    types: [closed]
 
 permissions:
   contents: write
   pull-requests: write
   actions: read
 
-# One run per PR branch at a time, in order. Runs for different PRs still meet on `previews`, which setPreviews retries.
+# One run per PR branch at a time, in order. Runs for different PRs still meet on `previews`, which setPreview retries.
 concurrency:
-  group: preview-comment-${{ github.event.workflow_run.head_branch || github.head_ref }}
+  group: preview-comment-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
   preview:
-    if: >-
-      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.head_repository.full_name == github.repository)
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: github.event_name == 'workflow_run'
         with:
           pattern: preview-${{ github.event.workflow_run.head_sha }}  # no match is not an error, unlike `name`
           merge-multiple: true
@@ -55,28 +50,26 @@ jobs:
             const raw = 'https://raw.githubusercontent.com/BRAITG/zero-gx-levels';
             const marker = '<!-- zero-gx-preview -->';
 
-            // One commit on `previews` that makes `<number>/` hold exactly `files` (path -> Buffer). Creates the orphan branch
+            // One commit on `previews` that leaves `<number>/<sha>.png` as the only file of the PR. Creates the orphan branch
             // when missing and starts over when another run moved the branch meanwhile.
-            async function setPreviews(number, files, message) {
+            async function setPreview(number, sha, png) {
+              const path = `${number}/${sha}.png`;
               for (let attempt = 1; ; attempt++) {
                 try {
                   const ref = await github.rest.git.getRef({owner, repo, ref: 'heads/previews'}).catch(e => { if (e.status !== 404) throw e; });
                   const parent = ref?.data.object.sha;
-                  let base, stale = [];
+                  let base, entries = [];
                   if (parent) {
                     const {data: t} = await github.rest.git.getTree({owner, repo, tree_sha: parent, recursive: 'true'});
                     base = t.sha;
-                    stale = t.tree.filter(e => e.type === 'blob' && e.path.startsWith(`${number}/`) && !(e.path in files)).map(e => e.path);
+                    entries = t.tree.filter(e => e.type === 'blob' && e.path.startsWith(`${number}/`) && e.path !== path)
+                      .map(e => ({path: e.path, mode: '100644', type: 'blob', sha: null}));
                   }
-                  const entries = stale.map(path => ({path, mode: '100644', type: 'blob', sha: null}));
-                  for (const [path, buf] of Object.entries(files)) {
-                    const {data: b} = await github.rest.git.createBlob({owner, repo, content: buf.toString('base64'), encoding: 'base64'});
-                    entries.push({path, mode: '100644', type: 'blob', sha: b.sha});
-                  }
-                  if (!entries.length) return;
+                  const {data: blob} = await github.rest.git.createBlob({owner, repo, content: png.toString('base64'), encoding: 'base64'});
+                  entries.push({path, mode: '100644', type: 'blob', sha: blob.sha});
                   const {data: tree} = await github.rest.git.createTree({owner, repo, base_tree: base, tree: entries});
                   if (tree.sha === base) return;
-                  const {data: commit} = await github.rest.git.createCommit({owner, repo, message, tree: tree.sha, parents: parent ? [parent] : []});
+                  const {data: commit} = await github.rest.git.createCommit({owner, repo, message: `Preview of #${number} at ${sha}`, tree: tree.sha, parents: parent ? [parent] : []});
                   if (parent) await github.rest.git.updateRef({owner, repo, ref: 'heads/previews', sha: commit.sha});
                   else await github.rest.git.createRef({owner, repo, ref: 'refs/heads/previews', sha: commit.sha});
                   return;
@@ -84,12 +77,6 @@ jobs:
                   if (e.status !== 422 || attempt === 3) throw e;
                 }
               }
-            }
-
-            if (context.eventName === 'pull_request') {
-              const number = context.payload.pull_request.number;
-              await setPreviews(number, {}, `Remove previews of #${number}`);
-              return;
             }
 
             // The artifact is untrusted: only regular files, capped in size. A symlink would read a file off the runner.
@@ -140,7 +127,7 @@ jobs:
               }
             }
 
-            await setPreviews(number, {[`${number}/${sha}.png`]: png}, `Preview of #${number} at ${sha}`);
+            await setPreview(number, sha, png);
 
             const levelUrl = `${raw}/${sha}/levels/${level}/v${version}.json`;
             const demoUrl = `${raw}/${sha}/proof/${level}/v${version}.demo.gz`;
