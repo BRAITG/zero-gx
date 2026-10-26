@@ -42,7 +42,7 @@ A JSON object derived from a level file by the game, under 2 KB:
   Closed walls stay closed.
 - Numbers are rounded to integers; the file is one line of JSON with sorted keys and no spaces
   (`JSON.stringify(sketch, "", true)`), so the same level always gives the same bytes. If walls alone
-  cannot bring it under 2 KB after eight tolerance doublings, asteroids are dropped from the end until it fits.
+  cannot bring it under 2 KB after eight tolerance doublings, asteroids are dropped from the end, then walls the same way, until it fits.
 
 `LevelFormat.sketch(data: Dictionary) -> Dictionary` derives it. `tools/sketch_level.gd` is the
 command-line wrapper: `godot --headless --path . -s res://tools/sketch_level.gd -- <level.json> <out.json>`.

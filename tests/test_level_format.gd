@@ -197,3 +197,43 @@ func test_hash_names_the_content() -> void:
 	check(hash.length() == 64 and hash == LevelFormat.to_json(data).sha256_text(), "hash: %s" % hash)
 	data.title = "Other"
 	check(LevelFormat.sha256(data) != hash, "a change must change the hash")
+
+
+func test_sketch_keeps_shape_and_is_stable() -> void:
+	var data := LevelFormat.read(Progress.LEVELS_DIR + "level_08.json")
+	var sketch := LevelFormat.sketch(data)
+	check(sketch.walls.size() == data.walls.size() and sketch.bodies.size() == data.get("bodies", []).size(), "every wall and body survives: %s" % [sketch])
+	check(sketch.walls[0].kind == data.walls[0].kind, "wall kinds survive")
+	var bounds: Array = sketch.bounds
+	for wall in data.walls:
+		for p in wall.points:
+			check(p[0] >= bounds[0] and p[0] <= bounds[0] + bounds[2] and p[1] >= bounds[1] and p[1] <= bounds[1] + bounds[3], "bounds enclose %s" % [p])
+	var text := LevelFormat.sketch_json(sketch)
+	check(text == LevelFormat.sketch_json(LevelFormat.sketch(data)), "same level, same bytes")
+	check(text.length() < 2048 and not text.contains("\n") and not text.contains(" "), "one compact line under 2 KB: %d" % text.length())
+	check(text.find("\"asteroids\"") < text.find("\"bodies\""), "keys sorted")
+
+
+func test_sketch_json_sorts_nested_keys() -> void:
+	check(LevelFormat.sketch_json({"walls": [{"points": [], "kind": "blue", "closed": true}]}) == '{"walls":[{"closed":true,"kind":"blue","points":[]}]}', "nested keys must be sorted on one line")
+
+
+func test_sketch_of_a_maximal_level_fits() -> void:
+	var data := minimal()
+	data.walls = []
+	for w in LevelFormat.MAX_WALLS:
+		var points := []
+		for i in LevelFormat.MAX_WALL_POINTS:
+			points.append([w * 50 + i * 7 + (i % 3) * 20, (i * 13) % 300])
+		data.walls.append({"kind": "blue", "points": points})
+	data.asteroids = []
+	for i in LevelFormat.MAX_ASTEROIDS:
+		data.asteroids.append({"position": [i * 31, (i * 17) % 500]})
+	check(LevelFormat.sketch_json(LevelFormat.sketch(data)).length() < 2048, "maximal level must fit")
+
+
+func test_sketch_drops_a_straight_run_and_keeps_corners() -> void:
+	var data := minimal()
+	data.walls = [{"kind": "blue", "points": [[0, 500], [100, 500], [200, 500], [300, 500], [300, 900]]}]
+	var kept: Array = LevelFormat.sketch(data).walls[0].points
+	check(kept == [[0, 500], [300, 500], [300, 900]], "a straight run collapses to its ends and the corner stays: %s" % [kept])
