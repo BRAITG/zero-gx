@@ -250,6 +250,21 @@ func test_community_lists_top_rows_with_title_version_author_and_likes() -> void
 	check(_buttons(screen, "More").is_empty(), "a short page has no More")
 
 
+func test_community_rows_show_a_sketch_thumbnail() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var with_sketch := _row(_bytes())
+	with_sketch.sketch = LevelFormat.sketch(LevelFormat.read(Progress.LEVELS_DIR + "level_01.json"))
+	var without := _row(_bytes(), "Bare")
+	without.sketch = null
+	net.answer("GET", "/levels", 200, [with_sketch, without])
+	var screen := await _community()
+	var thumbnails := screen.find_children("*", "Thumbnail", true, false)
+	check(thumbnails.size() == 2, "every row carries a thumbnail: %d" % thumbnails.size())
+	check(not thumbnails[0].sketch.is_empty() and thumbnails[1].sketch.is_empty(), "the sketch reaches the first row only")
+	check(_texts(screen).any(func(t: String) -> bool: return t.contains("Bare")), "a row without a sketch keeps its title")
+
+
 func test_new_switches_the_sort_and_replaces_the_rows() -> void:
 	var net := _fake()
 	await _signed_in(net)

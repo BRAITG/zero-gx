@@ -107,6 +107,9 @@ func _add_row(row: Dictionary) -> Button:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
 	card.add_child(line)
+	var thumbnail := Thumbnail.of_sketch(row.get("sketch"))
+	thumbnail.custom_minimum_size = Vector2(164, 92)  # 16:9 at an official row's thumbnail height
+	line.add_child(thumbnail)
 	var label := Label.new()
 	label.text = "%s · v%d · by %s · ♥ %d" % [row.get("title", "?"), int(row.get("latest", 1)), row.get("author", "?"), int(row.get("likes", 0))]
 	label.add_theme_font_size_override("font_size", 24)
