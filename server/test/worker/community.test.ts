@@ -149,6 +149,13 @@ describe("GET /levels", () => {
     expect(items.find((i) => i.level_id === "lvl_cccccccccc")).toMatchObject({ sketch: null });
   });
 
+  it("gives null for a stored sketch that parses to something other than an object", async () => {
+    await env.DB.prepare(`UPDATE versions SET sketch = '[]' WHERE level = 'lvl_aaaaaaaaaa'`).run();
+    await env.DB.prepare(`UPDATE versions SET sketch = '5' WHERE level = 'lvl_bbbbbbbbbb' AND version = 2`).run();
+    await env.DB.prepare(`UPDATE versions SET sketch = 'null' WHERE level = 'lvl_cccccccccc'`).run();
+    for (const item of await list()) expect(item).toMatchObject({ sketch: null });
+  });
+
   it("orders new by the approval time of the latest version, and pages from 0", async () => {
     expect((await list("?sort=new")).map((i) => i.level_id)).toEqual(["lvl_cccccccccc", "lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb"]);
     expect(await list("?sort=new&page=1")).toEqual([]);

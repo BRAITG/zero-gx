@@ -50,10 +50,11 @@ export async function putLike(request: Request, env: Env, params: Record<string,
   return Response.json({ likes: count!.results[0]!.likes });
 }
 
-/** The stored sketch parsed; null when there is none or it does not parse, so one bad value cannot fail the whole list. */
+/** The stored sketch parsed; null when there is none or it is not a JSON object, so one bad value cannot fail the whole list. */
 function parseSketch(text: string | null): object | null {
   try {
-    return text === null ? null : JSON.parse(text);
+    const value: unknown = text === null ? null : JSON.parse(text);
+    return typeof value === "object" && value !== null && !Array.isArray(value) ? value : null;
   } catch {
     return null;
   }
