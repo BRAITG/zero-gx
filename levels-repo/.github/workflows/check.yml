@@ -35,10 +35,12 @@ jobs:
   # Renders what a submission PR changes, for a moderator to look at: it runs the game's own tools on the level and publishes
   # sketch.json, preview.png and pr.json as an artifact. It runs even when `check` fails, because `check` fails until a moderator
   # sets the difficulty label and the preview is what they choose it from. So its first step refuses any path a submission may
-  # not touch: a PR that `check` has not passed cannot plant tool/, out/ or symlinks for the steps after it.
+  # not touch: an honest PR that `check` has not passed cannot plant tool/, out/ or symlinks for the steps after it.
+  # That is no security boundary: a pull_request run uses the PR's own copy of this file, so a PR can remove the guard. The job
+  # holds no secret and no write token; whatever consumes the artifact must verify number and head_sha and treat the files as untrusted.
   preview:
     needs: check
-    if: always() && needs.check.result != 'cancelled'
+    if: ${{ !cancelled() && needs.check.result != 'cancelled' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     env:
@@ -53,16 +55,21 @@ jobs:
       - name: Allow only submission paths
         env:
           BASE_REF: ${{ github.base_ref }}
+        shell: bash  # with pipefail, so a failing git command fails the step
         run: |
+          set -euo pipefail
           allowed='^(levels/lvl_[a-z0-9]{10}/(v[1-9][0-9]*\.json|v[1-9][0-9]*\.sketch\.json|meta\.json)|proof/lvl_[a-z0-9]{10}/v[1-9][0-9]*\.demo\.gz|hidden\.txt)$'
-          bad=$(git diff --name-only --diff-filter=ACMRD "origin/$BASE_REF...HEAD" | grep -Ev "$allowed" | sed 's/^/  /' || true)
+          base=$(git merge-base "origin/$BASE_REF" HEAD)
+          # no renames: a renamed file lists its source as deleted and its target as added.
+          # The braces confine `|| true` to grep's no-match status, so a failing git still fails the step.
+          bad=$(git diff --no-renames --name-only "$base" HEAD | { grep -Ev "$allowed" || true; } | sed 's/^/  /')
           if [ -n "$bad" ]; then
             echo "::error::The pull request changes paths a submission may not touch:"
             echo "$bad"
             exit 1
           fi
-          # only regular files: the tools below would follow a symlink out of the checkout
-          odd=$(git diff -z --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" | xargs -0 -r git ls-files -s -- | grep -v '^100644 ' | sed 's/^/  /' || true)
+          # only regular files, type changes included: the tools below would follow a symlink out of the checkout
+          odd=$(git diff -z --no-renames --name-only --diff-filter=d "$base" HEAD | xargs -0 -r git ls-files -s -- | { grep -Ev '^100644 ' || true; } | sed 's/^/  /')
           if [ -n "$odd" ]; then
             echo "::error::The pull request adds something that is not a regular file:"
             echo "$odd"
@@ -95,8 +102,9 @@ jobs:
           BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
         run: |
-          files=$(git diff --name-only --diff-filter=A "origin/$BASE_REF...$HEAD_SHA" | grep -E '^levels/lvl_[a-z0-9]{10}/v[1-9][0-9]*\.json$' || true)
+          files=$(git diff --no-renames --name-only --diff-filter=A "origin/$BASE_REF...$HEAD_SHA" | { grep -E '^levels/lvl_[a-z0-9]{10}/v[1-9][0-9]*\.json$' || true; })
           n=$(printf '%s' "$files" | grep -c . || true)
           if [ "$n" = 0 ]; then  # hidden.txt, or a sketch or proof only
             echo "::notice::No level added; nothing to preview."
