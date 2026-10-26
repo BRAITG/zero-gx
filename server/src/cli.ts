@@ -10,10 +10,12 @@ import { MAX_LEVEL_BYTES, sha256Hex, validateLevel } from "./core/level";
 
 const LEVEL_FILE = /^levels\/(lvl_[a-z0-9]{10})\/(meta\.json|v([1-9][0-9]*)\.json)$/;
 const PROOF_FILE = /^proof\/(lvl_[a-z0-9]{10})\/v([1-9][0-9]*)\.demo\.gz$/;
+const SKETCH_FILE = /^levels\/(lvl_[a-z0-9]{10})\/v([1-9][0-9]*)\.sketch\.json$/;
 const AUTHOR = /^[A-Za-z0-9_-]{8,64}$/;
 const SHA256 = /^[0-9a-f]{64}$/;
 const LEVEL_ID = /^lvl_[a-z0-9]{10}$/;
 const MAX_META_BYTES = 1024;
+const MAX_SKETCH_BYTES = 2048;
 const MAX_HIDDEN_BYTES = 65536;
 
 export interface Result {
@@ -62,9 +64,9 @@ async function check(root: string, base: string, head: string, reviewLabels?: re
   const ids = new Set<string>();
   for (const { status, path } of changes) {
     if (status !== "A") problems.push(`Only additions are allowed, but ${path} has status ${status}.`);
-    const id = (LEVEL_FILE.exec(path) ?? PROOF_FILE.exec(path))?.[1];
+    const id = (LEVEL_FILE.exec(path) ?? SKETCH_FILE.exec(path) ?? PROOF_FILE.exec(path))?.[1];
     if (id) ids.add(id);
-    else problems.push(`${path} is not an allowed path: expected levels/lvl_<10 lowercase letters or digits>/v<N>.json, meta.json or proof/<id>/v<N>.demo.gz.`);
+    else problems.push(`${path} is not an allowed path: expected levels/lvl_<10 lowercase letters or digits>/v<N>.json, v<N>.sketch.json, meta.json or proof/<id>/v<N>.demo.gz.`);
   }
   if (ids.size > 1) problems.push(`The pull request touches more than one level: ${[...ids].join(", ")}.`);
   if (problems.length > 0 || ids.size !== 1) return { ok: null, problems };
@@ -77,12 +79,14 @@ async function check(root: string, base: string, head: string, reviewLabels?: re
   const levelPath = `levels/${id}/v${n}.json`;
   const demoPath = `proof/${id}/v${n}.demo.gz`;
   const metaPath = `levels/${id}/meta.json`;
+  const sketchPath = `levels/${id}/v${n}.sketch.json`;
 
   const added = new Set(changes.map((c) => c.path));
   const required = isNew ? [levelPath, demoPath, metaPath] : [levelPath, demoPath];
   for (const path of required) if (!added.has(path)) problems.push(`The pull request must add ${path}.`);
+  if (added.has(sketchPath) && !added.has(levelPath)) problems.push(`${sketchPath} may only be added together with ${levelPath}.`);
   for (const path of added) {
-    if (required.includes(path)) continue;
+    if (required.includes(path) || path === sketchPath) continue;
     problems.push(
       path === metaPath
         ? `${path} may only be added together with a new level.`
@@ -100,6 +104,10 @@ async function check(root: string, base: string, head: string, reviewLabels?: re
   if (isNew) {
     if (size(metaPath) > MAX_META_BYTES) problems.push(`${metaPath} is larger than ${MAX_META_BYTES} bytes.`);
     else problems.push(...checkMeta(metaPath, show(metaPath)));
+  }
+  if (added.has(sketchPath)) {
+    if (size(sketchPath) > MAX_SKETCH_BYTES) problems.push(`${sketchPath} is larger than 2 KB.`);
+    else if (!parseObject(show(sketchPath))) problems.push(`${sketchPath} is not a JSON object.`);
   }
   if (problems.length > 0) return { ok: null, problems };
 

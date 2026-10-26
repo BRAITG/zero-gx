@@ -50,6 +50,15 @@ export async function putLike(request: Request, env: Env, params: Record<string,
   return Response.json({ likes: count!.results[0]!.likes });
 }
 
+/** The stored sketch parsed; null when there is none or it does not parse, so one bad value cannot fail the whole list. */
+function parseSketch(text: string | null): object | null {
+  try {
+    return text === null ? null : JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 export async function getLevels(request: Request, env: Env): Promise<Response> {
   await requirePlayer(request, env);
   const query = new URL(request.url).searchParams;
@@ -59,16 +68,16 @@ export async function getLevels(request: Request, env: Env): Promise<Response> {
   if (!/^\d{1,6}$/.test(page)) throw new HttpError(400, "page must be a non-negative integer.");
   const order = sort === "top" ? "likes DESC, players DESC, l.id" : "v.approved DESC, l.id";
   const { results } = await env.DB.prepare(
-    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256, v.reviewed_difficulty,
+    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256, v.reviewed_difficulty, v.sketch,
        (SELECT COUNT(*) FROM likes k JOIN players kp ON kp.id = k.player WHERE k.level = l.id AND kp.banned = 0) AS likes,
        (SELECT COUNT(DISTINCT s.player) FROM scores s JOIN versions w ON w.sha256 = s.sha256 JOIN players sp ON sp.id = s.player WHERE w.level = l.id AND sp.banned = 0) AS players
      FROM levels l LEFT JOIN players p ON p.id = l.owner JOIN versions v ON v.level = l.id AND v.version = l.latest
      WHERE ${VISIBLE} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ?`,
   )
     .bind(Number(page) * PAGE_SIZE)
-    .all<{ sha256: string }>();
+    .all<{ sha256: string; sketch: string | null }>();
   const community = await communityLabels(env, results.map((row) => row.sha256));
-  return Response.json(results.map((row) => ({ ...row, community_difficulty: community.get(row.sha256)! })));
+  return Response.json(results.map(({ sketch, ...row }) => ({ ...row, sketch: parseSketch(sketch), community_difficulty: community.get(row.sha256)! })));
 }
 
 const RANK_ROW = `SELECT r.rank, r.player AS id, p.name, r.points FROM player_ranking r JOIN players p ON p.id = r.player WHERE p.banned = 0`;

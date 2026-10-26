@@ -135,9 +135,18 @@ describe("GET /levels", () => {
     await env.DB.prepare("INSERT INTO likes VALUES ('p_a', 'lvl_cccccccccc'), ('p_b', 'lvl_cccccccccc'), ('p_a', 'lvl_aaaaaaaaaa'), ('p_a', 'lvl_dddddddddd')").run();
     const items = await list();
     expect(items.map((i) => i.level_id)).toEqual(["lvl_cccccccccc", "lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb"]);
-    expect(items[2]).toEqual({ level_id: "lvl_bbbbbbbbbb", title: "Two versions", author: "Name p_b", latest: 2, sha256: hash("lvl_bbbbbbbbbb-v2"), likes: 0, players: 2, reviewed_difficulty: null, community_difficulty: { value: null, votes: 0 } });
+    expect(items[2]).toEqual({ level_id: "lvl_bbbbbbbbbb", title: "Two versions", author: "Name p_b", latest: 2, sha256: hash("lvl_bbbbbbbbbb-v2"), likes: 0, players: 2, reviewed_difficulty: null, sketch: null, community_difficulty: { value: null, votes: 0 } });
     expect(items[0]).toMatchObject({ likes: 2, players: 1 });
     expect(await list("?sort=top&page=0")).toEqual(items);
+  });
+
+  it("gives the latest version's stored sketch parsed, or null when it has none or is malformed", async () => {
+    await env.DB.prepare(`UPDATE versions SET sketch = '{"bounds":[0,0,1,1]}' WHERE level = 'lvl_bbbbbbbbbb' AND version = 2`).run();
+    await env.DB.prepare(`UPDATE versions SET sketch = 'not json' WHERE level = 'lvl_aaaaaaaaaa'`).run();
+    const items = await list();
+    expect(items.find((i) => i.level_id === "lvl_bbbbbbbbbb")).toMatchObject({ sketch: { bounds: [0, 0, 1, 1] } });
+    expect(items.find((i) => i.level_id === "lvl_aaaaaaaaaa")).toMatchObject({ sketch: null });
+    expect(items.find((i) => i.level_id === "lvl_cccccccccc")).toMatchObject({ sketch: null });
   });
 
   it("orders new by the approval time of the latest version, and pages from 0", async () => {
