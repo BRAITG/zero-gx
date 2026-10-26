@@ -218,7 +218,7 @@ func test_sketch_json_sorts_nested_keys() -> void:
 	check(LevelFormat.sketch_json({"walls": [{"points": [], "kind": "blue", "closed": true}]}) == '{"walls":[{"closed":true,"kind":"blue","points":[]}]}', "nested keys must be sorted on one line")
 
 
-func test_sketch_of_a_maximal_level_fits() -> void:
+func full_level() -> Dictionary:
 	var data := minimal()
 	data.walls = []
 	for w in LevelFormat.MAX_WALLS:
@@ -229,7 +229,26 @@ func test_sketch_of_a_maximal_level_fits() -> void:
 	data.asteroids = []
 	for i in LevelFormat.MAX_ASTEROIDS:
 		data.asteroids.append({"position": [i * 31, (i * 17) % 500]})
-	check(LevelFormat.sketch_json(LevelFormat.sketch(data)).length() < 2048, "maximal level must fit")
+	return data
+
+
+func test_sketch_of_a_maximal_level_fits() -> void:
+	var sketch := LevelFormat.sketch(full_level())
+	check(LevelFormat.sketch_json(sketch).length() < 2048, "maximal level must fit")
+	check(not sketch.walls.is_empty(), "walls survive the cap while asteroids can go: %d walls" % sketch.walls.size())
+
+
+func test_sketch_of_a_level_full_of_pickups_and_bodies_fits() -> void:
+	var data := full_level()
+	data.pickups = []
+	for i in LevelFormat.MAX_PICKUPS:
+		data.pickups.append({"kind": "boost", "position": [(i * 2917) % 100000 - 50000, (i * 4001) % 100000 - 50000]})
+	data.bodies = []
+	for i in LevelFormat.MAX_BODIES:
+		data.bodies.append({"kind": "star", "position": [(i * 3517) % 100000 - 50000, (i * 2243) % 100000 - 50000], "radius": 3000})
+	var sketch := LevelFormat.sketch(data)
+	check(LevelFormat.sketch_json(sketch).length() < 2048, "a level full of pickups and bodies must fit: %d" % LevelFormat.sketch_json(sketch).length())
+	check(sketch.has("bounds") and sketch.has("ship") and sketch.has("goal"), "bounds, ship and goal always stay")
 
 
 func test_sketch_drops_a_straight_run_and_keeps_corners() -> void:

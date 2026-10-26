@@ -368,10 +368,10 @@ static func sketch(data: Dictionary) -> Dictionary:
 			break
 		tolerance *= 2.0
 		out = _shape(data, box, tolerance)
-	while not _fits(out) and not out.asteroids.is_empty():
-		out.asteroids.pop_back()
-	while not _fits(out) and not out.walls.is_empty():  # shortcut: a level of 300 walls cannot fit at 2 points each, so walls are cut from the end too, upgrade: a per-wall budget
-		out.walls.pop_back()
+	# shortcut: a whole kind is cut before the next, so a dense level drops every wall before any pickup, upgrade: a per-item budget
+	for key in ["asteroids", "walls", "pickups", "bodies"]:
+		while not _fits(out) and not out[key].is_empty():
+			out[key].pop_back()
 	return out
 
 
@@ -448,7 +448,6 @@ static func _simplify(points: PackedVector2Array, tolerance: float) -> PackedVec
 
 static func _int_point(v: Vector2) -> Array:
 	return [roundi(v.x), roundi(v.y)]
-
 
 
 static func _check_start(data: Dictionary, errors: PackedStringArray) -> void:
