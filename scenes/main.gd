@@ -122,7 +122,7 @@ func _list_levels() -> void:
 		var next := suggested == null and unlocked and best < 0
 		var data := LevelFormat.read((Progress.TUTORIALS_DIR if training else Progress.LEVELS_DIR) + id + LevelFormat.EXTENSION)
 		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
-		var button := _row(id, "%s · %s" % [label, data.get("title", "")], _breakdown(id, unlocked, next))
+		var button := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next)
 		button.disabled = not unlocked
 		if not unlocked:
 			button.modulate = Color(1, 1, 1, 0.55)  # the thumbnail dims with the text
@@ -138,27 +138,11 @@ func _list_levels() -> void:
 			Style.focus_first(_levels)
 
 
-## The four cells under a row's title: best and time on one line, fuel and hull points on the next.
-## Bests saved before the breakdown was kept show "—" for fuel and hull rather than an invented value.
-func _breakdown(id: String, unlocked: bool, next: bool) -> PackedStringArray:
-	var best := Progress.best_points(id)
-	if not unlocked:
-		return PackedStringArray(["Locked"])
-	if best < 0:
-		return PackedStringArray(["Next · Not played" if next else "Not played"])
-	var fuel := Progress.best_fuel(id)
-	var hull := Progress.best_hull(id)
-	return PackedStringArray([
-		"Best %d" % best,
-		"Time %.1f s" % Progress.best_time(id),
-		"Fuel —" if fuel < 0 else "Fuel +%d" % roundi(fuel * Tuning.points_fuel),
-		"Hull —" if hull < 0 else "Hull +%d" % roundi(hull * Tuning.points_hull),
-	])
-
-
-## A stage row: the stage's thumbnail on the left, its title and the breakdown cells on the right.
+## A stage row: the thumbnail on the left; the title over one line of the best run's fuel, hull and
+## time points (each behind its score icon) in the middle; the best total, large, on the right.
+## A best saved before fuel and hull were kept shows "—" for them rather than an invented value.
 ## The title Label is named "Title" so tests and tools can read the row's name.
-func _row(id: String, title: String, cells: PackedStringArray) -> Button:
+func _row(id: String, title: String, unlocked: bool, next: bool) -> Button:
 	var button := _button("", Vector2(LIST_SIZE.x - 24, ROW_HEIGHT))  # less the scrollbar
 	var content := HBoxContainer.new()
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -176,24 +160,40 @@ func _row(id: String, title: String, cells: PackedStringArray) -> Button:
 	var name_label := _label(title, 24)
 	name_label.name = "Title"
 	text.add_child(name_label)
-	var grid := GridContainer.new()
-	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 24)
-	text.add_child(grid)
-	for cell in cells:
-		var cell_label := _label(cell, 18)
-		cell_label.custom_minimum_size.x = 150  # the two columns line up across rows
-		cell_label.modulate = Style.INK_DIM
-		grid.add_child(cell_label)
+	var parts := HBoxContainer.new()
+	parts.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	parts.add_theme_constant_override("separation", 8)
+	text.add_child(parts)
+	var best := Progress.best_points(id)
+	if not unlocked:
+		parts.add_child(_label("Locked", 18, Style.INK_DIM))
+	elif best < 0:
+		parts.add_child(_label("Next · Not played" if next else "Not played", 18, Style.INK_DIM))
+	else:
+		var fuel := Progress.best_fuel(id)
+		var hull := Progress.best_hull(id)
+		for part in [
+			[ScoreIcon.Kind.FUEL, "—" if fuel < 0 else "+%d" % roundi(fuel * Tuning.points_fuel)],
+			[ScoreIcon.Kind.HULL, "—" if hull < 0 else "+%d" % roundi(hull * Tuning.points_hull)],
+			[ScoreIcon.Kind.TIME, "−%d" % roundi(Progress.best_time(id) * Tuning.points_per_second)],
+		]:
+			parts.add_child(ScoreIcon.new(part[0]))
+			var value := _label(part[1], 18, Style.INK_DIM)
+			value.custom_minimum_size.x = 70  # the icons line up across rows
+			parts.add_child(value)
+		var total := _label(str(best), 36)
+		total.add_theme_font_override("font", Style.display_font)
+		total.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		content.add_child(total)
 	return button
 
 
-func _label(text: String, font_size: int) -> Label:
+func _label(text: String, font_size: int, color := Style.INK) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
 	return label
 
 
