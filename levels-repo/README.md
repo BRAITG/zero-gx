@@ -21,6 +21,7 @@ unless the pull request:
 - only adds files, for exactly one level, with the next version number (`v1` for a new level);
 - adds `meta.json` if and only if the level is new;
 - adds a level file that is a valid level of at most 64 KiB;
+- may also add `levels/<lvl_id>/v<N>.sketch.json`, a JSON object of at most 2 KiB, only together with that version's level file.
 - adds a proof run that is a valid demo of at most 512 KiB and completes that exact level file.
 - for a level, carries exactly one moderator label: `difficulty:easy`, `difficulty:normal`, `difficulty:hard` or `difficulty:expert`.
 
@@ -34,6 +35,8 @@ check must never be bypassed. Merge only level pull requests opened by the bot. 
 after its author has resubmitted: the branch now carries the new submission.
 
 Moderators rate each version by adding exactly one `difficulty:<label>` label to the pull request before merging (`difficulty:easy`, `difficulty:normal`, `difficulty:hard` or `difficulty:expert`). The check runs again when labels change. The merge stores that label as the version's reviewed difficulty; the author's suggestion is never used. A merge without exactly one such label, which only a bypass of the check allows, publishes the version as Not rated. Versions published before this rule are Not rated too.
+
+A submission's pull request gets one preview comment from `preview-comment.yml`, marked `<!-- zero-gx-preview -->`: a render of the level (`tools/render_level.gd`, under xvfb) and a link that plays the proof run in the browser viewer. The comment is updated for each new head and kept after the pull request closes. The `preview` job runs even while `check` fails, because `check` waits for a label that the preview helps choose. A bot sketch commit parks the next "Check submission" run as `action_required`; the next label or unlabel event runs it, so a moderator who labelled before the comment appeared relabels once.
 
 The workflow runs from the pull request's own merge commit, so a pull request can edit or delete `check.yml` to skip
 the check. The checker fails any change under `.github/` and the submission bot never touches it, so moderators
