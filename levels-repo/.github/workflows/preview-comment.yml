@@ -11,8 +11,9 @@ name: Preview comment
 # It does not look at the conclusion of the checked run: `check` fails until a moderator sets the difficulty label, and the
 # preview is what they set it from. A run without the artifact (no level added, or the guard refused) is skipped.
 #
-# A commit made with GITHUB_TOKEN does not start other workflows, so the sketch commit does not rerun "Check submission" on its own.
-# The next label event does, on the new head, and that run keeps the comment up to date.
+# A commit made with GITHUB_TOKEN starts no checks of its own, but GitHub parks the "Check submission" run it creates as
+# `action_required`, so the new head has no `check` status. The next label or unlabel event runs `check` on that head, and that
+# run keeps the comment up to date.
 
 on:
   workflow_run:
@@ -26,12 +27,12 @@ permissions:
 
 # One run per PR branch at a time, in order. Runs for different PRs still meet on `previews`, which setPreview retries.
 concurrency:
-  group: preview-comment-${{ github.event.workflow_run.head_branch }}
+  group: preview-comment-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: false
 
 jobs:
   preview:
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository
+    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.head_repository.full_name == github.repository && startsWith(github.event.workflow_run.head_branch, 'submission/')
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -60,6 +61,7 @@ jobs:
                   const parent = ref?.data.object.sha;
                   let base, entries = [];
                   if (parent) {
+                    // shortcut: ignores `truncated` (over 100k entries); with one PNG per PR that is far off, so check it when it nears.
                     const {data: t} = await github.rest.git.getTree({owner, repo, tree_sha: parent, recursive: 'true'});
                     base = t.sha;
                     entries = t.tree.filter(e => e.type === 'blob' && e.path.startsWith(`${number}/`) && e.path !== path)
@@ -94,12 +96,12 @@ jobs:
               return;
             }
             const {number, head_sha: sha, level, version} = JSON.parse(prJson);
-            if (sha !== context.payload.workflow_run.head_sha || !/^lvl_[a-z0-9]{10}$/.test(level) ||
+            if (sha !== context.payload.workflow_run.head_sha || typeof level !== 'string' || !/^lvl_[a-z0-9]{10}$/.test(level) ||
                 !Number.isSafeInteger(number) || number < 1 || !Number.isSafeInteger(version) || version < 1) {
               throw new Error('pr.json does not match this run.');
             }
             const {data: pr} = await github.rest.pulls.get({owner, repo, pull_number: number});
-            if (pr.state !== 'open' || pr.head.sha !== sha || pr.head.repo.full_name !== `${owner}/${repo}`) {
+            if (pr.state !== 'open' || pr.head.sha !== sha || pr.head.repo?.full_name !== `${owner}/${repo}`) {
               core.notice('The pull request has moved on; skipping.');
               return;
             }
