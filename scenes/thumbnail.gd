@@ -4,6 +4,7 @@ extends Control
 ## training stage, in the game's own ship, wall, pickup and gravity-body shapes. Not a map of the stage.
 ## Compositions are authored on a 320x180 canvas and scaled to the control's size; they must read at
 ## phone size (about 130x73 px), so objects are large and each picture has one idea.
+## A level sketch (of_sketch) is drawn from its own shapes on the same canvas.
 
 const CANVAS := Vector2(320, 180)
 const BACKGROUND := [Color("#0b152a"), Color("#030610")]
@@ -12,14 +13,47 @@ const PLANET := GravityBody.PLANET_COLORS[1]
 const ROCK := Color("#6f675f")
 const ROCK_RIM := Color("#b3a89a")
 const FUEL := ScoreIcon.COLORS[ScoreIcon.Kind.FUEL]
+const MARGIN := 12.0  # canvas units between a sketch's bounds and the canvas edge
 
 var stage_id: String
+var sketch: Dictionary  # a level sketch drawn in place of a stage; empty for a stage
 
 
-func _init(id: String) -> void:
+func _init(id := "") -> void:
 	stage_id = id
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	clip_contents = true
+
+
+## A thumbnail of a level sketch (LevelFormat.sketch). Null, a level with no sketch yet, draws the background;
+## any other value that is not a usable sketch warns and draws the background too.
+static func of_sketch(value: Variant) -> Thumbnail:
+	var thumbnail := Thumbnail.new()
+	if value is Dictionary and _has_bounds(value):
+		thumbnail.sketch = value
+	elif value != null:
+		push_warning("Bad level sketch: drawing the background only")
+	return thumbnail
+
+
+## True for a sketch whose bounds are four numbers with a positive width and height: all a drawing needs.
+static func _has_bounds(data: Dictionary) -> bool:
+	var box: Variant = data.get("bounds")
+	if not (box is Array and box.size() == 4):
+		return false
+	for value in box:
+		if not _is_number(value):
+			return false
+	return box[2] > 0 and box[3] > 0
+
+
+static func _is_number(value: Variant) -> bool:
+	return value is float or value is int
+
+
+## True for an [x, y] pair of numbers, as JSON gives a level point.
+static func _is_point(value: Variant) -> bool:
+	return value is Array and value.size() == 2 and _is_number(value[0]) and _is_number(value[1])
 
 
 func _draw() -> void:
@@ -27,6 +61,9 @@ func _draw() -> void:
 	draw_polygon(PackedVector2Array([Vector2.ZERO, Vector2(CANVAS.x, 0), CANVAS, Vector2(0, CANVAS.y)]), PackedColorArray([BACKGROUND[0], BACKGROUND[0].lerp(BACKGROUND[1], 0.5), BACKGROUND[1], BACKGROUND[0].lerp(BACKGROUND[1], 0.5)]))
 	for i in 75:
 		draw_circle(Vector2((i * 73 + 17) % 320, (i * 47 + 11) % 180), 0.9 if i % 9 == 0 else 0.45, Color(0.75, 0.82, 1.0, 0.12 + (i % 5) * 0.08))
+	if stage_id.is_empty():
+		_draw_sketch()
+		return
 	match stage_id:
 		"level_01":  # Launch: a firing ship, open space, the goal ahead.
 			_ship(Vector2(112, 111), -0.24, 2.25, true)
@@ -250,3 +287,61 @@ func _drop(at: Vector2, r: float) -> void:
 ## Draws what follows at `at`, turned by `angle` and scaled; `_local(Vector2.ZERO)` returns to the canvas.
 func _local(at: Vector2, angle := 0.0, scale := 1.0) -> void:
 	draw_set_transform_matrix(Transform2D(0.0, size / CANVAS, 0.0, Vector2.ZERO) * Transform2D(angle, Vector2.ONE * scale, 0.0, at))
+
+
+## Draws the sketch's shapes fitted to the canvas, bodies first and the ship on top; an entry with a missing or mistyped key is skipped.
+func _draw_sketch() -> void:
+	if sketch.is_empty():
+		return
+	for body in _entries("bodies"):
+		if not (_is_point(body.get("position")) and _is_number(body.get("radius"))):
+			continue
+		var at := _fit(body.get("position"))
+		var radius := maxf(4.0, float(body.get("radius")) * _scale())
+		match body.get("kind"):
+			"planet": _planet(at, radius)
+			"black_hole": _black_hole(at, radius)
+			"star": _star(at, radius)
+	for wall in _entries("walls"):
+		var kind := LevelFormat.WALL_KINDS.find(wall.get("kind"))
+		var points := _points(wall.get("points"))
+		if kind < 0 or points.size() < 2:
+			continue
+		if wall.get("closed") == true:
+			points.append(points[0])
+		_wall(points, kind)
+	var rocks := _points(sketch.get("asteroids"))
+	for i in rocks.size():
+		_asteroid(rocks[i], 0.5, i)
+	for pickup in _entries("pickups"):
+		var kind := LevelFormat.PICKUP_KINDS.find(pickup.get("kind"))
+		if kind >= 0 and _is_point(pickup.get("position")):
+			_pickup(_fit(pickup.get("position")), kind, 0.35)
+	if _is_point(sketch.get("goal")):
+		_goal(_fit(sketch.get("goal")), 10.0)
+	if _is_point(sketch.get("ship")):
+		_ship(_fit(sketch.get("ship")), 0.0, 1.2, false)
+
+
+## The dictionaries under `key`; a missing or mistyped list gives none.
+func _entries(key: String) -> Array:
+	var list: Variant = sketch.get(key)
+	return (list as Array).filter(func(entry: Variant) -> bool: return entry is Dictionary) if list is Array else []
+
+
+## The valid [x, y] points of a list, fitted to the canvas; anything else in the list is dropped.
+func _points(list: Variant) -> Array:
+	return (list as Array).filter(_is_point).map(_fit) if list is Array else []
+
+
+## The one scale that fits the sketch's bounds inside the canvas margin.
+func _scale() -> float:
+	var box: Array = sketch.bounds
+	return minf((CANVAS.x - 2.0 * MARGIN) / box[2], (CANVAS.y - 2.0 * MARGIN) / box[3])
+
+
+## A level point on the canvas: the bounds centred in it, at the sketch's one scale.
+func _fit(p: Array) -> Vector2:
+	var box: Array = sketch.bounds
+	var s := _scale()
+	return (CANVAS - Vector2(box[2], box[3]) * s) / 2.0 + (Vector2(p[0], p[1]) - Vector2(box[0], box[1])) * s
