@@ -179,13 +179,12 @@ func _ready() -> void:
 	_best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_best.add_theme_color_override("font_color", Style.ACCENT)
 	_score.add_child(_best)
-	var parts := GridContainer.new()  # two rows of icon + value, well apart
-	parts.columns = 2
-	parts.add_theme_constant_override("h_separation", 48)
+	var parts := GridContainer.new()  # three lines of icon + value
+	parts.columns = 1
 	parts.add_theme_constant_override("v_separation", 10)
 	parts.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_score.add_child(parts)
-	for kind in [ScoreIcon.Kind.FINISH, ScoreIcon.Kind.FUEL, ScoreIcon.Kind.HULL, ScoreIcon.Kind.TIME]:
+	for kind in [ScoreIcon.Kind.FUEL, ScoreIcon.Kind.HULL, ScoreIcon.Kind.TIME]:
 		var cell := HBoxContainer.new()
 		cell.add_theme_constant_override("separation", 10)
 		cell.add_child(ScoreIcon.new(kind))
@@ -296,7 +295,6 @@ func show_result(won: bool, result: Dictionary) -> void:
 	if won:
 		_total.text = str(result.points)
 		_best.visible = result.new_best
-		_parts[ScoreIcon.Kind.FINISH].text = str(Progress.BASE_POINTS)
 		_parts[ScoreIcon.Kind.FUEL].text = "+%d" % result.fuel_points
 		_parts[ScoreIcon.Kind.HULL].text = "+%d" % result.hull_points
 		_parts[ScoreIcon.Kind.TIME].text = "−%d" % result.time_points

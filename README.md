@@ -129,7 +129,7 @@ Every run of an official level or a draft is recorded as a demo (tutorials are n
 
 ## Scoring and progress
 
-A won stage scores `1000 + fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100). The clock starts at the first thrust. The weights are sliders in the Tune panel. Training and levels unlock independently, each in order. The Official levels and Training lists show each stage's best score with its time and its fuel and hull points, and highlight and focus the next unfinished unlocked stage; bests saved by versions that kept only the total and time show "—" for fuel and hull until they are beaten. Training's home entry marks completion once every training stage is finished. The flight's Menu action returns to its own selection list.
+A won stage scores `fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100); reaching the goal itself scores nothing, so the breakdown adds up to the total. Progress files from versions that added a 1000-point base are migrated once (`[meta] version`): every saved best loses 1000, floored at 100. The clock starts at the first thrust. The weights are sliders in the Tune panel. Training and levels unlock independently, each in order. The Official levels and Training lists show each stage's best score with its time and its fuel and hull points, and highlight and focus the next unfinished unlocked stage; bests saved by versions that kept only the total and time show "—" for fuel and hull until they are beaten. Training's home entry marks completion once every training stage is finished. The flight's Menu action returns to its own selection list.
 
 ## Tuning
 

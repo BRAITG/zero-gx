@@ -7,8 +7,7 @@ import { BARRIER_THICKNESS, GOAL_RADIUS, SHIP_RADIUS, UNLIMITED, bodyValue, clos
 const TUNNEL_LIMIT = 1200; // scenes/ship.gd
 const MAX_FUEL = 100; // scenes/ship.gd
 const MAX_HEALTH = 100; // scenes/ship.gd
-const BASE_POINTS = 1000; // scripts/progress.gd
-const MIN_POINTS = 100;
+const MIN_POINTS = 100; // scripts/progress.gd
 const POINTS_FUEL = 15; // Tuning.DEFAULTS: scoring never follows the live tuning
 const POINTS_HULL = 3;
 const POINTS_PER_SECOND = 2;
@@ -168,7 +167,7 @@ export function scoreDemo(level: unknown, demo: Demo): { points: number; fuel: n
 
 // Order matters: the sum, then the rounding, then the floor.
 const pointsFor = (fuel: number, hull: number, seconds: number) =>
-  Math.max(MIN_POINTS, roundi(BASE_POINTS + fuel * POINTS_FUEL + hull * POINTS_HULL - seconds * POINTS_PER_SECOND));
+  Math.max(MIN_POINTS, roundi(fuel * POINTS_FUEL + hull * POINTS_HULL - seconds * POINTS_PER_SECOND));
 
 /** Seconds from the clock-started event to the last frame; 0 when the clock never started. */
 function clockSeconds(demo: Demo): number {

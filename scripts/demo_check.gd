@@ -122,7 +122,7 @@ static func score(level: Dictionary, demo: Demo) -> Dictionary:
 
 static func _points(fuel: float, hull: float, seconds: float) -> int:
 	var weights := Tuning.DEFAULTS
-	return maxi(Progress.MIN_POINTS, roundi(Progress.BASE_POINTS + fuel * weights.points_fuel + hull * weights.points_hull - seconds * weights.points_per_second))
+	return maxi(Progress.MIN_POINTS, roundi(fuel * weights.points_fuel + hull * weights.points_hull - seconds * weights.points_per_second))
 
 
 ## Seconds from the clock-started event to the last frame; 0 when the clock never started.

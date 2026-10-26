@@ -14,8 +14,8 @@ const LEVEL_05 = bytes(env.LEVEL_05);
 const DEMO_05 = bytes(env.DEMO_LEVEL_05);
 const SHA_01 = await sha256Hex(LEVEL_01);
 const SHA_05 = await sha256Hex(LEVEL_05);
-const POINTS_01 = 2522; // fixtures/expected.json
-const POINTS_05 = 1307;
+const POINTS_01 = 1522; // fixtures/expected.json
+const POINTS_05 = 307;
 
 const call = (path: string, init?: RequestInit) => worker.fetch(new Request(`https://example.com${path}`, init), testEnv);
 const nonce = async () => ((await (await call("/nonce")).json()) as { nonce: string }).nonce;

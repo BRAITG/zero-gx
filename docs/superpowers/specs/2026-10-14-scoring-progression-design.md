@@ -20,7 +20,7 @@ The prototype proved that steering through gravity wells is fun. The vertical sl
 ## Points
 
 ```
-points = max(100, round(1000 + fuel_left × points_fuel + hull_left × points_hull − seconds × points_per_second))
+points = max(100, round(fuel_left × points_fuel + hull_left × points_hull − seconds × points_per_second))
 ```
 
 | Weight | Default | Tune range | Step |
@@ -29,9 +29,9 @@ points = max(100, round(1000 + fuel_left × points_fuel + hull_left × points_hu
 | `points_hull` | 3 | 0–10 | 0.5 |
 | `points_per_second` | 2 | 0–30 | 1 |
 
-- Example: a 30 s finish with 40 fuel and 80 hull scores 1000 + 600 + 240 − 60 = 1780.
+- Example: a 30 s finish with 40 fuel and 80 hull scores 600 + 240 − 60 = 780. (Until 2026-10-26 a 1000-point base was added for reaching the goal; it was dropped as a constant that said nothing, and saved bests were migrated.)
 - `seconds` is flight time. It starts at the ship's first thrust or boost, not when the level loads.
-- The weights live in `Tuning` with sliders. The base (1000) and floor (100) are constants.
+- The weights live in `Tuning` with sliders. The floor (100) is a constant.
 
 ## Progress file
 
@@ -46,7 +46,7 @@ points = max(100, round(1000 + fuel_left × points_fuel + hull_left × points_hu
   - Each button shows `Level 01 · 1780`, or `Level 01 · —` when the level has not been finished.
   - Locked levels show `Level 03 · locked`, are disabled, and cannot be pressed.
 - **Win panel:**
-  - "Course clear", the total points, and a breakdown line: `1000 + fuel 600 + hull 240 − time 60`.
+  - "Course clear", the total points, and three breakdown lines: fuel +600, hull +240, time −60.
   - "New best!" when the run improved the saved best.
   - Buttons: **Next** (only when a following level exists), **Retry**, **Menu**.
 - **Loss panel:**
