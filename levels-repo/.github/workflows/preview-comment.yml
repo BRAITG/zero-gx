@@ -146,7 +146,7 @@ jobs:
             const demoUrl = `${raw}/${sha}/proof/${level}/v${version}.demo.gz`;
             const body = `${marker}\n**Preview of \`${level}\` v${version}** at \`${sha}\`\n\n` +
               `![Level render](${raw}/previews/${number}/${sha}.png)\n\n` +
-              `[Watch the proof run in the browser](https://braitg.github.io/zero-gx/viewer/?level=${levelUrl}&demo=${demoUrl})`;
+              `[Watch the proof run in the browser](https://braitg.dev/zero-gx/viewer/?level=${levelUrl}&demo=${demoUrl})`;
             const comments = await github.paginate(github.rest.issues.listComments, {owner, repo, issue_number: number});
             const mine = comments.find(c => c.user.login === 'github-actions[bot]' && c.body.startsWith(marker));
             if (mine) await github.rest.issues.updateComment({owner, repo, comment_id: mine.id, body});
