@@ -307,7 +307,8 @@ func _draw_sketch() -> void:
 		var points := _points(wall.get("points"))
 		if kind < 0 or points.size() < 2:
 			continue
-		if wall.get("closed") == true:
+		var closed: Variant = wall.get("closed")
+		if closed is bool and closed:
 			points.append(points[0])
 		_wall(points, kind)
 	var rocks := _points(sketch.get("asteroids"))

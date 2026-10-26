@@ -13,7 +13,13 @@ func test_every_official_sketch_draws() -> void:
 
 
 func test_sketch_thumbnail_survives_bad_input() -> void:
-	for bad in [null, {}, {"bounds": "x"}, {"bounds": [0, 0, 0, 0], "walls": [{"kind": 3, "points": "no"}]}, "text"]:
+	var mistyped := {
+		"bounds": [0, 0, 100, 50], "ship": "here", "goal": [50], "asteroids": 5,
+		"walls": [5, {"kind": "blue", "points": [[0, 0], "x", [100, 50]], "closed": "yes"}, {"kind": "red", "points": [[0, 0], [10, 10]], "closed": 1}],
+		"bodies": [{"kind": "planet", "position": [10, 10], "radius": "big"}],
+		"pickups": [5, {"kind": "thrust_sideways", "position": [1, 1]}],
+	}
+	for bad in [null, {}, {"bounds": "x"}, {"bounds": [0, 0, 0, 0], "walls": [{"kind": 3, "points": "no"}]}, "text", mistyped]:
 		var thumbnail := Thumbnail.of_sketch(bad)
 		thumbnail.size = Thumbnail.CANVAS
 		world.add_child(thumbnail)
