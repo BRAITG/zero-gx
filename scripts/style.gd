@@ -10,6 +10,8 @@ const BORDER := Color("#2a4a7a")
 
 ## Orbitron, for titles and big numbers.
 var display_font: Font
+## Whether the player touches the screen; tests set it.
+var touchscreen := DisplayServer.is_touchscreen_available()
 
 
 func _ready() -> void:
@@ -21,12 +23,20 @@ func _ready() -> void:
 	ThemeDB.get_default_theme().default_font = theme.default_font
 	ThemeDB.get_default_theme().default_font_size = theme.default_font_size
 	add_child(_bloom())
-	get_tree().node_added.connect(_pass_touches_to_scroll)
+	get_tree().node_added.connect(_fit_button_to_touch)
 
 
+## Godot turns each touch into an emulated mouse as well, which hovers whatever lies under the finger, even
+## after it lifts. A finger has no hover, so on a touchscreen a button's hover look is its look at rest,
+## copied as it enters the tree: override a button's own looks before adding it.
 ## A button stops touches by default, so a drag that starts on one never scrolls its list and lifts as a tap.
 ## PASS lets the list see it; once the drag passes the scroll deadzone, the list cancels the button's press.
-func _pass_touches_to_scroll(node: Node) -> void:
+func _fit_button_to_touch(node: Node) -> void:
+	if touchscreen and node is Button:
+		node.add_theme_stylebox_override("hover", node.get_theme_stylebox("normal"))
+		node.add_theme_stylebox_override("hover_pressed", node.get_theme_stylebox("pressed"))
+		node.add_theme_color_override("font_hover_color", node.get_theme_color("font_color"))
+		node.add_theme_color_override("font_hover_pressed_color", node.get_theme_color("font_pressed_color"))
 	if not (node is BaseButton and node.mouse_filter == Control.MOUSE_FILTER_STOP):
 		return
 	var parent := node.get_parent()
