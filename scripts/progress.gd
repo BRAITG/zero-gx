@@ -10,6 +10,10 @@ const MIN_POINTS := 100
 ## The progress file's layout. 1: bests included a 1000-point base for reaching the goal. 2: no base.
 const VERSION := 2
 const OLD_BASE_POINTS := 1000
+## Medal thresholds as shares of a level's par.
+const BRONZE_FRACTION := 0.4
+const SILVER_FRACTION := 0.7
+enum Medal { NONE, BRONZE, SILVER, GOLD }
 
 var path := "user://progress.cfg"
 var demos_dir := "user://demos/"
@@ -83,6 +87,29 @@ func _stems(dir: String) -> PackedStringArray:
 func points(fuel: float, hull: float, seconds: float) -> int:
 	var raw := fuel * Tuning.points_fuel + hull * Tuning.points_hull - seconds * Tuning.points_per_second
 	return maxi(MIN_POINTS, roundi(raw))
+
+
+func medal(points: int, par: int) -> Medal:
+	if par <= 0:
+		return Medal.NONE
+	if points >= par:
+		return Medal.GOLD
+	if points >= ceili(SILVER_FRACTION * par):
+		return Medal.SILVER
+	if points >= ceili(BRONZE_FRACTION * par):
+		return Medal.BRONZE
+	return Medal.NONE
+
+
+## The lowest medal threshold above `points`; 0 when gold or the level has no par.
+func next_threshold(points: int, par: int) -> int:
+	if par <= 0 or points >= par:
+		return 0
+	var bronze := ceili(BRONZE_FRACTION * par)
+	if points < bronze:
+		return bronze
+	var silver := ceili(SILVER_FRACTION * par)
+	return silver if points < silver else par
 
 
 ## −1 when the level has not been won.
