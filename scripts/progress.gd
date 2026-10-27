@@ -62,6 +62,8 @@ func build(id: String, testing := false, publishing := false) -> Level:
 	else:
 		data = LevelFormat.read(LEVELS_DIR + id + LevelFormat.EXTENSION)
 	var level := LevelFormat.build(data, script)
+	if id.begins_with(Community.STAGE_PREFIX):
+		level.par = Community.level_info(id.trim_prefix(Community.STAGE_PREFIX)).get("par", 0)  # the par the list row gave, not the file's
 	level.level_id = id
 	level.testing = testing
 	level.publishing = testing and publishing and Community.available()

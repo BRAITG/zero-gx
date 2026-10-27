@@ -243,6 +243,35 @@ func test_download_fetches_again_when_the_cached_file_is_damaged() -> void:
 	check(FileAccess.get_file_as_bytes(Community.level_path(row.sha256)) == bytes, "the damaged file must be replaced")
 
 
+func test_download_keeps_par_in_level_info() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var bytes := LevelFormat.to_json(LevelDoc.blank()).to_utf8_buffer()
+	var row := _row(bytes)
+	row.par = 900
+	net.answer("GET", "/index", 200, {"commit": "abc123"})
+	net.answer("GET", "/gh/", 200, bytes)
+	check(await Community.download(row) == "", "control: the level downloads")
+	check(Community.level_info(row.sha256).get("par") == 900, "the row's par must be saved beside the level: %s" % [Community.level_info(row.sha256)])
+	row.par = null  # the server's answer for a level without a par; a cache hit rewrites the saved meta from it
+	check(await Community.download(row) == "" and net.count("GET", "/gh/") == 1, "control: a cached level needs no request")
+	check(not Community.level_info(row.sha256).has("par") and Community.level_info(row.sha256).get("level_id") == LEVEL_ID, "a row without par must leave no par: %s" % [Community.level_info(row.sha256)])
+
+
+func test_a_community_stage_takes_its_par_from_the_row() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var bytes := LevelFormat.to_json(LevelDoc.blank()).to_utf8_buffer()
+	var row := _row(bytes)
+	row.par = 900
+	net.answer("GET", "/index", 200, {"commit": "abc123"})
+	net.answer("GET", "/gh/", 200, bytes)
+	check(await Community.download(row) == "", "control: the level downloads")
+	var stage := Progress.build(Community.STAGE_PREFIX + row.sha256)
+	check(stage.par == 900, "the stage must carry the row's par: %d" % stage.par)
+	stage.free()
+
+
 func test_can_submit_needs_a_matching_demo_and_an_available_platform() -> void:
 	_fake()
 	var bare := MyLevels.new_id()

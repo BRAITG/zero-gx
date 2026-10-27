@@ -117,6 +117,11 @@ func _add_row(row: Dictionary) -> Button:
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	line.add_child(label)
+	var medal := Progress.medal(Progress.best_points(Community.STAGE_PREFIX + row.sha256), Community.par_of(row))
+	if medal != Progress.Medal.NONE:
+		var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, medal)
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		line.add_child(icon)
 	var details := _button(line, "Details", _details.bind(row))
 	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var play := _button(line, "Play", _play.bind(row), "Loading…")
