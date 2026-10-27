@@ -4,4 +4,4 @@
 # The pre-commit hook and CI must run the same build, or CI reports the committed graph stale.
 # The integration deploy bumps this pin.
 set -eu
-uv tool install --upgrade 'graphifyy[leiden,gdscript] @ git+https://github.com/pfBlockerNG/graphify@b5373ef9e3eaf29117fbb472337362df4cae10c0' >&2
+uv tool install --upgrade 'graphifyy[leiden,gdscript] @ git+https://github.com/pfBlockerNG/graphify@1a48d67367aae8d75116c161778266cc4ebcb80b' >&2
