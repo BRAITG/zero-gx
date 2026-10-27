@@ -15,6 +15,8 @@ var input: ShipInput
 @export var hint := ""
 ## Always draw the ship's velocity arrow (tutorials). Levels follow the player's setting.
 @export var show_velocity := false
+## Points for a medal, from the level file: 0 when the level has no par.
+@export var par := 0
 ## Progress key; defaults to the scene file's stem. Empty (a level built in code) saves nothing.
 var level_id := ""
 ## An author's test flight of their own level: Menu returns to the editor, a finish marks the
@@ -262,4 +264,7 @@ func _score() -> Dictionary:
 		"time_points": roundi(seconds * Tuning.points_per_second),
 		"new_best": level_id != "" and not testing and Progress.record_win(level_id, points, seconds, fuel, hull),
 		"has_next": publishing or (level_id != "" and (Progress.next_level(level_id) != "" or _ends_training())),
+		"has_par": par > 0,
+		"medal": Progress.medal(points, par),
+		"next_threshold": Progress.next_threshold(points, par),
 	}

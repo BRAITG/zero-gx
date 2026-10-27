@@ -6,6 +6,22 @@ func test_points_formula() -> void:
 	check(Progress.points(0, 1, 10000) == Progress.MIN_POINTS, "points must not drop below %d" % Progress.MIN_POINTS)
 
 
+func test_medal_thresholds() -> void:
+	var cases := [
+		[1000, 1000, Progress.Medal.GOLD], [999, 1000, Progress.Medal.SILVER], [700, 1000, Progress.Medal.SILVER],
+		[699, 1000, Progress.Medal.BRONZE], [400, 1000, Progress.Medal.BRONZE], [399, 1000, Progress.Medal.NONE],
+		[701, 1001, Progress.Medal.SILVER], [700, 1001, Progress.Medal.BRONZE], [5000, 0, Progress.Medal.NONE],
+	]
+	for case in cases:
+		check(Progress.medal(case[0], case[1]) == case[2], "%d of par %d: medal %d, expected %d" % [case[0], case[1], Progress.medal(case[0], case[1]), case[2]])
+
+
+func test_next_threshold() -> void:
+	var cases := [[0, 1000, 400], [400, 1000, 700], [700, 1000, 1000], [1000, 1000, 0], [5000, 0, 0]]
+	for case in cases:
+		check(Progress.next_threshold(case[0], case[1]) == case[2], "%d of par %d: next threshold %d, expected %d" % [case[0], case[1], Progress.next_threshold(case[0], case[1]), case[2]])
+
+
 func test_record_and_reload() -> void:
 	check(Progress.record_win("level_01", 1500, 30.0), "a first win must be a new best")
 	Progress.load_file()  # read back what was saved

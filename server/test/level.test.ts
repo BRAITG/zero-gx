@@ -55,4 +55,15 @@ describe("validateLevel edge cases", () => {
     level.title = "🚀".repeat(40);
     expect(validateLevel(level)).toEqual([]);
   });
+  it("accepts a whole par from 100 to 1000000 points and refuses the rest", () => {
+    const level = base();
+    for (const good of [100, 1200, 1_000_000]) {
+      level.par = good;
+      expect(validateLevel(level)).toEqual([]);
+    }
+    for (const bad of [99, 1_000_001, 12.5, "x"]) {
+      level.par = bad;
+      expect(validateLevel(level)).toContain("par must be a whole number from 100 to 1000000 points");
+    }
+  });
 });

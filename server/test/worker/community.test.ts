@@ -135,7 +135,7 @@ describe("GET /levels", () => {
     await env.DB.prepare("INSERT INTO likes VALUES ('p_a', 'lvl_cccccccccc'), ('p_b', 'lvl_cccccccccc'), ('p_a', 'lvl_aaaaaaaaaa'), ('p_a', 'lvl_dddddddddd')").run();
     const items = await list();
     expect(items.map((i) => i.level_id)).toEqual(["lvl_cccccccccc", "lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb"]);
-    expect(items[2]).toEqual({ level_id: "lvl_bbbbbbbbbb", title: "Two versions", author: "Name p_b", latest: 2, sha256: hash("lvl_bbbbbbbbbb-v2"), likes: 0, players: 2, reviewed_difficulty: null, sketch: null, community_difficulty: { value: null, votes: 0 } });
+    expect(items[2]).toEqual({ level_id: "lvl_bbbbbbbbbb", title: "Two versions", author: "Name p_b", latest: 2, sha256: hash("lvl_bbbbbbbbbb-v2"), likes: 0, players: 2, reviewed_difficulty: null, sketch: null, community_difficulty: { value: null, votes: 0 }, par: null });
     expect(items[0]).toMatchObject({ likes: 2, players: 1 });
     expect(await list("?sort=top&page=0")).toEqual(items);
   });
@@ -147,6 +147,13 @@ describe("GET /levels", () => {
     expect(items.find((i) => i.level_id === "lvl_bbbbbbbbbb")).toMatchObject({ sketch: { bounds: [0, 0, 1, 1] } });
     expect(items.find((i) => i.level_id === "lvl_aaaaaaaaaa")).toMatchObject({ sketch: null });
     expect(items.find((i) => i.level_id === "lvl_cccccccccc")).toMatchObject({ sketch: null });
+  });
+
+  it("gives the latest version's stored par, or null when it has none", async () => {
+    await env.DB.prepare(`UPDATE versions SET par = 900 WHERE level = 'lvl_bbbbbbbbbb' AND version = 2`).run();
+    const items = await list();
+    expect(items.find((i) => i.level_id === "lvl_bbbbbbbbbb")).toMatchObject({ par: 900 });
+    expect(items.find((i) => i.level_id === "lvl_aaaaaaaaaa")).toMatchObject({ par: null });
   });
 
   it("gives null for a stored sketch that parses to something other than an object", async () => {

@@ -143,7 +143,7 @@ func level_path(sha256: String) -> String:
 	return dir + sha256 + ".json"
 
 
-## Coroutine: makes sure the level of a `list` row is cached; `""` when it is there and verified, else why not. A file whose hash differs from the row's is rejected and kept nowhere. The row's stable level id and version are saved beside it as public metadata, on a cache hit too. The levels CDN is called without the session.
+## Coroutine: makes sure the level of a `list` row is cached; `""` when it is there and verified, else why not. A file whose hash differs from the row's is rejected and kept nowhere. The row's stable level id, version and par are saved beside it as public metadata, on a cache hit too. The levels CDN is called without the session.
 func download(row: Dictionary) -> String:
 	var path := level_path(row.sha256)
 	if FileAccess.file_exists(path) and CommunityWire.sha256_hex(FileAccess.get_file_as_bytes(path)) == row.sha256:
@@ -331,14 +331,26 @@ func set_difficulty(level: String, sha256: String, value: String) -> Dictionary:
 	return await _vote(level, "difficulty:" + sha256, "difficulty", sha256, value, func(history: CommunityHistory, account: String) -> Error: return history.queue_difficulty(account, level, sha256, value))
 
 
-## The public metadata saved beside a downloaded version: `{level_id, version}`, `{}` when unknown or not valid.
+## The public metadata saved beside a downloaded version: `{level_id, version}`, with `par` when the row had one; `{}` when unknown or not valid.
 func level_info(sha256: String) -> Dictionary:
 	if not _is_sha(sha256) or not FileAccess.file_exists(_meta_path(sha256)):
 		return {}
 	var meta: Variant = _parse(FileAccess.get_file_as_bytes(_meta_path(sha256)))
 	if not meta is Dictionary or not _meta_valid(meta.get("level_id"), meta.get("version")):
 		return {}
-	return {"level_id": meta.level_id, "version": int(meta.version)}
+	var info := {"level_id": meta.level_id, "version": int(meta.version)}
+	var par := par_of(meta)
+	if par > 0:
+		info["par"] = par
+	return info
+
+
+## The par of a list row as whole points; 0 when the row has none (absent or null, as the server sends it).
+func par_of(row: Dictionary) -> int:
+	var par: Variant = row.get("par")
+	if not (par is int or par is float) or int(par) != par:
+		return 0
+	return maxi(0, int(par))
 
 
 ## Coroutine: deletes the player's community account on the server; `""` once it is gone and the session, statuses, draft level ids, submitted marks, play history, queued votes and private feedback are cleared here too (downloaded public levels stay), else a sentence. Work that was under way (an upload, a sign-in, a feedback read) can no longer write anything or retry. The local erasure is owed from before the request: it is recorded in the session file first (no record, no request). When it cannot be finished here, the answer is a sentence about this device's cleanup only (the server's answer may be unknown, for example after an interrupted request), nothing of that account is recorded, shown, cached or sent, and the next explicit community action tries again. A deletion the server refused keeps everything, unless taking back the record also failed.
@@ -778,11 +790,14 @@ func _meta_valid(level_id: Variant, version: Variant) -> bool:
 	return level_id is String and _level_id.search(level_id) != null and (version is int or version is float) and version >= 1 and int(version) == version
 
 
-## Saves the row's stable level id and version beside its cached file, unless the saved ones are already right (a missing or damaged one is replaced).
+## Saves the row's stable level id, version and par (when it has one) beside its cached file, unless the saved ones are already right (a missing or damaged one is replaced).
 func _save_meta(row: Dictionary) -> void:
 	if not _is_sha(row.sha256) or not _meta_valid(row.get("level_id"), row.get("latest")):
 		return
 	var meta := {"level_id": row.level_id, "version": int(row.latest)}
+	var par := par_of(row)
+	if par > 0:
+		meta["par"] = par
 	if level_info(row.sha256) != meta:
 		_store(_meta_path(row.sha256), JSON.stringify(meta).to_utf8_buffer())
 

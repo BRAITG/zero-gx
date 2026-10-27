@@ -7,6 +7,7 @@ import { checkDemo } from "./core/check";
 import { MAX_BYTES, decodeDemo } from "./core/demo";
 import { reviewedDifficulty } from "./core/difficulty";
 import { MAX_LEVEL_BYTES, sha256Hex, validateLevel } from "./core/level";
+import { parLabel } from "./core/par";
 
 const LEVEL_FILE = /^levels\/(lvl_[a-z0-9]{10})\/(meta\.json|v([1-9][0-9]*)\.json)$/;
 const PROOF_FILE = /^proof\/(lvl_[a-z0-9]{10})\/v([1-9][0-9]*)\.demo\.gz$/;
@@ -93,10 +94,11 @@ async function check(root: string, base: string, head: string, reviewLabels?: re
         : `${path} has the wrong version: the next version of ${id} is v${n}.`,
     );
   }
-  // Exactly one recognised difficulty label; labels left undefined mean a content-only check.
+  // Exactly one recognised difficulty label and at most one par label; labels left undefined mean a content-only check.
   if (reviewLabels !== undefined && reviewedDifficulty(reviewLabels) === null) {
     problems.push("A level submission needs exactly one moderator label: difficulty:easy, difficulty:normal, difficulty:hard or difficulty:expert.");
   }
+  if (reviewLabels !== undefined && parLabel(reviewLabels) === null) problems.push("At most one par:<points> label is allowed, with a whole number of points.");
   if (problems.length > 0) return { ok: null, problems };
 
   if (size(levelPath) > MAX_LEVEL_BYTES) problems.push(`${levelPath} is larger than ${MAX_LEVEL_BYTES} bytes.`);

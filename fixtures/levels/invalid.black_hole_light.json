@@ -18,6 +18,7 @@
     ]
   },
   "hint": "Touch and hold: the ship turns toward your finger and fires its engine. Reach the green ring.",
+  "par": 1522,
   "route": {
     "points": [
       [

@@ -19,6 +19,7 @@
     ]
   },
   "hint": "Stars burn on touch, and their pull never lets up.",
+  "par": 980,
   "route": {
     "cruise": 350,
     "points": [

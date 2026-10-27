@@ -7,6 +7,7 @@
     ]
   },
   "hint": "Green pickups make your engine stronger for a while; violet ones make it weaker. Mind your speed going into the climb.",
+  "par": 1219,
   "pickups": [
     {
       "kind": "thrust_up",

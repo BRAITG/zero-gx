@@ -158,6 +158,7 @@
     ]
   },
   "hint": "Black holes pull far harder than planets. Get too close and nothing will get you out.",
+  "par": 1116,
   "route": {
     "cruise": 550,
     "points": [

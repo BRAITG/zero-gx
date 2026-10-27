@@ -133,7 +133,11 @@ Seven guided stages (`tutorials/`, under **Training** in the main menu) teach on
 
 Official levels and tutorials are plain JSON (`levels/level_NN.json`, `tutorials/tutorial_N.json`) in a stable layout (sorted keys, 2-space indent, trailing newline), so the SHA-256 of a level's file identifies one version of it. Player drafts are gzip-compressed (`user://levels/<id>.json.gz`). The format is described in `docs/superpowers/specs/2026-10-16-level-format-design.md`; `scripts/level_format.gd` reads, writes, validates and builds them. Tutorials pair their file with a lesson script (`tutorials/tutorial_N.gd`). Fuel and hull are per-level values and either can be unlimited. The in-app editor saves this format, and community levels and the server will use it too.
 
+A level may set `par`, a whole number from 100 to 1000000 points: the gold medal score. Silver and bronze need 70% and 40% of it, rounded up. A level without `par` has no medals.
+
 **Tools.** `tools/sketch_level.gd` writes a level's sketch, the thumbnail source described under Community: `godot --headless --path . -s res://tools/sketch_level.gd -- <level.json> <out.json>`. `tools/render_level.gd` renders a level to a PNG for a moderator's preview: `godot --path . -s res://tools/render_level.gd -- <level.json> <out.png>`, which needs a window, so not headless.
+
+**Par.** `tools/par_levels.gd` sets each official level's `par` to the points the autopilot scores on it: `godot --headless --path . --fixed-fps 60 -s res://tools/par_levels.gd` (the fixed 60 FPS is required: at a variable frame rate the flights, and so the pars, differ from run to run). A level the autopilot does not finish keeps its file as it is, and the run exits 1. The pars are starting values for the owner to tune by hand.
 
 ## Demos
 
@@ -142,6 +146,8 @@ Every run of an official level or a draft is recorded as a demo (tutorials are n
 ## Scoring and progress
 
 A won stage scores `fuel left × 15 + hull left × 3 − seconds × 2` points (at least 100); reaching the goal itself scores nothing, so the breakdown adds up to the total. Progress files from versions that added a 1000-point base are migrated once (`[meta] version`): every saved best loses 1000, floored at 100. The clock starts at the first thrust. The weights are sliders in the Tune panel. Training and levels unlock independently, each in order. The Official levels and Training lists show each stage's best score with its time and its fuel and hull points, and highlight and focus the next unfinished unlocked stage; bests saved by versions that kept only the total and time show "—" for fuel and hull until they are beaten. Training's home entry marks completion once every training stage is finished. The flight's Menu action returns to its own selection list.
+
+**Medals.** A stage with a par awards a medal for each won run: gold at the par or more, silver at 70% of it or more, bronze at 40% or more (thresholds rounded up); a stage without a par has none. The result card shows the medal earned and the next threshold, such as "Silver · Gold at 2400", and the lists show the medal of each stage's best. An official level's par is its `par` key in the level file. Changing it changes the file's hash and so the level's version: the level starts a fresh official leaderboard. A community level's par is the points of its proof run, kept in its sketch, unless a moderator sets another with a `par:<points>` label on the submission; the server returns it as `par` from `GET /levels`.
 
 ## Tuning
 

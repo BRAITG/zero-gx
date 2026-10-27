@@ -204,6 +204,16 @@ describe("check-pr with review labels", () => {
     expect(await labelled(["bug", "difficulty:hard", "good first issue"], {}, newLevel())).toEqual({ ok: `OK: ${A} v1`, problems: [] });
   });
 
+  it("accepts one par label beside the difficulty label", async () => {
+    expect(await labelled(["difficulty:easy", "par:900"], {}, newLevel())).toEqual({ ok: `OK: ${A} v1`, problems: [] });
+  });
+
+  it("refuses several par labels, or one that is not a whole number from 100 to 1000000", async () => {
+    for (const labels of [["difficulty:easy", "par:900", "par:950"], ["difficulty:easy", "par:abc"], ["difficulty:easy", "par:0"], ["difficulty:easy", "par:99"], ["difficulty:easy", "par:1000001"]]) {
+      expect(await labelled(labels, {}, newLevel()), JSON.stringify(labels)).toEqual({ ok: null, problems: ["At most one par:<points> label is allowed, with a whole number of points."] });
+    }
+  });
+
   it("requires the label on the next version too", async () => {
     const change = { [`levels/${A}/v2.json`]: level, [`proof/${A}/v2.demo.gz`]: demo };
     expect((await labelled([], existing, change)).ok).toBeNull();

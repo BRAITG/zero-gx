@@ -44,8 +44,8 @@ A JSON object derived from a level file by the game, under 2 KB:
   (`JSON.stringify(sketch, "", true)`), so the same level always gives the same bytes. If the sketch
   cannot bring it under 2 KB after eight tolerance doublings, asteroids are dropped from the end, then walls, pickups and bodies, each from the end, until it fits. `bounds`, `ship` and `goal` never drop.
 
-`LevelFormat.sketch(data: Dictionary) -> Dictionary` derives it. `tools/sketch_level.gd` is the
-command-line wrapper: `godot --headless --path . -s res://tools/sketch_level.gd -- <level.json> <out.json>`.
+`LevelFormat.sketch(data: Dictionary, demo: Demo = null) -> Dictionary` derives it. With the level's proof demo, the sketch also carries `par`, the demo's score `DemoCheck.score(data, demo).points`; `par` counts toward the 2 KB cap, and `Thumbnail` ignores it. The caller checks that the demo was recorded on the level; the tool does.
+`tools/sketch_level.gd` is the command-line wrapper: `godot --headless --path . -s res://tools/sketch_level.gd -- <level.json> <out.json> [<proof.demo.gz>]`. With the third argument it exits 1 for a demo that does not decode, was not recorded on the level (`level_sha256`), or fails `DemoCheck.check`. The preview job passes `proof/<id>/v<N>.demo.gz`.
 It runs headless: deriving a sketch draws nothing.
 
 ## Drawing a sketch

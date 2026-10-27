@@ -122,7 +122,7 @@ func _list_levels() -> void:
 		var next := suggested == null and unlocked and best < 0
 		var data := LevelFormat.read((Progress.TUTORIALS_DIR if training else Progress.LEVELS_DIR) + id + LevelFormat.EXTENSION)
 		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
-		var button := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next)
+		var button := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next, int(data.get("par", 0)))
 		button.disabled = not unlocked
 		if not unlocked:
 			button.modulate = Color(1, 1, 1, 0.55)  # the thumbnail dims with the text
@@ -139,10 +139,11 @@ func _list_levels() -> void:
 
 
 ## A stage row: the thumbnail on the left; the title over one line of the best run's fuel, hull and
-## time points (each behind its score icon) in the middle; the best total, large, on the right.
+## time points (each behind its score icon) in the middle; the best total, large, on the right, behind
+## the medal that total earns against `par` (none without a par).
 ## A best saved before fuel and hull were kept shows "—" for them rather than an invented value.
 ## The title Label is named "Title" so tests and tools can read the row's name.
-func _row(id: String, title: String, unlocked: bool, next: bool) -> Button:
+func _row(id: String, title: String, unlocked: bool, next: bool, par: int) -> Button:
 	var button := _button("", Vector2(LIST_SIZE.x - 24, ROW_HEIGHT))  # less the scrollbar
 	var content := HBoxContainer.new()
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -181,9 +182,16 @@ func _row(id: String, title: String, unlocked: bool, next: bool) -> Button:
 			var value := _label(part[1], 18, Style.INK_DIM)
 			value.custom_minimum_size.x = 70  # the icons line up across rows
 			parts.add_child(value)
+		var medal := Progress.medal(best, par)
+		if medal != Progress.Medal.NONE:
+			var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, medal)
+			icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			content.add_child(icon)
 		var total := _label(str(best), 36)
 		total.add_theme_font_override("font", Style.display_font)
 		total.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		total.custom_minimum_size.x = 100  # four digits: the medals line up across rows
+		total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		content.add_child(total)
 	return button
 

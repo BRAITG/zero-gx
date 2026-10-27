@@ -309,6 +309,7 @@
     ]
   },
   "hint": "Asteroids drift and bounce off the walls. Hitting one hurts, so pick your gap.",
+  "par": 1365,
   "route": {
     "points": [
       [

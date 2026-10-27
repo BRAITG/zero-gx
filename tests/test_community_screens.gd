@@ -265,6 +265,33 @@ func test_community_rows_show_a_sketch_thumbnail() -> void:
 	check(_texts(screen).any(func(t: String) -> bool: return t.contains("Bare")), "a row without a sketch keeps its title")
 
 
+func test_community_row_shows_a_medal_for_a_local_best() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row := _row(_bytes())
+	row.par = 1000
+	net.answer("GET", "/levels", 200, [row])
+	Progress.record_win(Community.STAGE_PREFIX + row.sha256, 800, 20.0)  # 800 of par 1000 is silver: at least 70%
+	var screen := await _community()
+	check(medal_tiers(screen) == [Progress.Medal.SILVER], "a best of 800 on par 1000 shows one silver medal: %s" % [medal_tiers(screen)])
+
+
+func test_community_row_without_best_or_par_shows_no_medal() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row := _row(_bytes())
+	row.par = 1000
+	net.answer("GET", "/levels", 200, [row])
+	var screen := await _community()
+	check(medal_tiers(screen).is_empty(), "a par without a best shows no medal: %s" % [medal_tiers(screen)])
+	screen.free()
+	Progress.record_win(Community.STAGE_PREFIX + row.sha256, 800, 20.0)
+	row.par = null  # the server's answer for a level without a par
+	net.answer("GET", "/levels", 200, [row])
+	screen = await _community()
+	check(medal_tiers(screen).is_empty(), "a best without a par shows no medal: %s" % [medal_tiers(screen)])
+
+
 func test_new_switches_the_sort_and_replaces_the_rows() -> void:
 	var net := _fake()
 	await _signed_in(net)

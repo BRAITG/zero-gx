@@ -24,6 +24,7 @@ const MAX_TOUR := 12
 const MAX_ROUTE := 64
 const MAX_TITLE := 40
 const MAX_TEXT := 200
+const MAX_PAR := 1_000_000
 const TANK_RANGE := Vector2(1, 1000)  # fuel and hull, unless unlimited
 const BODY_RANGES := {"radius": Vector2(8, 3000), "strength": Vector2(0, 6000000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}  # strength covers the heaviest, smallest black hole
 ## Per-kind limits, each independent of the others so radius and pull can be set apart. Total
@@ -108,6 +109,8 @@ static func validate(data: Dictionary, draft := false) -> PackedStringArray:
 	if not title is String or (not draft and (title.length() < 1 or title.length() > MAX_TITLE)):
 		errors.append("title must be 1-%d characters" % MAX_TITLE)
 	_text(data.get("hint", ""), "hint", errors, draft)
+	if data.has("par") and not (_whole(data.par) and (draft or (data.par >= Progress.MIN_POINTS and data.par <= MAX_PAR))):
+		errors.append("par must be a whole number from %d to %d points" % [Progress.MIN_POINTS, MAX_PAR])
 	var ship: Variant = data.get("ship")
 	if not ship is Dictionary:
 		errors.append("missing ship")
@@ -216,6 +219,7 @@ static func build(data: Dictionary, script: Script = LEVEL_SCRIPT) -> Level:
 	root.title = data.get("title", "")
 	root.hint = data.get("hint", "")
 	root.show_velocity = data.get("show_velocity", false)
+	root.par = int(data.get("par", 0))
 	var spec: Dictionary = data.ship
 	var ship: Ship = SHIP.instantiate()
 	ship.name = "Ship"
@@ -305,6 +309,8 @@ static func serialize(root: Node) -> Dictionary:
 		data.hint = root.hint
 	if root.show_velocity:
 		data.show_velocity = true
+	if root.par > 0:
+		data.par = root.par
 	var bodies: Array[Node] = root.get_children().filter(func(n: Node) -> bool: return n is GravityBody)
 	for child in root.get_children():
 		if child is Ship:
@@ -359,15 +365,17 @@ static func serialize(root: Node) -> Dictionary:
 
 
 ## The thumbnail sketch of a level: its shapes at one-pixel detail, under 2 KB, derived from `data`.
-static func sketch(data: Dictionary) -> Dictionary:
+## With `demo`, the sketch also carries the demo's score as `par`; the caller checks that the demo was recorded on `data`.
+static func sketch(data: Dictionary, demo: Demo = null) -> Dictionary:
 	var box := _sketch_box(data)
 	var tolerance := maxf(box.size.x, box.size.y) / 320.0  # one thumbnail pixel
-	var out := _shape(data, box, tolerance)
+	var extra := {} if demo == null else {"par": DemoCheck.score(data, demo).points}
+	var out := _shape(data, box, tolerance, extra)
 	for _doubling in 8:
 		if _fits(out):
 			break
 		tolerance *= 2.0
-		out = _shape(data, box, tolerance)
+		out = _shape(data, box, tolerance, extra)
 	# shortcut: a whole kind is cut before the next, so a dense level drops every wall before any pickup, upgrade: a per-item budget
 	for key in ["asteroids", "walls", "pickups", "bodies"]:
 		while not _fits(out) and not out[key].is_empty():
@@ -402,8 +410,8 @@ static func _sketch_box(data: Dictionary) -> Rect2:
 	return box.grow(Ship.RADIUS)
 
 
-## The sketch at one simplification tolerance: every wall, body, pickup and asteroid.
-static func _shape(data: Dictionary, box: Rect2, tolerance: float) -> Dictionary:
+## The sketch at one simplification tolerance: every wall, body, pickup and asteroid, merged with `extra`.
+static func _shape(data: Dictionary, box: Rect2, tolerance: float, extra: Dictionary) -> Dictionary:
 	var walls := []
 	for wall: Dictionary in data.get("walls", []):
 		var points := PackedVector2Array()
@@ -424,7 +432,7 @@ static func _shape(data: Dictionary, box: Rect2, tolerance: float) -> Dictionary
 		rocks.append(_int_point(_vec(rock.position)))
 	var lo := _int_point(box.position)
 	var hi := _int_point(box.end)
-	return {"bounds": [lo[0], lo[1], hi[0] - lo[0], hi[1] - lo[1]], "ship": _int_point(_vec(data.ship.position)), "goal": _int_point(_vec(data.goal.position)), "walls": walls, "bodies": bodies, "pickups": pickups, "asteroids": rocks}
+	return {"bounds": [lo[0], lo[1], hi[0] - lo[0], hi[1] - lo[1]], "ship": _int_point(_vec(data.ship.position)), "goal": _int_point(_vec(data.goal.position)), "walls": walls, "bodies": bodies, "pickups": pickups, "asteroids": rocks}.merged(extra)
 
 
 ## Ramer–Douglas–Peucker: the points a polyline keeps within `tolerance`; its first and last always stay.
@@ -485,6 +493,10 @@ static func _point(value: Variant, what: String, errors: PackedStringArray, draf
 		return
 	for c in value:
 		_number(c, -MAX_COORD, MAX_COORD, what, errors, draft)
+
+
+static func _whole(value: Variant) -> bool:
+	return value is int or (value is float and is_finite(value) and value == roundf(value))
 
 
 static func _number(value: Variant, low: float, high: float, what: String, errors: PackedStringArray, draft: bool) -> void:
