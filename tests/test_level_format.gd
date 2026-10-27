@@ -154,11 +154,12 @@ func test_round_trip_through_a_file() -> void:
 	check(JSON.stringify(saved) == JSON.stringify(back), "a level changed on its way through a file and a scene")
 
 
-func test_par_must_be_a_whole_number_of_at_least_100() -> void:
-	var sentence := "par must be a whole number of at least 100 points"
+func test_par_must_be_a_whole_number_from_100_to_1000000() -> void:
+	var sentence := "par must be a whole number from 100 to 1000000 points"
 	check(LevelFormat.validate(with("par", 1200)).is_empty(), "a par of 1200 must pass: %s" % LevelFormat.validate(with("par", 1200)))
 	check(LevelFormat.validate(with("par", 1200.0)).is_empty(), "a whole float par must pass")
-	for bad: Variant in [99, 12.5, "x"]:
+	check(LevelFormat.validate(with("par", 1000000)).is_empty(), "a par of 1000000 must pass")
+	for bad: Variant in [99, 1000001, 12.5, "x"]:
 		check(LevelFormat.validate(with("par", bad)).has(sentence), "par %s must be refused: %s" % [bad, LevelFormat.validate(with("par", bad))])
 	check(LevelFormat.validate(with("par", 99), true).is_empty(), "a draft may have a par below 100")
 	check(LevelFormat.validate(with("par", 12.5), true).has(sentence), "a draft must still have a whole par")

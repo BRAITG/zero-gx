@@ -15,7 +15,7 @@ A level is a JSON object. Official levels and tutorials are plain `*.json` files
 {
   "format": "zero-gx-level", "version": 1,
   "title": "Brake", "hint": "…", "show_velocity": false,
-  "par": 1200,                    // optional, a whole number ≥ 100: the gold medal; silver and bronze need 70% and 40% of it, rounded up
+  "par": 1200,                    // optional, a whole number from 100 to 1000000: the gold medal; silver and bronze need 70% and 40% of it, rounded up
   "ship":  { "position": [0, 0], "rotation": 0, "velocity": [0, 0],
              "fuel": 100,                    // 1–1000 or "unlimited"
              "hull": 100 },                  // 1–1000 or "unlimited"
@@ -49,7 +49,7 @@ A level is a JSON object. Official levels and tutorials are plain `*.json` files
 - Counts: at most 300 walls with 2–64 points each, 32 bodies, 150 asteroids, 50 pickups, 12 tour stops, and 64 route points.
 - Text: `title` 1–40 characters; `hint` and tour texts up to 200.
 - Fuel and hull are 1–1000 or `"unlimited"`.
-- `par`, when present, is a whole number of at least 100 points; a draft only needs it to be whole.
+- `par`, when present, is a whole number from 100 to 1000000 points; a draft only needs it to be whole.
 - Body overrides: radius 8–3000, strength 0–6,000,000, reach 0–10,000, health 1–10,000. An orbit's body index must exist.
 - Each kind keeps its role (`KIND_LIMITS`). Total pull is the pull at 1000 px, `strength × (radius / 1000)²`, and acts like mass; the limits are independent, so any radius pairs with any total pull in range:
   - planet: radius 32–240, total pull 0–100, reach 0–1500.

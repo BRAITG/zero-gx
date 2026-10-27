@@ -21,7 +21,8 @@ const MAX_TOUR = 12;
 const MAX_ROUTE = 64;
 const MAX_TITLE = 40;
 const MAX_TEXT = 200;
-const MIN_PAR = 100; // Progress.MIN_POINTS in scripts/progress.gd
+export const MIN_PAR = 100; // Progress.MIN_POINTS in scripts/progress.gd
+export const MAX_PAR = 1_000_000;
 const TANK_RANGE: Range = [1, 1000]; // fuel and hull, unless unlimited
 const BODY_RANGES: Record<string, Range> = {
   radius: [8, 3000],
@@ -79,8 +80,8 @@ export function validateLevel(data: unknown): string[] {
     errors.push(`title must be 1-${MAX_TITLE} characters`);
   }
   text(get(d, "hint", ""), "hint", errors);
-  if ("par" in d && (!Number.isInteger(d.par) || (d.par as number) < MIN_PAR)) {
-    errors.push(`par must be a whole number of at least ${MIN_PAR} points`);
+  if ("par" in d && (!Number.isInteger(d.par) || (d.par as number) < MIN_PAR || (d.par as number) > MAX_PAR)) {
+    errors.push(`par must be a whole number from ${MIN_PAR} to ${MAX_PAR} points`);
   }
   const ship = get(d, "ship");
   if (!isObj(ship)) {

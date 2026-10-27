@@ -24,6 +24,7 @@ const MAX_TOUR := 12
 const MAX_ROUTE := 64
 const MAX_TITLE := 40
 const MAX_TEXT := 200
+const MAX_PAR := 1_000_000
 const TANK_RANGE := Vector2(1, 1000)  # fuel and hull, unless unlimited
 const BODY_RANGES := {"radius": Vector2(8, 3000), "strength": Vector2(0, 6000000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}  # strength covers the heaviest, smallest black hole
 ## Per-kind limits, each independent of the others so radius and pull can be set apart. Total
@@ -108,8 +109,8 @@ static func validate(data: Dictionary, draft := false) -> PackedStringArray:
 	if not title is String or (not draft and (title.length() < 1 or title.length() > MAX_TITLE)):
 		errors.append("title must be 1-%d characters" % MAX_TITLE)
 	_text(data.get("hint", ""), "hint", errors, draft)
-	if data.has("par") and not (_whole(data.par) and (draft or data.par >= Progress.MIN_POINTS)):
-		errors.append("par must be a whole number of at least %d points" % Progress.MIN_POINTS)
+	if data.has("par") and not (_whole(data.par) and (draft or (data.par >= Progress.MIN_POINTS and data.par <= MAX_PAR))):
+		errors.append("par must be a whole number from %d to %d points" % [Progress.MIN_POINTS, MAX_PAR])
 	var ship: Variant = data.get("ship")
 	if not ship is Dictionary:
 		errors.append("missing ship")
