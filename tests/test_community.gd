@@ -258,6 +258,14 @@ func test_download_keeps_par_in_level_info() -> void:
 	check(not Community.level_info(row.sha256).has("par") and Community.level_info(row.sha256).get("level_id") == LEVEL_ID, "a row without par must leave no par: %s" % [Community.level_info(row.sha256)])
 
 
+func test_par_of_accepts_only_whole_numbers() -> void:
+	for bad: Variant in [900.5, "900", null, -5, true]:
+		check(Community.par_of({"par": bad}) == 0, "a par of %s must count as none, got %d" % [bad, Community.par_of({"par": bad})])
+	check(Community.par_of({}) == 0, "a row without par has none")
+	check(Community.par_of({"par": 900.0}) == 900, "a whole float par must be kept, as JSON parsing yields it")
+	check(Community.par_of({"par": 900}) == 900, "an integer par must be kept")
+
+
 func test_a_community_stage_takes_its_par_from_the_row() -> void:
 	var net := _fake()
 	await _signed_in(net)
