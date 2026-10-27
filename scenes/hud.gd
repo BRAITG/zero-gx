@@ -314,7 +314,7 @@ func show_result(won: bool, result: Dictionary) -> void:
 		_medal.visible = result.has_par
 		_medal_icon.tier = result.medal
 		_medal_icon.visible = result.medal != Progress.Medal.NONE
-		_medal_label.text = "%s at %d" % [Progress.Medal.keys()[result.medal + 1].capitalize(), result.next_threshold] if result.next_threshold > 0 else "Gold"
+		_medal_label.text = _medal_line(result.medal, result.next_threshold)
 	else:
 		_detail.text = result.cause
 	_next.visible = won and result.has_next
@@ -336,6 +336,15 @@ func _focus_result() -> void:
 		if button.visible and not button.disabled:
 			button.grab_focus(true)
 			break
+
+
+## "Silver · Gold at 2400": the tier earned, then the next one and its score; "Bronze at 420" before
+## any; "Gold" alone at the top.
+func _medal_line(medal: Progress.Medal, next_threshold: int) -> String:
+	if next_threshold == 0:
+		return "Gold"
+	var next := "%s at %d" % [Progress.Medal.keys()[medal + 1].capitalize(), next_threshold]
+	return next if medal == Progress.Medal.NONE else "%s · %s" % [Progress.Medal.keys()[medal].capitalize(), next]
 
 
 ## Everything the end panel shows, for tests.

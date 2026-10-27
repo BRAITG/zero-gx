@@ -66,12 +66,6 @@ func test_official_lists_every_level() -> void:
 	list.free()
 
 
-## The tiers of the medal icons visible under `node`.
-func medal_tiers(node: Node) -> Array:
-	var icons := node.find_children("*", "ScoreIcon", true, false).filter(func(i: ScoreIcon) -> bool: return i.kind == ScoreIcon.Kind.MEDAL and i.is_visible_in_tree())
-	return icons.map(func(i: ScoreIcon) -> int: return i.tier)
-
-
 func test_official_row_shows_the_best_medal() -> void:
 	var par := int(LevelFormat.read(Progress.LEVELS_DIR + "level_01" + LevelFormat.EXTENSION).get("par", 0))
 	check(par > 0, "level_01 must have a par for this test")
@@ -145,21 +139,21 @@ func test_result_card_shows_medal_and_next_threshold() -> void:
 	lvl.finish(true)
 	await frames(2)
 	check(medal_tiers(lvl.hud) == [Progress.Medal.BRONZE], "the card must show the bronze medal: %s" % [medal_tiers(lvl.hud)])
-	check(lvl.hud.result_text().contains("Silver at %d" % ceili(Progress.SILVER_FRACTION * lvl.par)), "next threshold missing: %s" % lvl.hud.result_text())
+	check(lvl.hud.result_text().split("\n").has("Bronze · Silver at %d" % ceili(Progress.SILVER_FRACTION * lvl.par)), "earned medal and next threshold missing: %s" % lvl.hud.result_text())
 	lvl.free()
 	lvl = scored_level(Vector2(3000, 0))
 	lvl.par = points
 	lvl.finish(true)
 	await frames(2)
 	check(medal_tiers(lvl.hud) == [Progress.Medal.GOLD], "the card must show the gold medal: %s" % [medal_tiers(lvl.hud)])
-	check(lvl.hud.result_text().contains("Gold") and not lvl.hud.result_text().contains(" at "), "gold has nothing above it: %s" % lvl.hud.result_text())
+	check(lvl.hud.result_text().split("\n").has("Gold") and not lvl.hud.result_text().contains(" at "), "gold has nothing above it: %s" % lvl.hud.result_text())
 	lvl.free()
 	lvl = scored_level(Vector2(3000, 0))
 	lvl.par = 4 * points
 	lvl.finish(true)
 	await frames(2)
 	check(medal_tiers(lvl.hud).is_empty(), "a run under bronze earns no medal: %s" % [medal_tiers(lvl.hud)])
-	check(lvl.hud.result_text().contains("Bronze at %d" % ceili(Progress.BRONZE_FRACTION * lvl.par)), "bronze threshold missing: %s" % lvl.hud.result_text())
+	check(lvl.hud.result_text().split("\n").has("Bronze at %d" % ceili(Progress.BRONZE_FRACTION * lvl.par)), "bronze threshold missing: %s" % lvl.hud.result_text())
 
 
 func test_training_result_has_no_medal_line() -> void:

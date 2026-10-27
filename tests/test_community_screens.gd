@@ -108,12 +108,6 @@ func _texts(node: Node) -> Array:
 	return node.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.is_visible_in_tree()).map(func(l: Label) -> String: return l.text)
 
 
-## The tiers of the medal icons visible under `node`.
-func _medal_tiers(node: Node) -> Array:
-	var icons := node.find_children("*", "ScoreIcon", true, false).filter(func(i: ScoreIcon) -> bool: return i.kind == ScoreIcon.Kind.MEDAL and i.is_visible_in_tree())
-	return icons.map(func(i: ScoreIcon) -> int: return i.tier)
-
-
 func _community() -> CommunityScreen:
 	var screen := CommunityScreen.new()
 	world.add_child(screen)
@@ -279,7 +273,7 @@ func test_community_row_shows_a_medal_for_a_local_best() -> void:
 	net.answer("GET", "/levels", 200, [row])
 	Progress.record_win(Community.STAGE_PREFIX + row.sha256, 800, 20.0)  # 800 of par 1000 is silver: at least 70%
 	var screen := await _community()
-	check(_medal_tiers(screen) == [Progress.Medal.SILVER], "a best of 800 on par 1000 shows one silver medal: %s" % [_medal_tiers(screen)])
+	check(medal_tiers(screen) == [Progress.Medal.SILVER], "a best of 800 on par 1000 shows one silver medal: %s" % [medal_tiers(screen)])
 
 
 func test_community_row_without_best_or_par_shows_no_medal() -> void:
@@ -289,13 +283,13 @@ func test_community_row_without_best_or_par_shows_no_medal() -> void:
 	row.par = 1000
 	net.answer("GET", "/levels", 200, [row])
 	var screen := await _community()
-	check(_medal_tiers(screen).is_empty(), "a par without a best shows no medal: %s" % [_medal_tiers(screen)])
+	check(medal_tiers(screen).is_empty(), "a par without a best shows no medal: %s" % [medal_tiers(screen)])
 	screen.free()
 	Progress.record_win(Community.STAGE_PREFIX + row.sha256, 800, 20.0)
 	row.par = null  # the server's answer for a level without a par
 	net.answer("GET", "/levels", 200, [row])
 	screen = await _community()
-	check(_medal_tiers(screen).is_empty(), "a best without a par shows no medal: %s" % [_medal_tiers(screen)])
+	check(medal_tiers(screen).is_empty(), "a best without a par shows no medal: %s" % [medal_tiers(screen)])
 
 
 func test_new_switches_the_sort_and_replaces_the_rows() -> void:

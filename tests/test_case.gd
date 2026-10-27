@@ -17,6 +17,12 @@ func frames(n: int) -> void:
 		await tree.physics_frame
 
 
+## The tiers of the medal icons visible under `node`.
+func medal_tiers(node: Node) -> Array:
+	var icons := node.find_children("*", "ScoreIcon", true, false).filter(func(i: ScoreIcon) -> bool: return i.kind == ScoreIcon.Kind.MEDAL and i.is_visible_in_tree())
+	return icons.map(func(i: ScoreIcon) -> int: return i.tier)
+
+
 ## Instantiate `path`, set `props` before entering the tree, add it to `world` at `pos`.
 func spawn(path: String, pos: Vector2, props: Dictionary = {}) -> Node:
 	var node: Node = load(path).instantiate()
