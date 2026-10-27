@@ -118,7 +118,7 @@ jobs:
           version=${files##*/v}
           version=${version%.json}
           mkdir out
-          timeout -k 10 120 ~/godot/godot --headless --path tool -s res://tools/sketch_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/sketch.json"
+          timeout -k 10 120 ~/godot/godot --headless --path tool -s res://tools/sketch_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/sketch.json" "$GITHUB_WORKSPACE/proof/$level/v$version.demo.gz"
           if [ -e "levels/$level/v$version.sketch.json" ] && ! cmp -s "levels/$level/v$version.sketch.json" out/sketch.json; then
             echo "::error::The sketch in the pull request does not match the level."
             exit 1

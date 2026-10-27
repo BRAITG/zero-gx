@@ -364,15 +364,17 @@ static func serialize(root: Node) -> Dictionary:
 
 
 ## The thumbnail sketch of a level: its shapes at one-pixel detail, under 2 KB, derived from `data`.
-static func sketch(data: Dictionary) -> Dictionary:
+## With `demo`, the sketch also carries the demo's score as `par`; the caller checks that the demo was recorded on `data`.
+static func sketch(data: Dictionary, demo: Demo = null) -> Dictionary:
 	var box := _sketch_box(data)
 	var tolerance := maxf(box.size.x, box.size.y) / 320.0  # one thumbnail pixel
-	var out := _shape(data, box, tolerance)
+	var extra := {} if demo == null else {"par": DemoCheck.score(data, demo).points}
+	var out := _shape(data, box, tolerance, extra)
 	for _doubling in 8:
 		if _fits(out):
 			break
 		tolerance *= 2.0
-		out = _shape(data, box, tolerance)
+		out = _shape(data, box, tolerance, extra)
 	# shortcut: a whole kind is cut before the next, so a dense level drops every wall before any pickup, upgrade: a per-item budget
 	for key in ["asteroids", "walls", "pickups", "bodies"]:
 		while not _fits(out) and not out[key].is_empty():
@@ -407,8 +409,8 @@ static func _sketch_box(data: Dictionary) -> Rect2:
 	return box.grow(Ship.RADIUS)
 
 
-## The sketch at one simplification tolerance: every wall, body, pickup and asteroid.
-static func _shape(data: Dictionary, box: Rect2, tolerance: float) -> Dictionary:
+## The sketch at one simplification tolerance: every wall, body, pickup and asteroid, merged with `extra`.
+static func _shape(data: Dictionary, box: Rect2, tolerance: float, extra: Dictionary) -> Dictionary:
 	var walls := []
 	for wall: Dictionary in data.get("walls", []):
 		var points := PackedVector2Array()
@@ -429,7 +431,7 @@ static func _shape(data: Dictionary, box: Rect2, tolerance: float) -> Dictionary
 		rocks.append(_int_point(_vec(rock.position)))
 	var lo := _int_point(box.position)
 	var hi := _int_point(box.end)
-	return {"bounds": [lo[0], lo[1], hi[0] - lo[0], hi[1] - lo[1]], "ship": _int_point(_vec(data.ship.position)), "goal": _int_point(_vec(data.goal.position)), "walls": walls, "bodies": bodies, "pickups": pickups, "asteroids": rocks}
+	return {"bounds": [lo[0], lo[1], hi[0] - lo[0], hi[1] - lo[1]], "ship": _int_point(_vec(data.ship.position)), "goal": _int_point(_vec(data.goal.position)), "walls": walls, "bodies": bodies, "pickups": pickups, "asteroids": rocks}.merged(extra)
 
 
 ## Ramer–Douglas–Peucker: the points a polyline keeps within `tolerance`; its first and last always stay.

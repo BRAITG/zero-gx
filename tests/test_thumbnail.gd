@@ -24,7 +24,7 @@ func test_sketch_thumbnail_survives_bad_input() -> void:
 	var huge_radius := {"bounds": [0, 0, 1, 1], "bodies": star}
 	var tiny_box := {"bounds": [0, 0, 1e-300, 1e-300], "bodies": star}
 	var started := Time.get_ticks_msec()
-	for bad in [null, {}, {"bounds": "x"}, {"bounds": [0, 0, 0, 0], "walls": [{"kind": 3, "points": "no"}]}, "text", mistyped, huge_radius, tiny_box]:
+	for bad in [null, {}, {"bounds": "x"}, {"bounds": [0, 0, 0, 0], "walls": [{"kind": 3, "points": "no"}]}, "text", mistyped, huge_radius, tiny_box, {"bounds": [0, 0, 100, 50], "par": "x"}]:
 		var thumbnail := Thumbnail.of_sketch(bad)
 		thumbnail.size = Thumbnail.CANVAS
 		world.add_child(thumbnail)

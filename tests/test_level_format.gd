@@ -239,6 +239,19 @@ func test_sketch_json_sorts_nested_keys() -> void:
 	check(LevelFormat.sketch_json({"walls": [{"points": [], "kind": "blue", "closed": true}]}) == '{"walls":[{"closed":true,"kind":"blue","points":[]}]}', "nested keys must be sorted on one line")
 
 
+func test_sketch_par_matches_demo_check_score() -> void:
+	var data := LevelFormat.read("res://fixtures/levels/level_01.json")
+	var demo := Demo.load_file("res://fixtures/demos/level_01.demo.gz")
+	check(demo != null, "the fixture demo must decode")
+	var sketch := LevelFormat.sketch(data, demo)
+	check(sketch.get("par") == DemoCheck.score(data, demo).points, "par must be the demo's score: %s" % [sketch.get("par")])
+	check(sketch.get("par") == 1522, "fixtures/expected.json scores this demo 1522: %s" % [sketch.get("par")])
+
+
+func test_sketch_without_demo_has_no_par() -> void:
+	check(not LevelFormat.sketch(LevelFormat.read("res://fixtures/levels/level_01.json")).has("par"), "a sketch without a demo has no par")
+
+
 func full_level() -> Dictionary:
 	var data := minimal()
 	data.walls = []
