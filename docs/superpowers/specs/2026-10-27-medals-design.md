@@ -39,9 +39,11 @@ writes `par` into the sketch file), and committed to the submission PR inside
 `levels/<id>/v<N>.sketch.json` by `preview-comment.yml`, exactly like the rest of the sketch. The
 `preview` job's byte comparison stays strict, so the derived par cannot be hand-edited.
 
-A moderator adjusts a community par with a PR label `par:<points>` (one label at most; a positive
-integer). At merge the Worker reads it from the signed delivery like the difficulty label; the label
-wins over the sketch's `par`. No Worker computation: the Worker copies one number.
+A moderator adjusts a community par with a PR label `par:<points>` (a positive integer, at most one such
+label; `check-pr` refuses two or a malformed one with "At most one par:<points> label is allowed, with a
+whole number of points.", so the required check fails before merge). At merge the Worker reads it from
+the signed delivery like the difficulty label; the label wins over the sketch's `par`. No Worker
+computation: the Worker copies one number.
 
 `versions` gains `par INTEGER` (migration `0008_version_par.sql`): the label's value, else the sketch's
 `par`, else `NULL`. `GET /levels` returns `par` (integer or null). The app writes it beside the cached
