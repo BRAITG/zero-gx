@@ -35,9 +35,10 @@ func _ready() -> void:
 
 
 ## The last pointer decides, as in ShipInput: a touch, or a real mouse moving. A touch's emulated mouse
-## does not count, and keys and pads leave the look as it is (their focus ring is a separate look).
+## and the engine's internal events do not count, and keys and pads leave the look as it is (their focus
+## ring is a separate look).
 func _input(event: InputEvent) -> void:
-	if event.device == InputEvent.DEVICE_ID_EMULATION:
+	if event.device < 0:  # DEVICE_ID_EMULATION or DEVICE_ID_INTERNAL
 		return
 	if event is InputEventScreenTouch:
 		touch = true
@@ -62,14 +63,18 @@ func _fit_button_to_touch(node: Node) -> void:
 
 ## Godot turns each touch into an emulated mouse as well, which hovers whatever lies under the finger, even
 ## after it lifts. A finger has no hover, so after a touch a button's hover look is its look at rest, copied
-## from it: override a button's own looks before adding it, and never its hover looks.
+## from it: override a button's own looks before adding it. A button's own hover looks are left alone.
 func _fit_hover(button: Button) -> void:
+	if button.has_theme_stylebox_override("hover") and not button.has_meta(&"touch_hover"):
+		return
 	if touch:
+		button.set_meta(&"touch_hover", true)
 		button.add_theme_stylebox_override("hover", button.get_theme_stylebox("normal"))
 		button.add_theme_stylebox_override("hover_pressed", button.get_theme_stylebox("pressed"))
 		button.add_theme_color_override("font_hover_color", button.get_theme_color("font_color"))
 		button.add_theme_color_override("font_hover_pressed_color", button.get_theme_color("font_pressed_color"))
-	else:
+	elif button.has_meta(&"touch_hover"):
+		button.remove_meta(&"touch_hover")
 		button.remove_theme_stylebox_override("hover")
 		button.remove_theme_stylebox_override("hover_pressed")
 		button.remove_theme_color_override("font_hover_color")

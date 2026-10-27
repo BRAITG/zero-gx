@@ -94,6 +94,10 @@ func test_hover_follows_the_last_pointer_a_touch_hides_it_and_a_real_mouse_bring
 	var featured := Button.new()  # like the suggested stage: a stronger look at rest
 	featured.add_theme_stylebox_override("normal", featured.get_theme_stylebox("pressed"))
 	var buttons: Array[Button] = [plain, featured, CheckButton.new()]  # a toggle shows hover_pressed when on
+	var own := Button.new()  # a button with its own hover look keeps it
+	var own_hover := StyleBoxFlat.new()
+	own.add_theme_stylebox_override("hover", own_hover)
+	world.add_child(own)
 	for button in buttons:
 		world.add_child(button)
 	check(not buttons.any(_at_rest), "control: with a mouse, hover must show")
@@ -111,8 +115,15 @@ func test_hover_follows_the_last_pointer_a_touch_hides_it_and_a_real_mouse_bring
 	for event: InputEvent in [emulated, pad]:
 		world.get_viewport().push_input(event)
 		check(buttons.all(_at_rest), "a %s must not bring hover back" % event.get_class())
+	tree.paused = true  # the pause card's buttons follow the pointer too
 	world.get_viewport().push_input(InputEventMouseMotion.new())
-	check(not buttons.any(_at_rest), "a real mouse moving must bring hover back")
+	tree.paused = false
+	for button in buttons:
+		for kind in ["hover", "hover_pressed"]:
+			check(not button.has_theme_stylebox_override(kind), "a real mouse moving must give a %s its %s look back" % [button.get_class(), kind])
+		for kind in ["font_hover_color", "font_hover_pressed_color"]:
+			check(not button.has_theme_color_override(kind), "a real mouse moving must give a %s its %s back" % [button.get_class(), kind])
+	check(own.get_theme_stylebox("hover") == own_hover, "a button's own hover look must survive touch and mouse")
 
 
 func _at_rest(button: Button) -> bool:
