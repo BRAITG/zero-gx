@@ -7,7 +7,7 @@
     ]
   },
   "hint": "Orange pickups fire your engine at full power for 9 seconds, free, but barely steer. This one is in your way.",
-  "par": 491,
+  "par": 423,
   "pickups": [
     {
       "kind": "boost",

@@ -1,8 +1,8 @@
 extends SceneTree
 ## Sets each official level's `par` to the points the autopilot scores on it, and prints `level_NN <points>`.
 ## A level the autopilot does not finish keeps its file as it is, and the run exits 1. Run from the
-## project root, as tools/make_fixtures.gd is:
-##   godot --headless --path . -s res://tools/par_levels.gd
+## project root, at a fixed 60 FPS like the tests, or the flights and so the pars change from run to run:
+##   godot --headless --path . --fixed-fps 60 -s res://tools/par_levels.gd
 
 # Untyped and loaded after the first frame: a -s script compiles before the autoloads exist and
 # cannot use the global class names.

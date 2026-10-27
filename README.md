@@ -137,7 +137,7 @@ A level may set `par`, a whole number from 100 to 1000000 points: the gold medal
 
 **Tools.** `tools/sketch_level.gd` writes a level's sketch, the thumbnail source described under Community: `godot --headless --path . -s res://tools/sketch_level.gd -- <level.json> <out.json>`. `tools/render_level.gd` renders a level to a PNG for a moderator's preview: `godot --path . -s res://tools/render_level.gd -- <level.json> <out.png>`, which needs a window, so not headless.
 
-**Par.** `tools/par_levels.gd` sets each official level's `par` to the points the autopilot scores on it: `godot --headless --path . -s res://tools/par_levels.gd`. A level the autopilot does not finish keeps its file as it is, and the run exits 1. The pars are starting values for the owner to tune by hand.
+**Par.** `tools/par_levels.gd` sets each official level's `par` to the points the autopilot scores on it: `godot --headless --path . --fixed-fps 60 -s res://tools/par_levels.gd` (the fixed 60 FPS is required: at a variable frame rate the flights, and so the pars, differ from run to run). A level the autopilot does not finish keeps its file as it is, and the run exits 1. The pars are starting values for the owner to tune by hand.
 
 ## Demos
 
