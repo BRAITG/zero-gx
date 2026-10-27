@@ -56,6 +56,9 @@ var _detail: Label
 var _score: VBoxContainer
 var _total: Label
 var _best: Label
+var _medal: HBoxContainer  # the run's medal and what is next; only on a stage with a par
+var _medal_icon: ScoreIcon
+var _medal_label: Label
 var _parts := {}  # ScoreIcon.Kind -> value Label
 var _next: Button
 var _replay: Button
@@ -179,6 +182,15 @@ func _ready() -> void:
 	_best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_best.add_theme_color_override("font_color", Style.ACCENT)
 	_score.add_child(_best)
+	_medal = HBoxContainer.new()
+	_medal.alignment = BoxContainer.ALIGNMENT_CENTER
+	_medal.add_theme_constant_override("separation", 10)
+	_score.add_child(_medal)
+	_medal_icon = ScoreIcon.new(ScoreIcon.Kind.MEDAL)
+	_medal.add_child(_medal_icon)
+	_medal_label = Label.new()
+	_medal_label.add_theme_font_size_override("font_size", 24)
+	_medal.add_child(_medal_label)
 	var parts := GridContainer.new()  # three lines of icon + value
 	parts.columns = 1
 	parts.add_theme_constant_override("v_separation", 10)
@@ -283,7 +295,8 @@ func intro_text() -> String:
 	return "%s\n%s" % [_intro_title.text, _intro_hint.text] if _intro.visible else ""
 
 
-## `result` keys: name; won → points, fuel_points, hull_points, time_points, new_best, has_next;
+## `result` keys: name; won → points, fuel_points, hull_points, time_points, new_best, has_next, has_par,
+## medal, next_threshold (the medal line shows only with has_par);
 ## lost → cause; optional can_rate (a community stage whose feedback the player may give) shows Rate level.
 func show_result(won: bool, result: Dictionary) -> void:
 	_intro.hide()
@@ -298,6 +311,10 @@ func show_result(won: bool, result: Dictionary) -> void:
 		_parts[ScoreIcon.Kind.FUEL].text = "+%d" % result.fuel_points
 		_parts[ScoreIcon.Kind.HULL].text = "+%d" % result.hull_points
 		_parts[ScoreIcon.Kind.TIME].text = "−%d" % result.time_points
+		_medal.visible = result.has_par
+		_medal_icon.tier = result.medal
+		_medal_icon.visible = result.medal != Progress.Medal.NONE
+		_medal_label.text = "%s at %d" % [Progress.Medal.keys()[result.medal + 1].capitalize(), result.next_threshold] if result.next_threshold > 0 else "Gold"
 	else:
 		_detail.text = result.cause
 	_next.visible = won and result.has_next
@@ -328,6 +345,8 @@ func result_text() -> String:
 		lines.append(_total.text)
 		if _best.visible:
 			lines.append(_best.text)
+		if _medal.visible:
+			lines.append(_medal_label.text)
 		for kind in _parts:
 			lines.append(_parts[kind].text)
 	else:

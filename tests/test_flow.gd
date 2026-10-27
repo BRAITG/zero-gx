@@ -66,6 +66,34 @@ func test_official_lists_every_level() -> void:
 	list.free()
 
 
+## The tiers of the medal icons visible under `node`.
+func medal_tiers(node: Node) -> Array:
+	var icons := node.find_children("*", "ScoreIcon", true, false).filter(func(i: ScoreIcon) -> bool: return i.kind == ScoreIcon.Kind.MEDAL and i.is_visible_in_tree())
+	return icons.map(func(i: ScoreIcon) -> int: return i.tier)
+
+
+func test_official_row_shows_the_best_medal() -> void:
+	var par := int(LevelFormat.read(Progress.LEVELS_DIR + "level_01" + LevelFormat.EXTENSION).get("par", 0))
+	check(par > 0, "level_01 must have a par for this test")
+	var cases := {
+		"unplayed": [-1, []],
+		"below bronze": [ceili(Progress.BRONZE_FRACTION * par) - 1, []],
+		"bronze": [ceili(Progress.BRONZE_FRACTION * par), [Progress.Medal.BRONZE]],
+		"silver": [ceili(Progress.SILVER_FRACTION * par), [Progress.Medal.SILVER]],
+		"gold": [par, [Progress.Medal.GOLD]],
+	}
+	for name in cases:
+		Progress.reset()
+		if cases[name][0] >= 0:
+			Progress.record_win("level_01", cases[name][0], 20.0, 50.0, 50.0)
+		var list := menu(MAIN.Page.OFFICIAL)
+		world.add_child(list)
+		var tiers := medal_tiers(stage_rows(list)["Level 01"])
+		check(tiers == cases[name][1], "%s: medal icons %s, expected %s" % [name, tiers, cases[name][1]])
+		list.free()
+
+
+
 ## A scored level: like `level`, but with an id so wins are saved.
 func scored_level(goal_at: Vector2, ship_props: Dictionary = {}) -> Level:
 	var root := Node2D.new()
@@ -108,6 +136,42 @@ func test_loss_cause_out_of_fuel() -> void:
 	var lvl := scored_level(Vector2(3000, 0), {"fuel": 0.0})
 	await frames(310)
 	check(lvl.hud.result_text().contains("Out of fuel"), "loss cause missing: %s" % lvl.hud.result_text())
+
+
+func test_result_card_shows_medal_and_next_threshold() -> void:
+	var points := Progress.points(Ship.MAX_FUEL, Ship.MAX_HEALTH, 0.0)  # a win with nothing spent
+	var lvl := scored_level(Vector2(3000, 0))
+	lvl.par = 2 * points  # bronze at 0.8 × points, silver at 1.4 ×
+	lvl.finish(true)
+	await frames(2)
+	check(medal_tiers(lvl.hud) == [Progress.Medal.BRONZE], "the card must show the bronze medal: %s" % [medal_tiers(lvl.hud)])
+	check(lvl.hud.result_text().contains("Silver at %d" % ceili(Progress.SILVER_FRACTION * lvl.par)), "next threshold missing: %s" % lvl.hud.result_text())
+	lvl.free()
+	lvl = scored_level(Vector2(3000, 0))
+	lvl.par = points
+	lvl.finish(true)
+	await frames(2)
+	check(medal_tiers(lvl.hud) == [Progress.Medal.GOLD], "the card must show the gold medal: %s" % [medal_tiers(lvl.hud)])
+	check(lvl.hud.result_text().contains("Gold") and not lvl.hud.result_text().contains(" at "), "gold has nothing above it: %s" % lvl.hud.result_text())
+	lvl.free()
+	lvl = scored_level(Vector2(3000, 0))
+	lvl.par = 4 * points
+	lvl.finish(true)
+	await frames(2)
+	check(medal_tiers(lvl.hud).is_empty(), "a run under bronze earns no medal: %s" % [medal_tiers(lvl.hud)])
+	check(lvl.hud.result_text().contains("Bronze at %d" % ceili(Progress.BRONZE_FRACTION * lvl.par)), "bronze threshold missing: %s" % lvl.hud.result_text())
+
+
+func test_training_result_has_no_medal_line() -> void:
+	var lvl := training_stage(Progress.trainings()[0])
+	await frames(2)
+	lvl.finish(true)
+	await frames(2)
+	var text := lvl.hud.result_text()
+	check(medal_tiers(lvl.hud).is_empty(), "a stage without par earns no medal: %s" % [medal_tiers(lvl.hud)])
+	for word in ["Bronze", "Silver", "Gold", " at "]:
+		check(not text.contains(word), "a stage without par must not show '%s': %s" % [word, text])
+	lvl.free()
 
 
 func test_clock_waits_for_first_thrust() -> void:
