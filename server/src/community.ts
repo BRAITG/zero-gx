@@ -69,14 +69,14 @@ export async function getLevels(request: Request, env: Env): Promise<Response> {
   if (!/^\d{1,6}$/.test(page)) throw new HttpError(400, "page must be a non-negative integer.");
   const order = sort === "top" ? "likes DESC, players DESC, l.id" : "v.approved DESC, l.id";
   const { results } = await env.DB.prepare(
-    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256, v.reviewed_difficulty, v.sketch,
+    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256, v.reviewed_difficulty, v.sketch, v.par,
        (SELECT COUNT(*) FROM likes k JOIN players kp ON kp.id = k.player WHERE k.level = l.id AND kp.banned = 0) AS likes,
        (SELECT COUNT(DISTINCT s.player) FROM scores s JOIN versions w ON w.sha256 = s.sha256 JOIN players sp ON sp.id = s.player WHERE w.level = l.id AND sp.banned = 0) AS players
      FROM levels l LEFT JOIN players p ON p.id = l.owner JOIN versions v ON v.level = l.id AND v.version = l.latest
      WHERE ${VISIBLE} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ?`,
   )
     .bind(Number(page) * PAGE_SIZE)
-    .all<{ sha256: string; sketch: string | null }>();
+    .all<{ sha256: string; sketch: string | null; par: number | null }>();
   const community = await communityLabels(env, results.map((row) => row.sha256));
   return Response.json(results.map(({ sketch, ...row }) => ({ ...row, sketch: parseSketch(sketch), community_difficulty: community.get(row.sha256)! })));
 }

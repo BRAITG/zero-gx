@@ -22,14 +22,14 @@ Auth, in the table below:
 | `GET /me/submissions` | session | The caller's submissions with status and review comment. |
 | `POST /levels/:level/like`, `DELETE /levels/:level/like` | session | Likes or unlikes a level. A like needs a clear on any of its versions, five counted attempts across them, or a verified score. |
 | `POST /levels/:level/report` | session | Files a report as a GitHub issue in the levels repository. |
-| `GET /levels` | session | Visible community levels, `sort=top` or `new`, paged. Each row gives the latest version's reviewed difficulty, its community label with the voter count, and its sketch (the parsed `levels/<id>/v<N>.sketch.json`, or null). |
+| `GET /levels` | session | Visible community levels, `sort=top` or `new`, paged. Each row gives the latest version's reviewed difficulty, its community label with the voter count, its par in points (null when none), and its sketch (the parsed `levels/<id>/v<N>.sketch.json`, or null). |
 | `GET /levels/:level/feedback?sha256=` | session | One version's reviewed and community difficulty, its play statistics (ratios and median from ten starters), and the caller's own state. |
 | `PUT /levels/:level/difficulty` | session | `{sha256, difficulty}`: sets the caller's one vote on that version. Needs a clear or five counted attempts on it. |
 | `DELETE /levels/:level/difficulty?sha256=` | session | Removes the caller's vote. Needs no play. |
 | `GET /players` | session | The player ranking. |
 | `GET /index` | session | The commit of the levels repository the game should read `index.json` from. |
 | `POST /admin/official` | admin | Registers the SHA-256 hashes of a release's official levels. |
-| `POST /github` | webhook | Records pull request outcomes and `hidden.txt` changes. A merge stores the pull request's one `difficulty:<label>` as the version's reviewed difficulty, or none when there is not exactly one, and the text of the version's `levels/<id>/v<N>.sketch.json` (null when the merge has none). |
+| `POST /github` | webhook | Records pull request outcomes and `hidden.txt` changes. A merge stores the pull request's one `difficulty:<label>` as the version's reviewed difficulty, or none when there is not exactly one. It stores the one `par:<points>` label as the version's par, else the sketch's `par` when that is a positive whole number, else none. It also stores the text of the version's `levels/<id>/v<N>.sketch.json` (null when the merge has none). |
 
 A cron trigger runs every 10 minutes: it recomputes the player ranking, deletes expired nonces and old rate counters, expires score demos (each level keeps the demos of its top 10 runs, ties at the cut included; every other demo, and every banned player's, is deleted 14 days after it was posted, and the score stays without a demo), sweeps orphaned demos from R2 and rebuilds `index.json`.
 
@@ -199,4 +199,4 @@ ADMIN_TOKEN=dev
 
 then `npx wrangler d1 migrations apply zero-gx --local` and `npx wrangler dev`. Sign in with the auth code `test:<id>:<name>` and the integrity token `ok:<nonce>` (device integrity) or `strong:<nonce>` (strong integrity), where `<nonce>` is the server nonce for `/session` and the bound nonce for `/scores` and `/submissions`. Calls that need GitHub (submissions, reports, the index) additionally need real `GITHUB_*` values in `.dev.vars` and a test copy of the levels repository in `LEVELS_REPO`.
 
-`npm run cli -- check-pr <repo-root> <base-ref> <head-ref> [--event <github-event-json>]` is the pull-request checker that the levels repository's workflow runs. With `--event`, the event file's `pull_request.labels` must name exactly one `difficulty:<label>` for a level; the file is read as data and never run.
+`npm run cli -- check-pr <repo-root> <base-ref> <head-ref> [--event <github-event-json>]` is the pull-request checker that the levels repository's workflow runs. With `--event`, the event file's `pull_request.labels` must name exactly one `difficulty:<label>` for a level and at most one `par:<points>`; the file is read as data and never run.

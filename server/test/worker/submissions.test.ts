@@ -675,6 +675,26 @@ describe("reviewed difficulty on merge", () => {
     ]);
   });
 
+  const parCases = [
+    { name: "the label's points over the sketch's", labels: ["difficulty:hard", "par:900"], sketch: '{"bounds":[0,0,1,1],"par":700}', par: 900 },
+    { name: "the sketch's par without a label", labels: ["difficulty:hard"], sketch: '{"bounds":[0,0,1,1],"par":700}', par: 700 },
+    { name: "null for a sketch par that is not a positive whole number", labels: ["difficulty:hard"], sketch: '{"bounds":[0,0,1,1],"par":0}', par: null },
+    { name: "null without a label or a sketch par", labels: ["difficulty:hard"], sketch: null, par: null },
+  ];
+  for (const [i, { name, labels, sketch, par }] of parCases.entries()) {
+    it(`stores the par as ${name}`, async () => {
+      const { player } = await signIn(`rev-p${i}`, "Max");
+      await seedLevel("lvl_aaaaaaaaaa", player.id);
+      await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 7, "Alpha", SHA_01);
+      const gh = github();
+      mergedFile(gh, "lvl_aaaaaaaaaa", 1, LEVEL_01_TEXT);
+      if (sketch !== null) gh.files.set("levels/lvl_aaaaaaaaaa/v1.sketch.json", { text: sketch, sha: "sketch-p" });
+
+      expect((await hook(gh, "pull_request", mergedWith(7, labels))).status).toBe(200);
+      expect(await rows("SELECT par FROM versions WHERE level = 'lvl_aaaaaaaaaa'")).toEqual([{ par }]);
+    });
+  }
+
   for (const [i, labels] of [[], ["bug"], ["difficulty:easy", "difficulty:hard"]].entries()) {
     it(`publishes the version as Not rated, and still approves it, with labels ${JSON.stringify(labels)}`, async () => {
       const { player } = await signIn(`rev-b${i}`, "Jun");

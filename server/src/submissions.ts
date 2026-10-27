@@ -2,6 +2,7 @@ import { checkDemo } from "./core/check";
 import { MAX_BYTES, decodeDemo } from "./core/demo";
 import { type Difficulty, isDifficulty, reviewedDifficulty } from "./core/difficulty";
 import { MAX_LEVEL_BYTES, sha256Hex, validateLevel } from "./core/level";
+import { parLabel } from "./core/par";
 import type { Env } from "./env";
 import { commitIndex, getFile, lastComment, openOrUpdatePullRequest, pullRequestState } from "./github";
 import { HttpError, readBytes } from "./http";
@@ -259,6 +260,16 @@ async function findSubmission(env: Env, pull: PullRequest): Promise<SubmissionRo
   return { ...byBranch, pull_request: pull.number };
 }
 
+/** The sketch's `par` when its text is a JSON object holding a positive whole number; else null. */
+function sketchPar(text: string | undefined): number | null {
+  try {
+    const par: unknown = JSON.parse(text ?? "null")?.par;
+    return typeof par === "number" && Number.isSafeInteger(par) && par > 0 ? par : null;
+  } catch {
+    return null;
+  }
+}
+
 async function closePullRequest(env: Env, fetchFn: typeof fetch, pull: PullRequest): Promise<boolean> {
   const row = await findSubmission(env, pull);
   if (!row) return false;
@@ -270,13 +281,16 @@ async function closePullRequest(env: Env, fetchFn: typeof fetch, pull: PullReque
       if (!file) throw new Error(`${path} is missing on the default branch of a merged pull request.`);
       const sha256 = await sha256Hex(file.bytes);
       const sketch = await getFile(env, fetchFn, `levels/${row.level}/v${row.version}.sketch.json`);
-      // The moderator's label, read from the signed delivery: exactly one difficulty:<label>, else null. It is saved in the guarded insert below.
-      const reviewed = reviewedDifficulty((pull.labels ?? []).map((label) => label.name ?? ""));
+      // The moderator's labels, read from the signed delivery: exactly one difficulty:<label> (else null) and at most one par:<points>. Both are saved in the guarded insert below.
+      const names = (pull.labels ?? []).map((label) => label.name ?? "");
+      const reviewed = reviewedDifficulty(names);
+      // The version's par: the label's points, else the sketch's par, else null.
+      const par = parLabel(names) ?? sketchPar(sketch?.text);
       // One transaction, each statement guarded by the submission not being decided yet: a repeated delivery changes nothing.
       // A hash that is already published makes the versions insert fail and roll everything back, leaving the submission undecided.
       const undecided = "(SELECT status FROM submissions WHERE id = ?1) IN ('open', 'rejected')";
       await env.DB.batch([
-        env.DB.prepare(`INSERT INTO versions (level, version, sha256, approved, reviewed_difficulty, sketch) SELECT level, version, ?3, ?2, ?4, ?5 FROM submissions WHERE id = ?1 AND ${undecided}`).bind(row.id, now(), sha256, reviewed, sketch?.text ?? null),
+        env.DB.prepare(`INSERT INTO versions (level, version, sha256, approved, reviewed_difficulty, sketch, par) SELECT level, version, ?3, ?2, ?4, ?5, ?6 FROM submissions WHERE id = ?1 AND ${undecided}`).bind(row.id, now(), sha256, reviewed, sketch?.text ?? null, par),
         env.DB.prepare(
           `UPDATE levels SET latest = (SELECT version FROM submissions WHERE id = ?1), title = (SELECT title FROM submissions WHERE id = ?1)
            WHERE id = (SELECT level FROM submissions WHERE id = ?1) AND ${undecided}`,
