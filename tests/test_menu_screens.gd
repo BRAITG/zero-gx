@@ -45,35 +45,45 @@ func test_overlay_sheet_stays_in_the_central_frame_and_blocks_its_margins() -> v
 	check(Rect2(0, 0, 1280, 720).encloses(body_text.get_global_rect()), "body text must follow the resized frame: %s" % body_text.get_global_rect())
 
 
-func test_a_drag_that_starts_on_a_listed_button_scrolls_and_a_tap_still_presses() -> void:
-	var touchscreen := Input.emulate_touch_from_mouse
+func test_a_drag_from_a_sheet_card_or_its_button_scrolls_and_a_tap_still_presses() -> void:
 	Input.emulate_touch_from_mouse = true  # how headless reports a touchscreen; ScrollContainer only drag-scrolls on one
 	var viewport := SubViewport.new()
-	viewport.size = Vector2i(400, 300)
+	viewport.size = Vector2i(1280, 360)
 	world.add_child(viewport)
-	var scroll := ScrollContainer.new()
-	scroll.size = Vector2(400, 300)
-	viewport.add_child(scroll)
-	var rows := VBoxContainer.new()
-	scroll.add_child(rows)
+	var host := Control.new()
+	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	viewport.add_child(host)
+	var sheet := Overlay.open(host, "Sheet")
 	var taps := []
-	for i in 10:
+	for i in 8:
+		var box := sheet.card()
+		var label := Label.new()
+		label.text = "Card %d" % i
+		box.add_child(label)
 		var button := Button.new()
-		button.custom_minimum_size = Vector2(300, 60)
+		button.text = "Pick %d" % i
 		button.pressed.connect(func() -> void: taps.append(i))
-		rows.add_child(button)
+		box.add_child(button)
 	await frames(2)
-	_finger(viewport, true, Vector2(150, 100))
-	for step in 4:
-		_slide(viewport, Vector2(150, 70 - 30 * step), Vector2(0, -30))
-	_finger(viewport, false, Vector2(150, -20))
-	check(scroll.scroll_vertical > 0, "a drag from a button must scroll the list")
+	var scroll: ScrollContainer = sheet.find_children("*", "ScrollContainer", true, false)[0]
+	for start: Control in [sheet.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text == "Card 0")[0], _button(sheet, "Pick 0")]:
+		scroll.scroll_vertical = 0
+		await frames(1)
+		var at := start.get_global_rect().get_center()
+		_finger(viewport, true, at)
+		for step in 4:
+			_slide(viewport, at - Vector2(0, 30 * (step + 1)), Vector2(0, -30))
+		_finger(viewport, false, at - Vector2(0, 120))
+		check(scroll.scroll_vertical > 0, "a drag from %s must scroll the sheet" % start.get_class())
 	check(taps.is_empty(), "a drag must not press the button it started on: %s" % [taps])
-	await frames(60)  # the fling settles
-	_finger(viewport, true, Vector2(150, 100))
-	_finger(viewport, false, Vector2(150, 100))
-	check(taps.size() == 1, "a tap on a listed button must still press it: %s" % [taps])
-	Input.emulate_touch_from_mouse = touchscreen
+	scroll.scroll_vertical = 0
+	await frames(1)
+	var tap := _button(sheet, "Pick 0").get_global_rect().get_center()
+	_finger(viewport, true, tap)
+	_slide(viewport, tap - Vector2(0, 8), Vector2(0, -8))  # a finger never lands perfectly still
+	_finger(viewport, false, tap - Vector2(0, 8))
+	check(taps == [0], "a tap that moves a little must press its button once: %s" % [taps])
+	check(scroll.scroll_vertical == 0, "a tap that moves a little must not scroll: %d" % scroll.scroll_vertical)
 
 
 func _tap(viewport: SubViewport, at: Vector2) -> void:

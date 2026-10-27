@@ -27,7 +27,7 @@ func _ready() -> void:
 ## A button stops touches by default, so a drag that starts on one never scrolls its list and lifts as a tap.
 ## PASS lets the list see it; once the drag passes the scroll deadzone, the list cancels the button's press.
 func _pass_touches_to_scroll(node: Node) -> void:
-	if not node is BaseButton:
+	if not (node is BaseButton and node.mouse_filter == Control.MOUSE_FILTER_STOP):
 		return
 	var parent := node.get_parent()
 	while parent:
