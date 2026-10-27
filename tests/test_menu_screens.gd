@@ -93,10 +93,12 @@ func test_on_a_touchscreen_a_button_under_the_finger_looks_as_at_rest() -> void:
 	var plain := Button.new()
 	var featured := Button.new()  # like the suggested stage: a stronger look at rest
 	featured.add_theme_stylebox_override("normal", featured.get_theme_stylebox("pressed"))
-	for button in [plain, featured]:
+	for button: Button in [plain, featured, CheckButton.new()]:  # a toggle shows hover_pressed when on
 		world.add_child(button)
-		check(button.get_theme_stylebox("hover") == button.get_theme_stylebox("normal"), "a touched button must not look hovered")
-		check(button.get_theme_color("font_hover_color") == button.get_theme_color("font_color"), "a touched button's text must not look hovered")
+		check(button.get_theme_stylebox("hover") == button.get_theme_stylebox("normal"), "a touched %s must not look hovered" % button.get_class())
+		check(button.get_theme_stylebox("hover_pressed") == button.get_theme_stylebox("pressed"), "a touched %s that is on must not look hovered" % button.get_class())
+		check(button.get_theme_color("font_hover_color") == button.get_theme_color("font_color"), "a touched %s's text must not look hovered" % button.get_class())
+		check(button.get_theme_color("font_hover_pressed_color") == button.get_theme_color("font_pressed_color"), "a touched %s's text, on, must not look hovered" % button.get_class())
 	Style.touchscreen = false
 	var desktop := Button.new()
 	world.add_child(desktop)

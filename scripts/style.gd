@@ -27,7 +27,8 @@ func _ready() -> void:
 
 
 ## Godot turns each touch into an emulated mouse as well, which hovers whatever lies under the finger, even
-## after it lifts. A finger has no hover, so on a touchscreen a button's hover look is its look at rest.
+## after it lifts. A finger has no hover, so on a touchscreen a button's hover look is its look at rest,
+## copied as it enters the tree: override a button's own looks before adding it.
 ## A button stops touches by default, so a drag that starts on one never scrolls its list and lifts as a tap.
 ## PASS lets the list see it; once the drag passes the scroll deadzone, the list cancels the button's press.
 func _fit_button_to_touch(node: Node) -> void:
