@@ -2,17 +2,16 @@ class_name ScoreIcon
 extends Control
 ## Small code-drawn icons for the score breakdown, coloured like the things they count.
 
-enum Kind { FINISH, FUEL, HULL, TIME }
+enum Kind { FUEL, HULL, TIME }
 
 const COLORS := {
-	Kind.FINISH: Color(0.4, 1.0, 0.6),  # the goal ring
 	Kind.FUEL: Color("#ffcf4a"),  # the fuel bar
 	Kind.HULL: Color("#5be37d"),  # the hull bar
 	Kind.TIME: Color("#dfe9ff"),
 }
 const SIZE := 30.0
 
-var kind := Kind.FINISH
+var kind := Kind.FUEL
 
 
 func _init(icon_kind: Kind) -> void:
@@ -26,9 +25,6 @@ func _draw() -> void:
 	var r := SIZE * 0.42
 	var color: Color = COLORS[kind]
 	match kind:
-		Kind.FINISH:
-			draw_arc(c, r, 0.0, TAU, 32, color, 3.0, true)
-			draw_circle(c, r * 0.35, color)
 		Kind.FUEL:  # a drop
 			draw_circle(c + Vector2(0, r * 0.3), r * 0.62, color)
 			draw_colored_polygon(PackedVector2Array([c + Vector2(0, -r), c + Vector2(r * 0.58, r * 0.12), c + Vector2(-r * 0.58, r * 0.12)]), color)

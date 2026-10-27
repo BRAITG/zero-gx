@@ -358,6 +358,98 @@ static func serialize(root: Node) -> Dictionary:
 	return data
 
 
+## The thumbnail sketch of a level: its shapes at one-pixel detail, under 2 KB, derived from `data`.
+static func sketch(data: Dictionary) -> Dictionary:
+	var box := _sketch_box(data)
+	var tolerance := maxf(box.size.x, box.size.y) / 320.0  # one thumbnail pixel
+	var out := _shape(data, box, tolerance)
+	for _doubling in 8:
+		if _fits(out):
+			break
+		tolerance *= 2.0
+		out = _shape(data, box, tolerance)
+	# shortcut: a whole kind is cut before the next, so a dense level drops every wall before any pickup, upgrade: a per-item budget
+	for key in ["asteroids", "walls", "pickups", "bodies"]:
+		while not _fits(out) and not out[key].is_empty():
+			out[key].pop_back()
+	return out
+
+
+## The sketch as one line of JSON with sorted keys, so the same level always gives the same bytes.
+static func sketch_json(sketch: Dictionary) -> String:
+	return JSON.stringify(sketch, "", true)
+
+
+static func _fits(sketch: Dictionary) -> bool:
+	return sketch_json(sketch).length() < 2048
+
+
+## The box around everything a level places, grown by the ship's radius.
+static func _sketch_box(data: Dictionary) -> Rect2:
+	var box := Rect2(_vec(data.ship.position), Vector2.ZERO)
+	box = box.expand(_vec(data.goal.position))
+	for wall: Dictionary in data.get("walls", []):
+		for p: Array in wall.points:
+			box = box.expand(_vec(p))
+	for body: Dictionary in data.get("bodies", []):
+		var at := _vec(body.position)
+		var radius := Vector2.ONE * body_value(body, "radius")
+		box = box.expand(at - radius).expand(at + radius)
+	for pickup: Dictionary in data.get("pickups", []):
+		box = box.expand(_vec(pickup.position))
+	for rock: Dictionary in data.get("asteroids", []):
+		box = box.expand(_vec(rock.position))
+	return box.grow(Ship.RADIUS)
+
+
+## The sketch at one simplification tolerance: every wall, body, pickup and asteroid.
+static func _shape(data: Dictionary, box: Rect2, tolerance: float) -> Dictionary:
+	var walls := []
+	for wall: Dictionary in data.get("walls", []):
+		var points := PackedVector2Array()
+		for p: Array in wall.points:
+			points.append(_vec(p))
+		var sketched := {"kind": wall.kind, "points": Array(_simplify(points, tolerance)).map(_int_point)}
+		if wall.get("closed", false):
+			sketched.closed = true
+		walls.append(sketched)
+	var bodies := []
+	for body: Dictionary in data.get("bodies", []):
+		bodies.append({"kind": body.kind, "position": _int_point(_vec(body.position)), "radius": roundi(body_value(body, "radius"))})
+	var pickups := []
+	for pickup: Dictionary in data.get("pickups", []):
+		pickups.append({"kind": pickup.kind, "position": _int_point(_vec(pickup.position))})
+	var rocks := []
+	for rock: Dictionary in data.get("asteroids", []):
+		rocks.append(_int_point(_vec(rock.position)))
+	var lo := _int_point(box.position)
+	var hi := _int_point(box.end)
+	return {"bounds": [lo[0], lo[1], hi[0] - lo[0], hi[1] - lo[1]], "ship": _int_point(_vec(data.ship.position)), "goal": _int_point(_vec(data.goal.position)), "walls": walls, "bodies": bodies, "pickups": pickups, "asteroids": rocks}
+
+
+## Ramer–Douglas–Peucker: the points a polyline keeps within `tolerance`; its first and last always stay.
+static func _simplify(points: PackedVector2Array, tolerance: float) -> PackedVector2Array:
+	if points.size() < 3:
+		return points
+	var worst := 0.0
+	var at := 0
+	for i in range(1, points.size() - 1):
+		var gap := Geometry2D.get_closest_point_to_segment(points[i], points[0], points[points.size() - 1]).distance_to(points[i])
+		if gap > worst:
+			worst = gap
+			at = i
+	if worst <= tolerance:
+		return PackedVector2Array([points[0], points[points.size() - 1]])
+	var left := _simplify(points.slice(0, at + 1), tolerance)
+	var right := _simplify(points.slice(at, points.size()), tolerance)
+	left.remove_at(left.size() - 1)  # the split point ends the left half and starts the right
+	return left + right
+
+
+static func _int_point(v: Vector2) -> Array:
+	return [roundi(v.x), roundi(v.y)]
+
+
 static func _check_start(data: Dictionary, errors: PackedStringArray) -> void:
 	var start := _vec(data.ship.position)
 	var clearance := Ship.RADIUS + Barrier.THICKNESS / 2.0

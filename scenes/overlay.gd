@@ -1,7 +1,7 @@
 class_name Overlay
 extends Control
-## A full-screen panel over the menu: a title, a scrolling body and a Close button.
-## Touches never pass through it.
+## A full-screen panel over the menu: a title, a scrolling body and a Close button, centred in the
+## 16:9 frame like the main menu's column. Touches never pass through it.
 
 const WIDTH := 1000.0
 
@@ -84,6 +84,8 @@ func _build(title: String) -> void:
 	frame.add_child(column)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 24)
+	top.custom_minimum_size.x = WIDTH  # the title row and the body share one centred column
+	top.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	column.add_child(top)
 	_close = Button.new()
 	_close.text = "Close"
@@ -101,6 +103,9 @@ func _build(title: String) -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true  # keys and pads reach the rows below the fold
 	column.add_child(scroll)
+	var centre := CenterContainer.new()  # a ScrollContainer ignores its child's shrink flags
+	centre.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(centre)
 	body = VBoxContainer.new()
 	body.add_theme_constant_override("separation", 14)
-	scroll.add_child(body)
+	centre.add_child(body)

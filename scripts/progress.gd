@@ -6,8 +6,10 @@ signal changed
 
 const TUTORIALS_DIR := "res://tutorials/"
 const LEVELS_DIR := "res://levels/"
-const BASE_POINTS := 1000
 const MIN_POINTS := 100
+## The progress file's layout. 1: bests included a 1000-point base for reaching the goal. 2: no base.
+const VERSION := 2
+const OLD_BASE_POINTS := 1000
 
 var path := "user://progress.cfg"
 var demos_dir := "user://demos/"
@@ -79,7 +81,7 @@ func _stems(dir: String) -> PackedStringArray:
 
 
 func points(fuel: float, hull: float, seconds: float) -> int:
-	var raw := BASE_POINTS + fuel * Tuning.points_fuel + hull * Tuning.points_hull - seconds * Tuning.points_per_second
+	var raw := fuel * Tuning.points_fuel + hull * Tuning.points_hull - seconds * Tuning.points_per_second
 	return maxi(MIN_POINTS, roundi(raw))
 
 
@@ -92,12 +94,24 @@ func best_time(id: String) -> float:
 	return _file.get_value(id, "best_time", 0.0)
 
 
-## Saves the run if it beats the best; returns whether it did.
-func record_win(id: String, run_points: int, seconds: float) -> bool:
+## Fuel left on the best run, or −1 when that best was saved before fuel was kept.
+func best_fuel(id: String) -> float:
+	return _file.get_value(id, "best_fuel", -1.0)
+
+
+## Hull left on the best run, or −1 when that best was saved before hull was kept.
+func best_hull(id: String) -> float:
+	return _file.get_value(id, "best_hull", -1.0)
+
+
+## Saves the run if it beats the best; returns whether it did. `fuel` and `hull` are what was left at the goal.
+func record_win(id: String, run_points: int, seconds: float, fuel := -1.0, hull := -1.0) -> bool:
 	if run_points <= best_points(id):
 		return false
 	_file.set_value(id, "best_points", run_points)
 	_file.set_value(id, "best_time", seconds)
+	_file.set_value(id, "best_fuel", fuel)
+	_file.set_value(id, "best_hull", hull)
 	_save()
 	return true
 
@@ -138,16 +152,24 @@ func next_level(id: String) -> String:
 	return ids[index + 1] if index >= 0 and index + 1 < ids.size() else ""
 
 
-## A missing or unreadable file means no progress.
+## A missing or unreadable file means no progress. A file from an older layout is migrated once and saved.
 func load_file() -> void:
 	_file = ConfigFile.new()
 	if _file.load(path) != OK:
 		_file = ConfigFile.new()
+		_file.set_value("meta", "version", VERSION)
+	if _file.get_value("meta", "version", 1) < 2:  # bests counted the 1000-point base
+		for section in _file.get_sections():
+			if _file.has_section_key(section, "best_points"):
+				_file.set_value(section, "best_points", maxi(MIN_POINTS, _file.get_value(section, "best_points") - OLD_BASE_POINTS))
+		_file.set_value("meta", "version", VERSION)
+		_save()
 	changed.emit()
 
 
 func reset() -> void:
 	_file = ConfigFile.new()
+	_file.set_value("meta", "version", VERSION)
 	for file in DirAccess.get_files_at(demos_dir) if DirAccess.dir_exists_absolute(demos_dir) else PackedStringArray():
 		DirAccess.remove_absolute(demos_dir + file)
 	_save()

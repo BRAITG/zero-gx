@@ -9,25 +9,25 @@
       "claim": {
         "fuel": 82.7,
         "hull": 100.0,
-        "points": 2522,
+        "points": 1522,
         "seconds": 9.16666666666667
       },
       "errors": [
         "seconds, the run took"
       ],
       "level": "level_01.json",
-      "points": 2522
+      "points": 1522
     },
     "level_01.claim_ok.demo.gz": {
       "claim": {
         "fuel": 82.7,
         "hull": 100.0,
-        "points": 2522,
+        "points": 1522,
         "seconds": 9.11666666666667
       },
       "errors": [],
       "level": "level_01.json",
-      "points": 2522
+      "points": 1522
     },
     "level_01.clock_moved.demo.gz": {
       "errors": [
@@ -39,7 +39,7 @@
     "level_01.demo.gz": {
       "errors": [],
       "level": "level_01.json",
-      "points": 2522
+      "points": 1522
     },
     "level_01.forged_tank.demo.gz": {
       "errors": [
@@ -101,7 +101,7 @@
     "level_01.unlimited_fuel.demo.gz": {
       "errors": [],
       "level": "level_01.unlimited_fuel.json",
-      "points": 1282
+      "points": 282
     },
     "level_01.wall_crossing.demo.gz": {
       "errors": [
@@ -120,12 +120,12 @@
     "level_05.demo.gz": {
       "errors": [],
       "level": "level_05.json",
-      "points": 1307
+      "points": 307
     },
     "level_10.idle.demo.gz": {
       "errors": [],
       "level": "level_10.json",
-      "points": 1908
+      "points": 908
     }
   },
   "levels": {

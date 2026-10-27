@@ -269,7 +269,7 @@ func test_score_uses_default_weights() -> void:
 	var run := clocked(5, [5])
 	var score := DemoCheck.score(run[0], run[1])
 	check(is_equal_approx(score.seconds, 35 * Demo.STEP) and score.fuel == 100.0 and score.hull == 100.0, "score read from the demo: %s" % [score])
-	check(score.points == roundi(1000 + 100.0 * 15 + 100.0 * 3 - score.seconds * 2), "default weights expected, got %d" % score.points)
+	check(score.points == roundi(100.0 * 15 + 100.0 * 3 - score.seconds * 2), "default weights expected, got %d" % score.points)
 	var long_run := clocked(0, [0], Demo.MAX_FRAMES, {"fuel": LevelFormat.UNLIMITED, "hull": LevelFormat.UNLIMITED})
 	score = DemoCheck.score(long_run[0], long_run[1])
 	check(score.fuel == 0.0 and score.hull == 0.0, "unlimited tanks score nothing: %s" % [score])

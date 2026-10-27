@@ -31,3 +31,105 @@ jobs:
         env:
           BASE_REF: ${{ github.base_ref }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+
+  # Renders what a submission PR changes, for a moderator to look at: it runs the game's own tools on the level and publishes
+  # sketch.json, preview.png and pr.json as an artifact. It runs even when `check` fails, because `check` fails until a moderator
+  # sets the difficulty label and the preview is what they choose it from. So its first step refuses any path a submission may
+  # not touch: an honest PR that `check` has not passed cannot plant tool/, out/ or symlinks for the steps after it.
+  # That is no security boundary: a pull_request run uses the PR's own copy of this file, so a PR can remove the guard. The job
+  # holds no secret and no write token; whatever consumes the artifact must verify number and head_sha and treat the files as untrusted.
+  preview:
+    needs: check
+    if: ${{ !cancelled() && needs.check.result != 'cancelled' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      GODOT_VERSION: 4.7.2  # keep in step with the game's .github/workflows/build.yml
+      GODOT_SILENCE_ROOT_WARNING: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Allow only submission paths
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        shell: bash  # with pipefail, so a failing git command fails the step
+        run: |
+          set -euo pipefail
+          allowed='^(levels/lvl_[a-z0-9]{10}/(v[1-9][0-9]*\.json|v[1-9][0-9]*\.sketch\.json|meta\.json)|proof/lvl_[a-z0-9]{10}/v[1-9][0-9]*\.demo\.gz|hidden\.txt)$'
+          base=$(git merge-base "origin/$BASE_REF" HEAD)
+          # no renames: a renamed file lists its source as deleted and its target as added.
+          # The braces confine `|| true` to grep's no-match status, so a failing git still fails the step.
+          bad=$(git diff --no-renames --name-only "$base" HEAD | { grep -Ev "$allowed" || true; } | sed 's/^/  /')
+          if [ -n "$bad" ]; then
+            echo "::error::The pull request changes paths a submission may not touch:"
+            echo "$bad"
+            exit 1
+          fi
+          # only regular files, type changes included: the tools below would follow a symlink out of the checkout
+          odd=$(git diff -z --no-renames --name-only --diff-filter=d "$base" HEAD | xargs -0 -r git ls-files -s -- | { grep -Ev '^100644 ' || true; } | sed 's/^/  /')
+          if [ -n "$odd" ]; then
+            echo "::error::The pull request adds something that is not a regular file:"
+            echo "$odd"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: BRAITG/zero-gx
+          ref: master
+          path: tool
+          persist-credentials: false
+      - name: Cache Godot
+        id: godot-cache
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-editor
+      - name: Install Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot
+          curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          mv ~/godot/"Godot_v${GODOT_VERSION}-stable_linux.x86_64" ~/godot/godot
+          rm /tmp/godot.zip
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends xvfb mesa-utils libgl1-mesa-dri
+      - run: ~/godot/godot --headless --path tool --import
+      - name: Sketch and render the level
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          files=$(git diff --no-renames --name-only --diff-filter=A "origin/$BASE_REF...$HEAD_SHA" | { grep -E '^levels/lvl_[a-z0-9]{10}/v[1-9][0-9]*\.json$' || true; })
+          n=$(printf '%s' "$files" | grep -c . || true)
+          if [ "$n" = 0 ]; then  # hidden.txt, or a sketch or proof only
+            echo "::notice::No level added; nothing to preview."
+            exit 0
+          fi
+          if [ "$n" != 1 ]; then
+            echo "::error::Expected one added level file, found: ${files//$'\n'/ }"
+            exit 1
+          fi
+          level=$(basename "$(dirname "$files")")
+          version=${files##*/v}
+          version=${version%.json}
+          mkdir out
+          timeout -k 10 120 ~/godot/godot --headless --path tool -s res://tools/sketch_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/sketch.json"
+          if [ -e "levels/$level/v$version.sketch.json" ] && ! cmp -s "levels/$level/v$version.sketch.json" out/sketch.json; then
+            echo "::error::The sketch in the pull request does not match the level."
+            exit 1
+          fi
+          xvfb-run -a timeout -k 10 120 ~/godot/godot --path tool --rendering-driver opengl3 -s res://tools/render_level.gd -- "$GITHUB_WORKSPACE/$files" "$GITHUB_WORKSPACE/out/preview.png"
+          test -s out/sketch.json && test -s out/preview.png  # a -s script that fails to load still exits 0
+          jq -n --argjson number "$PR_NUMBER" --arg head_sha "$HEAD_SHA" --arg level "$level" --argjson version "$version" \
+            '{number: $number, head_sha: $head_sha, level: $level, version: $version}' > out/pr.json
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: hashFiles('out/pr.json') != ''
+        with:
+          name: preview-${{ github.event.pull_request.head.sha }}
+          path: out
+          if-no-files-found: error

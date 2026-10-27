@@ -107,14 +107,20 @@ func _add_row(row: Dictionary) -> Button:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
 	card.add_child(line)
+	var thumbnail := Thumbnail.of_sketch(row.get("sketch"))
+	thumbnail.custom_minimum_size = Vector2(164, 92)  # 16:9 at an official row's thumbnail height
+	line.add_child(thumbnail)
 	var label := Label.new()
 	label.text = "%s · v%d · by %s · ♥ %d" % [row.get("title", "?"), int(row.get("latest", 1)), row.get("author", "?"), int(row.get("likes", 0))]
 	label.add_theme_font_size_override("font_size", 24)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	line.add_child(label)
-	_button(line, "Details", _details.bind(row))
+	var details := _button(line, "Details", _details.bind(row))
+	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var play := _button(line, "Play", _play.bind(row), "Loading…")
+	play.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var ratings := Label.new()  # Reviewed and Community side by side, each its own value
 	ratings.text = CommunityLevelDetails.summary(row)
 	ratings.add_theme_font_size_override("font_size", 20)

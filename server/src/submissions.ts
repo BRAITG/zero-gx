@@ -269,13 +269,14 @@ async function closePullRequest(env: Env, fetchFn: typeof fetch, pull: PullReque
       const file = await getFile(env, fetchFn, path);
       if (!file) throw new Error(`${path} is missing on the default branch of a merged pull request.`);
       const sha256 = await sha256Hex(file.bytes);
+      const sketch = await getFile(env, fetchFn, `levels/${row.level}/v${row.version}.sketch.json`);
       // The moderator's label, read from the signed delivery: exactly one difficulty:<label>, else null. It is saved in the guarded insert below.
       const reviewed = reviewedDifficulty((pull.labels ?? []).map((label) => label.name ?? ""));
       // One transaction, each statement guarded by the submission not being decided yet: a repeated delivery changes nothing.
       // A hash that is already published makes the versions insert fail and roll everything back, leaving the submission undecided.
       const undecided = "(SELECT status FROM submissions WHERE id = ?1) IN ('open', 'rejected')";
       await env.DB.batch([
-        env.DB.prepare(`INSERT INTO versions (level, version, sha256, approved, reviewed_difficulty) SELECT level, version, ?3, ?2, ?4 FROM submissions WHERE id = ?1 AND ${undecided}`).bind(row.id, now(), sha256, reviewed),
+        env.DB.prepare(`INSERT INTO versions (level, version, sha256, approved, reviewed_difficulty, sketch) SELECT level, version, ?3, ?2, ?4, ?5 FROM submissions WHERE id = ?1 AND ${undecided}`).bind(row.id, now(), sha256, reviewed, sketch?.text ?? null),
         env.DB.prepare(
           `UPDATE levels SET latest = (SELECT version FROM submissions WHERE id = ?1), title = (SELECT title FROM submissions WHERE id = ?1)
            WHERE id = (SELECT level FROM submissions WHERE id = ?1) AND ${undecided}`,

@@ -88,6 +88,9 @@ describe("check-pr accepts", () => {
   it("a change to hidden.txt alone", async () => {
     expect(await problems({}, { "hidden.txt": `${A}\n` })).toEqual({ ok: "OK: hidden.txt", problems: [] });
   });
+  it("a sketch with its level", async () => {
+    expect(await problems({}, { ...newLevel(), [`levels/${A}/v1.sketch.json`]: '{"bounds":[0,0,1,1]}' })).toEqual({ ok: `OK: ${A} v1`, problems: [] });
+  });
 });
 
 describe("check-pr rejects", () => {
@@ -177,6 +180,11 @@ describe("check-pr rejects", () => {
     const r = await problems({}, { ...newLevel(), [`levels/${A}/v1.json`]: otherLevel, [`proof/${A}/v1.demo.gz`]: otherDemo });
     expect(r.problems).toEqual([]);
   });
+  it("a sketch without its level", () => fails({}, { [`levels/${A}/v1.sketch.json`]: '{"bounds":[0,0,1,1]}' }, "may only be added together with"));
+  it("a sketch of another version", () =>
+    fails(existing, { [`levels/${A}/v1.sketch.json`]: '{"bounds":[0,0,1,1]}', [`levels/${A}/v2.json`]: level, [`proof/${A}/v2.demo.gz`]: demo }, "wrong version"));
+  it("a sketch over 2 KB", () => fails({}, { ...newLevel(), [`levels/${A}/v1.sketch.json`]: `{${" ".repeat(3000)}}` }, "larger than 2 KB"));
+  it("a sketch that is not a JSON object", () => fails({}, { ...newLevel(), [`levels/${A}/v1.sketch.json`]: "[]" }, "is not a JSON object"));
 });
 
 describe("check-pr with review labels", () => {

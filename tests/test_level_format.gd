@@ -197,3 +197,89 @@ func test_hash_names_the_content() -> void:
 	check(hash.length() == 64 and hash == LevelFormat.to_json(data).sha256_text(), "hash: %s" % hash)
 	data.title = "Other"
 	check(LevelFormat.sha256(data) != hash, "a change must change the hash")
+
+
+func test_sketch_keeps_shape_and_is_stable() -> void:
+	var data := LevelFormat.read(Progress.LEVELS_DIR + "level_08.json")
+	var sketch := LevelFormat.sketch(data)
+	check(sketch.walls.size() == data.walls.size() and sketch.bodies.size() == data.get("bodies", []).size(), "every wall and body survives: %s" % [sketch])
+	check(sketch.walls[0].kind == data.walls[0].kind, "wall kinds survive")
+	var bounds: Array = sketch.bounds
+	for wall in data.walls:
+		for p in wall.points:
+			check(p[0] >= bounds[0] and p[0] <= bounds[0] + bounds[2] and p[1] >= bounds[1] and p[1] <= bounds[1] + bounds[3], "bounds enclose %s" % [p])
+	var text := LevelFormat.sketch_json(sketch)
+	check(text == LevelFormat.sketch_json(LevelFormat.sketch(data)), "same level, same bytes")
+	check(text.length() < 2048 and not text.contains("\n") and not text.contains(" "), "one compact line under 2 KB: %d" % text.length())
+	check(text.find("\"asteroids\"") < text.find("\"bodies\""), "keys sorted")
+
+
+func test_sketch_json_sorts_nested_keys() -> void:
+	check(LevelFormat.sketch_json({"walls": [{"points": [], "kind": "blue", "closed": true}]}) == '{"walls":[{"closed":true,"kind":"blue","points":[]}]}', "nested keys must be sorted on one line")
+
+
+func full_level() -> Dictionary:
+	var data := minimal()
+	data.walls = []
+	for w in LevelFormat.MAX_WALLS:
+		var points := []
+		for i in LevelFormat.MAX_WALL_POINTS:
+			points.append([w * 50 + i * 7 + (i % 3) * 20, (i * 13) % 300])
+		data.walls.append({"kind": "blue", "points": points})
+	data.asteroids = []
+	for i in LevelFormat.MAX_ASTEROIDS:
+		data.asteroids.append({"position": [i * 31, (i * 17) % 500]})
+	return data
+
+
+func test_sketch_of_a_maximal_level_fits() -> void:
+	var sketch := LevelFormat.sketch(full_level())
+	check(LevelFormat.sketch_json(sketch).length() < 2048, "maximal level must fit")
+	check(not sketch.walls.is_empty(), "at least one wall survives the cap: %d walls" % sketch.walls.size())
+
+
+func test_sketch_of_a_level_full_of_pickups_and_bodies_fits() -> void:
+	var data := full_level()
+	data.pickups = []
+	for i in LevelFormat.MAX_PICKUPS:
+		data.pickups.append({"kind": "boost", "position": [(i * 2917) % 100000 - 50000, (i * 4001) % 100000 - 50000]})
+	data.bodies = []
+	for i in LevelFormat.MAX_BODIES:
+		data.bodies.append({"kind": "star", "position": [(i * 3517) % 100000 - 50000, (i * 2243) % 100000 - 50000], "radius": 3000})
+	var sketch := LevelFormat.sketch(data)
+	check(LevelFormat.sketch_json(sketch).length() < 2048, "a level full of pickups and bodies must fit: %d" % LevelFormat.sketch_json(sketch).length())
+	check(sketch.has("bounds") and sketch.has("ship") and sketch.has("goal"), "bounds, ship and goal always stay")
+
+
+func test_sketch_drops_a_straight_run_and_keeps_corners() -> void:
+	var data := minimal()
+	data.walls = [{"kind": "blue", "points": [[0, 500], [100, 500], [200, 500], [300, 500], [300, 900]]}]
+	var kept: Array = LevelFormat.sketch(data).walls[0].points
+	check(kept == [[0, 500], [300, 500], [300, 900]], "a straight run collapses to its ends and the corner stays: %s" % [kept])
+
+
+func test_a_cut_takes_asteroids_before_walls() -> void:
+	var data := minimal()
+	data.walls = [{"kind": "blue", "points": [[0, 500], [300, 900]]}, {"kind": "red", "points": [[0, -500], [300, -900]]}]
+	data.asteroids = []
+	for i in LevelFormat.MAX_ASTEROIDS:
+		data.asteroids.append({"position": [i * 600 - 50000, (i * 7907) % 90000 - 45000]})
+	var sketch := LevelFormat.sketch(data)
+	check(sketch.asteroids.size() < LevelFormat.MAX_ASTEROIDS, "the asteroids alone overflow, so some are cut: %d left" % sketch.asteroids.size())
+	check(sketch.walls == data.walls, "every wall survives while asteroids are cut: %s" % [sketch.walls])
+
+
+func test_sketch_keeps_closed_only_on_a_closed_wall() -> void:
+	var data := minimal()
+	data.walls = [{"kind": "blue", "points": [[0, 500], [300, 500], [300, 900]], "closed": true}, {"kind": "red", "points": [[0, -500], [300, -500]]}]
+	var walls: Array = LevelFormat.sketch(data).walls
+	check(walls[0].get("closed") == true, "a closed wall stays closed: %s" % [walls[0]])
+	check(not walls[1].has("closed"), "an open wall carries no closed key: %s" % [walls[1]])
+
+
+func test_sketch_bounds_grow_by_the_ships_radius() -> void:
+	var data := minimal()  # ship at [0, 0], goal at [3000, 0]
+	data.walls = [{"kind": "blue", "points": [[-400, -200], [300, 500]]}]
+	var bounds: Array = LevelFormat.sketch(data).bounds
+	check(bounds[0] == roundi(-400 - Ship.RADIUS) and bounds[1] == roundi(-200 - Ship.RADIUS), "the box starts a ship radius before the lowest point: %s" % [bounds])
+	check(bounds[0] + bounds[2] == roundi(3000 + Ship.RADIUS) and bounds[1] + bounds[3] == roundi(500 + Ship.RADIUS), "and ends a ship radius after the highest: %s" % [bounds])

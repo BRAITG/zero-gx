@@ -59,10 +59,13 @@ func _ready() -> void:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true  # keys and pads reach the rows below the fold
 	frame.add_child(scroll)
+	var centre := CenterContainer.new()  # centred like the other sheets; a ScrollContainer ignores shrink flags
+	centre.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(centre)
 	var rows := VBoxContainer.new()
-	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.custom_minimum_size.x = Overlay.WIDTH
 	rows.add_theme_constant_override("separation", 10)
-	scroll.add_child(rows)
+	centre.add_child(rows)
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 16)
 	rows.add_child(buttons)

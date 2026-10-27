@@ -656,6 +656,25 @@ describe("reviewed difficulty on merge", () => {
     expect(JSON.parse(gh.files.get("index.json")!.text).levels[0].versions).toEqual(saved);
   });
 
+  it("stores the merged sketch with its version, or null when the merge has none", async () => {
+    const { player } = await signIn("rev-s", "Lea");
+    await seedLevel("lvl_aaaaaaaaaa", player.id);
+    await seedLevel("lvl_bbbbbbbbbb", player.id);
+    await seedOpen("lvl_aaaaaaaaaa", 1, player.id, 7, "Alpha", SHA_01);
+    await seedOpen("lvl_bbbbbbbbbb", 1, player.id, 8, "Beta", SHA_05);
+    const gh = github();
+    mergedFile(gh, "lvl_aaaaaaaaaa", 1, LEVEL_01_TEXT);
+    mergedFile(gh, "lvl_bbbbbbbbbb", 1, LEVEL_05_TEXT);
+    gh.files.set("levels/lvl_aaaaaaaaaa/v1.sketch.json", { text: '{"bounds":[0,0,1,1]}', sha: "sketch-a" });
+
+    expect((await hook(gh, "pull_request", mergedWith(7, []))).status).toBe(200);
+    expect((await hook(gh, "pull_request", mergedWith(8, []))).status).toBe(200);
+    expect(await rows("SELECT level, sketch FROM versions ORDER BY level")).toEqual([
+      { level: "lvl_aaaaaaaaaa", sketch: '{"bounds":[0,0,1,1]}' },
+      { level: "lvl_bbbbbbbbbb", sketch: null },
+    ]);
+  });
+
   for (const [i, labels] of [[], ["bug"], ["difficulty:easy", "difficulty:hard"]].entries()) {
     it(`publishes the version as Not rated, and still approves it, with labels ${JSON.stringify(labels)}`, async () => {
       const { player } = await signIn(`rev-b${i}`, "Jun");
