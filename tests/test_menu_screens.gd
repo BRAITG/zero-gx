@@ -45,6 +45,47 @@ func test_overlay_sheet_stays_in_the_central_frame_and_blocks_its_margins() -> v
 	check(Rect2(0, 0, 1280, 720).encloses(body_text.get_global_rect()), "body text must follow the resized frame: %s" % body_text.get_global_rect())
 
 
+func test_a_drag_from_a_sheet_card_or_its_button_scrolls_and_a_tap_still_presses() -> void:
+	Input.emulate_touch_from_mouse = true  # how headless reports a touchscreen; ScrollContainer only drag-scrolls on one
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280, 360)
+	world.add_child(viewport)
+	var host := Control.new()
+	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	viewport.add_child(host)
+	var sheet := Overlay.open(host, "Sheet")
+	var taps := []
+	for i in 8:
+		var box := sheet.card()
+		var label := Label.new()
+		label.text = "Card %d" % i
+		box.add_child(label)
+		var button := Button.new()
+		button.text = "Pick %d" % i
+		button.pressed.connect(func() -> void: taps.append(i))
+		box.add_child(button)
+	await frames(2)
+	var scroll: ScrollContainer = sheet.find_children("*", "ScrollContainer", true, false)[0]
+	for start: Control in [sheet.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text == "Card 0")[0], _button(sheet, "Pick 0")]:
+		scroll.scroll_vertical = 0
+		await frames(1)
+		var at := start.get_global_rect().get_center()
+		_finger(viewport, true, at)
+		for step in 4:
+			_slide(viewport, at - Vector2(0, 30 * (step + 1)), Vector2(0, -30))
+		_finger(viewport, false, at - Vector2(0, 120))
+		check(scroll.scroll_vertical > 0, "a drag from %s must scroll the sheet" % start.get_class())
+	check(taps.is_empty(), "a drag must not press the button it started on: %s" % [taps])
+	scroll.scroll_vertical = 0
+	await frames(1)
+	var tap := _button(sheet, "Pick 0").get_global_rect().get_center()
+	_finger(viewport, true, tap)
+	_slide(viewport, tap - Vector2(0, 8), Vector2(0, -8))  # a finger never lands perfectly still
+	_finger(viewport, false, tap - Vector2(0, 8))
+	check(taps == [0], "a tap that moves a little must press its button once: %s" % [taps])
+	check(scroll.scroll_vertical == 0, "a tap that moves a little must not scroll: %d" % scroll.scroll_vertical)
+
+
 func _tap(viewport: SubViewport, at: Vector2) -> void:
 	for pressed in [true, false]:
 		var event := InputEventMouseButton.new()
@@ -53,6 +94,35 @@ func _tap(viewport: SubViewport, at: Vector2) -> void:
 		event.position = at
 		event.global_position = at
 		viewport.push_input(event)
+
+
+## A phone sends each touch, then the mouse event Godot emulates from it.
+func _finger(viewport: SubViewport, pressed: bool, at: Vector2) -> void:
+	var touch := InputEventScreenTouch.new()
+	touch.pressed = pressed
+	touch.position = at
+	viewport.push_input(touch)
+	var mouse := InputEventMouseButton.new()
+	mouse.device = InputEvent.DEVICE_ID_EMULATION
+	mouse.button_index = MOUSE_BUTTON_LEFT
+	mouse.pressed = pressed
+	mouse.position = at
+	mouse.global_position = at
+	viewport.push_input(mouse)
+
+
+func _slide(viewport: SubViewport, at: Vector2, relative: Vector2) -> void:
+	var drag := InputEventScreenDrag.new()
+	drag.position = at
+	drag.relative = relative
+	viewport.push_input(drag)
+	var mouse := InputEventMouseMotion.new()
+	mouse.device = InputEvent.DEVICE_ID_EMULATION
+	mouse.button_mask = MOUSE_BUTTON_MASK_LEFT
+	mouse.position = at
+	mouse.global_position = at
+	mouse.relative = relative
+	viewport.push_input(mouse)
 
 
 func _button(node: Node, text: String) -> Button:

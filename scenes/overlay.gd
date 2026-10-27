@@ -55,6 +55,7 @@ func paragraph(text: String, size := 22, color := Style.INK, parent: Node = null
 ## A panelled card in the body that groups one setting with its explanation.
 func card() -> VBoxContainer:
 	var panel := PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS  # a drag that starts on the card scrolls the sheet
 	panel.custom_minimum_size.x = WIDTH
 	body.add_child(panel)
 	var box := VBoxContainer.new()

@@ -21,6 +21,20 @@ func _ready() -> void:
 	ThemeDB.get_default_theme().default_font = theme.default_font
 	ThemeDB.get_default_theme().default_font_size = theme.default_font_size
 	add_child(_bloom())
+	get_tree().node_added.connect(_pass_touches_to_scroll)
+
+
+## A button stops touches by default, so a drag that starts on one never scrolls its list and lifts as a tap.
+## PASS lets the list see it; once the drag passes the scroll deadzone, the list cancels the button's press.
+func _pass_touches_to_scroll(node: Node) -> void:
+	if not (node is BaseButton and node.mouse_filter == Control.MOUSE_FILTER_STOP):
+		return
+	var parent := node.get_parent()
+	while parent:
+		if parent is ScrollContainer:
+			node.mouse_filter = Control.MOUSE_FILTER_PASS
+			return
+		parent = parent.get_parent()
 
 
 ## Gives keyboard and gamepad focus to the first enabled button under `root`, if any, with the
