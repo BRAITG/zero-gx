@@ -86,6 +86,23 @@ func test_a_drag_from_a_sheet_card_or_its_button_scrolls_and_a_tap_still_presses
 	check(scroll.scroll_vertical == 0, "a tap that moves a little must not scroll: %d" % scroll.scroll_vertical)
 
 
+## Godot moves an emulated mouse with the finger and leaves it where the finger lifted, so on a touchscreen
+## every button the finger slides over, and the last one tapped, would light up as hovered.
+func test_on_a_touchscreen_a_button_under_the_finger_looks_as_at_rest() -> void:
+	Style.touchscreen = true
+	var plain := Button.new()
+	var featured := Button.new()  # like the suggested stage: a stronger look at rest
+	featured.add_theme_stylebox_override("normal", featured.get_theme_stylebox("pressed"))
+	for button in [plain, featured]:
+		world.add_child(button)
+		check(button.get_theme_stylebox("hover") == button.get_theme_stylebox("normal"), "a touched button must not look hovered")
+		check(button.get_theme_color("font_hover_color") == button.get_theme_color("font_color"), "a touched button's text must not look hovered")
+	Style.touchscreen = false
+	var desktop := Button.new()
+	world.add_child(desktop)
+	check(desktop.get_theme_stylebox("hover") != desktop.get_theme_stylebox("normal"), "control: with a mouse, hover must still show")
+
+
 func _tap(viewport: SubViewport, at: Vector2) -> void:
 	for pressed in [true, false]:
 		var event := InputEventMouseButton.new()
