@@ -17,6 +17,7 @@
     ]
   },
   "hint": "This tank is too small to brake and turn. Let the planet's pull swing you around the corner.",
+  "par": 306,
   "route": {
     "coast": [
       2,
