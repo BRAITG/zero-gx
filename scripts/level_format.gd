@@ -108,6 +108,8 @@ static func validate(data: Dictionary, draft := false) -> PackedStringArray:
 	if not title is String or (not draft and (title.length() < 1 or title.length() > MAX_TITLE)):
 		errors.append("title must be 1-%d characters" % MAX_TITLE)
 	_text(data.get("hint", ""), "hint", errors, draft)
+	if data.has("par") and not (_whole(data.par) and (draft or data.par >= Progress.MIN_POINTS)):
+		errors.append("par must be a whole number of at least %d points" % Progress.MIN_POINTS)
 	var ship: Variant = data.get("ship")
 	if not ship is Dictionary:
 		errors.append("missing ship")
@@ -216,6 +218,7 @@ static func build(data: Dictionary, script: Script = LEVEL_SCRIPT) -> Level:
 	root.title = data.get("title", "")
 	root.hint = data.get("hint", "")
 	root.show_velocity = data.get("show_velocity", false)
+	root.par = int(data.get("par", 0))
 	var spec: Dictionary = data.ship
 	var ship: Ship = SHIP.instantiate()
 	ship.name = "Ship"
@@ -305,6 +308,8 @@ static func serialize(root: Node) -> Dictionary:
 		data.hint = root.hint
 	if root.show_velocity:
 		data.show_velocity = true
+	if root.par > 0:
+		data.par = root.par
 	var bodies: Array[Node] = root.get_children().filter(func(n: Node) -> bool: return n is GravityBody)
 	for child in root.get_children():
 		if child is Ship:
@@ -485,6 +490,10 @@ static func _point(value: Variant, what: String, errors: PackedStringArray, draf
 		return
 	for c in value:
 		_number(c, -MAX_COORD, MAX_COORD, what, errors, draft)
+
+
+static func _whole(value: Variant) -> bool:
+	return value is int or (value is float and is_finite(value) and value == roundf(value))
 
 
 static func _number(value: Variant, low: float, high: float, what: String, errors: PackedStringArray, draft: bool) -> void:

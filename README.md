@@ -133,6 +133,8 @@ Seven guided stages (`tutorials/`, under **Training** in the main menu) teach on
 
 Official levels and tutorials are plain JSON (`levels/level_NN.json`, `tutorials/tutorial_N.json`) in a stable layout (sorted keys, 2-space indent, trailing newline), so the SHA-256 of a level's file identifies one version of it. Player drafts are gzip-compressed (`user://levels/<id>.json.gz`). The format is described in `docs/superpowers/specs/2026-10-16-level-format-design.md`; `scripts/level_format.gd` reads, writes, validates and builds them. Tutorials pair their file with a lesson script (`tutorials/tutorial_N.gd`). Fuel and hull are per-level values and either can be unlimited. The in-app editor saves this format, and community levels and the server will use it too.
 
+A level may set `par`, a whole number of at least 100 points: the gold medal score. Silver and bronze need 70% and 40% of it, rounded up. A level without `par` has no medals.
+
 **Tools.** `tools/sketch_level.gd` writes a level's sketch, the thumbnail source described under Community: `godot --headless --path . -s res://tools/sketch_level.gd -- <level.json> <out.json>`. `tools/render_level.gd` renders a level to a PNG for a moderator's preview: `godot --path . -s res://tools/render_level.gd -- <level.json> <out.png>`, which needs a window, so not headless.
 
 ## Demos

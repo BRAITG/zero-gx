@@ -15,6 +15,8 @@ var input: ShipInput
 @export var hint := ""
 ## Always draw the ship's velocity arrow (tutorials). Levels follow the player's setting.
 @export var show_velocity := false
+## Points for a medal, from the level file: 0 when the level has no par.
+@export var par := 0
 ## Progress key; defaults to the scene file's stem. Empty (a level built in code) saves nothing.
 var level_id := ""
 ## An author's test flight of their own level: Menu returns to the editor, a finish marks the

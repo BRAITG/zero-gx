@@ -154,6 +154,27 @@ func test_round_trip_through_a_file() -> void:
 	check(JSON.stringify(saved) == JSON.stringify(back), "a level changed on its way through a file and a scene")
 
 
+func test_par_must_be_a_whole_number_of_at_least_100() -> void:
+	var sentence := "par must be a whole number of at least 100 points"
+	check(LevelFormat.validate(with("par", 1200)).is_empty(), "a par of 1200 must pass: %s" % LevelFormat.validate(with("par", 1200)))
+	check(LevelFormat.validate(with("par", 1200.0)).is_empty(), "a whole float par must pass")
+	for bad: Variant in [99, 12.5, "x"]:
+		check(LevelFormat.validate(with("par", bad)).has(sentence), "par %s must be refused: %s" % [bad, LevelFormat.validate(with("par", bad))])
+	check(LevelFormat.validate(with("par", 99), true).is_empty(), "a draft may have a par below 100")
+	check(LevelFormat.validate(with("par", 12.5), true).has(sentence), "a draft must still have a whole par")
+
+
+func test_par_survives_a_file_and_a_scene() -> void:
+	var path := "user://test_level_par.json.gz"
+	check(LevelFormat.write(path, with("par", 1200)) == OK, "could not write the level file")
+	var back := LevelFormat.read(path)
+	var built := LevelFormat.build(back)
+	check(built.par == 1200, "par %d after build, expected 1200" % built.par)
+	var saved: Variant = JSON.parse_string(JSON.stringify(LevelFormat.serialize(built)))
+	built.free()
+	check(JSON.stringify(saved) == JSON.stringify(back), "par changed on its way through a file and a scene")
+
+
 func test_body_limits_keep_each_kind_in_its_role() -> void:
 	rejects(with("bodies", [{"kind": "planet", "position": [2000, 0], "radius": 300}]), "a planet as big as a star")
 	rejects(with("bodies", [{"kind": "planet", "position": [2000, 0], "radius": 200, "strength": 5000}]), "a planet pulling like a star from afar")
