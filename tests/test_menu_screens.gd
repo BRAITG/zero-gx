@@ -86,23 +86,51 @@ func test_a_drag_from_a_sheet_card_or_its_button_scrolls_and_a_tap_still_presses
 	check(scroll.scroll_vertical == 0, "a tap that moves a little must not scroll: %d" % scroll.scroll_vertical)
 
 
-## Godot moves an emulated mouse with the finger and leaves it where the finger lifted, so on a touchscreen
-## every button the finger slides over, and the last one tapped, would light up as hovered.
-func test_on_a_touchscreen_a_button_under_the_finger_looks_as_at_rest() -> void:
-	Style.touchscreen = true
+## Godot moves an emulated mouse with the finger and leaves it where the finger lifted, so after a touch
+## every button the finger slides over, and the last one tapped, would light up as hovered. A real mouse,
+## on a desktop or plugged into a phone, hovers as usual; keys and pads change nothing.
+func test_hover_follows_the_last_pointer_a_touch_hides_it_and_a_real_mouse_brings_it_back() -> void:
 	var plain := Button.new()
 	var featured := Button.new()  # like the suggested stage: a stronger look at rest
 	featured.add_theme_stylebox_override("normal", featured.get_theme_stylebox("pressed"))
-	for button: Button in [plain, featured, CheckButton.new()]:  # a toggle shows hover_pressed when on
+	var buttons: Array[Button] = [plain, featured, CheckButton.new()]  # a toggle shows hover_pressed when on
+	var own := Button.new()  # a button with its own hover look keeps it
+	var own_hover := StyleBoxFlat.new()
+	own.add_theme_stylebox_override("hover", own_hover)
+	world.add_child(own)
+	for button in buttons:
 		world.add_child(button)
-		check(button.get_theme_stylebox("hover") == button.get_theme_stylebox("normal"), "a touched %s must not look hovered" % button.get_class())
-		check(button.get_theme_stylebox("hover_pressed") == button.get_theme_stylebox("pressed"), "a touched %s that is on must not look hovered" % button.get_class())
-		check(button.get_theme_color("font_hover_color") == button.get_theme_color("font_color"), "a touched %s's text must not look hovered" % button.get_class())
-		check(button.get_theme_color("font_hover_pressed_color") == button.get_theme_color("font_pressed_color"), "a touched %s's text, on, must not look hovered" % button.get_class())
-	Style.touchscreen = false
-	var desktop := Button.new()
-	world.add_child(desktop)
-	check(desktop.get_theme_stylebox("hover") != desktop.get_theme_stylebox("normal"), "control: with a mouse, hover must still show")
+	check(not buttons.any(_at_rest), "control: with a mouse, hover must show")
+	var touch := InputEventScreenTouch.new()
+	touch.pressed = true
+	world.get_viewport().push_input(touch)
+	buttons.append(Button.new())  # one added after the touch
+	world.add_child(buttons.back())
+	check(buttons.all(_at_rest), "after a touch, no button may look hovered")
+	var emulated := InputEventMouseMotion.new()
+	emulated.device = InputEvent.DEVICE_ID_EMULATION
+	var pad := InputEventJoypadButton.new()
+	pad.button_index = JOY_BUTTON_DPAD_DOWN
+	pad.pressed = true
+	for event: InputEvent in [emulated, pad]:
+		world.get_viewport().push_input(event)
+		check(buttons.all(_at_rest), "a %s must not bring hover back" % event.get_class())
+	tree.paused = true  # the pause card's buttons follow the pointer too
+	world.get_viewport().push_input(InputEventMouseMotion.new())
+	tree.paused = false
+	for button in buttons:
+		for kind in ["hover", "hover_pressed"]:
+			check(not button.has_theme_stylebox_override(kind), "a real mouse moving must give a %s its %s look back" % [button.get_class(), kind])
+		for kind in ["font_hover_color", "font_hover_pressed_color"]:
+			check(not button.has_theme_color_override(kind), "a real mouse moving must give a %s its %s back" % [button.get_class(), kind])
+	check(own.get_theme_stylebox("hover") == own_hover, "a button's own hover look must survive touch and mouse")
+
+
+func _at_rest(button: Button) -> bool:
+	return button.get_theme_stylebox("hover") == button.get_theme_stylebox("normal") \
+		and button.get_theme_stylebox("hover_pressed") == button.get_theme_stylebox("pressed") \
+		and button.get_theme_color("font_hover_color") == button.get_theme_color("font_color") \
+		and button.get_theme_color("font_hover_pressed_color") == button.get_theme_color("font_pressed_color")
 
 
 func _tap(viewport: SubViewport, at: Vector2) -> void:

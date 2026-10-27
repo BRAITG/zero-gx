@@ -42,7 +42,7 @@ func _run() -> void:
 			root.get_node("Tuning").reset()  # a test that changes a value must not leak it
 			seed(1)  # random effects (boost wobble, shards) replay the same way every run
 			Input.emulate_touch_from_mouse = false  # a touch test that stops early must not leak a touchscreen
-			root.get_node("Style").touchscreen = false  # a touch test that stops early must not leak touch looks
+			root.get_node("Style").touch = false  # a touch test must not leave buttons without hover
 			root.get_node("Tuning").tours = false  # a tour pauses the game; tests that want one turn it on
 			var progress := root.get_node("Progress")
 			progress.path = "user://test_progress.cfg"  # never touch the player's real progress
