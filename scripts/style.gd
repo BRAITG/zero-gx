@@ -68,12 +68,18 @@ func _fit_button_to_touch(node: Node) -> void:
 ## deadzone. As Android's lists do, the button looks pressed only once the finger has rested for a moment,
 ## so a scroll never flashes it. Toggles keep their look: theirs says whether they are on.
 func _delay_press_look(button: Button) -> void:
-	if not touch or button.toggle_mode or button.has_theme_stylebox_override("pressed"):
+	if not touch or button.toggle_mode:
 		return
+	var own_look := button.has_theme_stylebox_override("pressed") or button.has_theme_color_override("font_pressed_color")
+	if own_look and not button.has_meta(&"press_delay"):
+		return
+	var press: int = button.get_meta(&"press_delay", 0) + 1  # a press again within the delay restarts it
+	button.set_meta(&"press_delay", press)
 	button.add_theme_stylebox_override("pressed", button.get_theme_stylebox("normal"))
 	button.add_theme_color_override("font_pressed_color", button.get_theme_color("font_color"))
 	await get_tree().create_timer(PRESS_DELAY, true).timeout
-	if is_instance_valid(button):
+	if is_instance_valid(button) and button.get_meta(&"press_delay", 0) == press:
+		button.remove_meta(&"press_delay")
 		button.remove_theme_stylebox_override("pressed")
 		button.remove_theme_color_override("font_pressed_color")
 

@@ -90,7 +90,6 @@ func test_a_drag_from_a_sheet_card_or_its_button_scrolls_and_a_tap_still_presses
 ## at once, or every scroll flashes the row it starts on.
 func test_a_listed_button_looks_pressed_only_once_the_finger_rests() -> void:
 	Input.emulate_touch_from_mouse = true
-	Style.touch = true  # touches pushed into a SubViewport never reach Style's own _input
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280, 360)
 	world.add_child(viewport)
@@ -108,12 +107,25 @@ func test_a_listed_button_looks_pressed_only_once_the_finger_rests() -> void:
 	sheet.body.add_child(toggle)
 	await frames(2)
 	var pressed_look := row.get_theme_stylebox("pressed")
+	var pressed_ink := row.get_theme_color("font_pressed_color")
 	var at := row.get_global_rect().get_center()
+	Style.touch = false
+	_finger(viewport, true, at)  # as a mouse click: a mouse never scrolls by dragging, so no wait
+	check(row.get_theme_stylebox("pressed") == pressed_look, "with a mouse, a listed button must look pressed at once")
+	_finger(viewport, false, at)
+	Style.touch = true  # touches pushed into a SubViewport never reach Style's own _input
 	_finger(viewport, true, at)
 	check(row.get_theme_stylebox("pressed") == row.get_theme_stylebox("normal"), "a just-touched listed button must not look pressed yet")
 	check(row.get_theme_color("font_pressed_color") == row.get_theme_color("font_color"), "a just-touched listed button's text must not look pressed yet")
-	await frames(12)  # past PRESS_DELAY at 60 FPS
+	await frames(3)  # 50 ms: a scroll usually starts by now
+	check(row.get_theme_stylebox("pressed") == row.get_theme_stylebox("normal"), "a listed button touched 50 ms ago must not look pressed yet")
+	_finger(viewport, false, at)
+	_finger(viewport, true, at)  # pressed again within the delay: the delay starts over
+	await frames(4)  # 117 ms after the first press, 67 ms after this one
+	check(row.get_theme_stylebox("pressed") == row.get_theme_stylebox("normal"), "a second press must wait its own delay")
+	await frames(8)
 	check(row.get_theme_stylebox("pressed") == pressed_look, "a finger resting on a listed button must make it look pressed")
+	check(row.get_theme_color("font_pressed_color") == pressed_ink, "a finger resting on a listed button must make its text look pressed")
 	_finger(viewport, false, at)
 	var toggle_at := toggle.get_global_rect().get_center()
 	var on_look := toggle.get_theme_stylebox("pressed")
