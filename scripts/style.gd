@@ -7,6 +7,7 @@ const INK_DIM := Color("#6f7d96")
 const ACCENT := Color("#3aa0ff")
 const PANEL := Color(0.04, 0.06, 0.12, 0.88)
 const BORDER := Color("#2a4a7a")
+const PRESS_DELAY := 0.1  # s: Android's tap timeout, before a listed button looks pressed
 
 ## Orbitron, for titles and big numbers.
 var display_font: Font
@@ -57,8 +58,24 @@ func _fit_button_to_touch(node: Node) -> void:
 	while parent:
 		if parent is ScrollContainer:
 			node.mouse_filter = Control.MOUSE_FILTER_PASS
+			if node is Button:
+				node.button_down.connect(_delay_press_look.bind(node))
 			return
 		parent = parent.get_parent()
+
+
+## A finger that lands on a listed button may be starting a scroll, which only shows once it passes the
+## deadzone. As Android's lists do, the button looks pressed only once the finger has rested for a moment,
+## so a scroll never flashes it. Toggles keep their look: theirs says whether they are on.
+func _delay_press_look(button: Button) -> void:
+	if not touch or button.toggle_mode or button.has_theme_stylebox_override("pressed"):
+		return
+	button.add_theme_stylebox_override("pressed", button.get_theme_stylebox("normal"))
+	button.add_theme_color_override("font_pressed_color", button.get_theme_color("font_color"))
+	await get_tree().create_timer(PRESS_DELAY, true).timeout
+	if is_instance_valid(button):
+		button.remove_theme_stylebox_override("pressed")
+		button.remove_theme_color_override("font_pressed_color")
 
 
 ## Godot turns each touch into an emulated mouse as well, which hovers whatever lies under the finger, even
