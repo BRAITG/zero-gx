@@ -265,6 +265,6 @@ func _score() -> Dictionary:
 		"new_best": level_id != "" and not testing and Progress.record_win(level_id, points, seconds, fuel, hull),
 		"has_next": publishing or (level_id != "" and (Progress.next_level(level_id) != "" or _ends_training())),
 		"has_par": par > 0,
+		"par": par,
 		"medal": Progress.medal(points, par),
-		"next_threshold": Progress.next_threshold(points, par),
 	}

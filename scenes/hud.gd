@@ -17,6 +17,7 @@ const METRES_PER_PX := 0.1
 const ARROW_MARGIN := 48.0  # px from the screen edge
 const GOAL_GREEN := Color(0.4, 1.0, 0.6)
 const RESULT_FOCUS_DELAY := 0.4  # s: a fire tap just after the finish must not press Next or Retry
+const COUNT_SECONDS := 1.2  # s: the total counts up and the medal slots fill on the way
 
 
 ## The pause card. It runs while the tree is paused, so it, not ShipInput, sees `pause` to resume.
@@ -56,9 +57,9 @@ var _detail: Label
 var _score: VBoxContainer
 var _total: Label
 var _best: Label
-var _medal: HBoxContainer  # the run's medal and what is next; only on a stage with a par
-var _medal_icon: ScoreIcon
-var _medal_label: Label
+var _medal: HBoxContainer  # three medal slots, filled as the total counts up; only on a stage with a par
+var _slots := {}  # Progress.Medal -> ScoreIcon
+var _count: Tween
 var _parts := {}  # ScoreIcon.Kind -> value Label
 var _next: Button
 var _replay: Button
@@ -184,13 +185,11 @@ func _ready() -> void:
 	_score.add_child(_best)
 	_medal = HBoxContainer.new()
 	_medal.alignment = BoxContainer.ALIGNMENT_CENTER
-	_medal.add_theme_constant_override("separation", 10)
+	_medal.add_theme_constant_override("separation", 14)
 	_score.add_child(_medal)
-	_medal_icon = ScoreIcon.new(ScoreIcon.Kind.MEDAL)
-	_medal.add_child(_medal_icon)
-	_medal_label = Label.new()
-	_medal_label.add_theme_font_size_override("font_size", 24)
-	_medal.add_child(_medal_label)
+	for tier in [Progress.Medal.BRONZE, Progress.Medal.SILVER, Progress.Medal.GOLD]:
+		_slots[tier] = ScoreIcon.new(ScoreIcon.Kind.MEDAL, tier)
+		_medal.add_child(_slots[tier])
 	var parts := GridContainer.new()  # three lines of icon + value
 	parts.columns = 1
 	parts.add_theme_constant_override("v_separation", 10)
@@ -296,7 +295,7 @@ func intro_text() -> String:
 
 
 ## `result` keys: name; won → points, fuel_points, hull_points, time_points, new_best, has_next, has_par,
-## medal, next_threshold (the medal line shows only with has_par);
+## par (the medal slots show only with has_par, and fill as the total counts up to points);
 ## lost → cause; optional can_rate (a community stage whose feedback the player may give) shows Rate level.
 func show_result(won: bool, result: Dictionary) -> void:
 	_intro.hide()
@@ -306,15 +305,12 @@ func show_result(won: bool, result: Dictionary) -> void:
 	_score.visible = won
 	_detail.visible = not won
 	if won:
-		_total.text = str(result.points)
 		_best.visible = result.new_best
 		_parts[ScoreIcon.Kind.FUEL].text = "+%d" % result.fuel_points
 		_parts[ScoreIcon.Kind.HULL].text = "+%d" % result.hull_points
 		_parts[ScoreIcon.Kind.TIME].text = "−%d" % result.time_points
 		_medal.visible = result.has_par
-		_medal_icon.tier = result.medal
-		_medal_icon.visible = result.medal != Progress.Medal.NONE
-		_medal_label.text = _medal_line(result.medal, result.next_threshold)
+		_count_up(result.points, result.get("par", 0))
 	else:
 		_detail.text = result.cause
 	_next.visible = won and result.has_next
@@ -338,13 +334,21 @@ func _focus_result() -> void:
 			break
 
 
-## "Silver · Gold at 2400": the tier earned, then the next one and its score; "Bronze at 420" before
-## any; "Gold" alone at the top.
-func _medal_line(medal: Progress.Medal, next_threshold: int) -> String:
-	if next_threshold == 0:
-		return "Gold"
-	var next := "%s at %d" % [Progress.Medal.keys()[medal + 1].capitalize(), next_threshold]
-	return next if medal == Progress.Medal.NONE else "%s · %s" % [Progress.Medal.keys()[medal].capitalize(), next]
+## The total counts up from 0 to `points` over COUNT_SECONDS; each medal slot fills the moment the
+## count reaches its threshold. Without a par the slots are hidden and only the count runs.
+func _count_up(points: int, par: int) -> void:
+	if _count:
+		_count.kill()
+	_set_count(0, par)
+	_count = create_tween()
+	_count.tween_method(_set_count.bind(par), 0, points, COUNT_SECONDS).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+
+
+func _set_count(value: int, par: int) -> void:
+	_total.text = str(value)
+	var earned := Progress.medal(value, par)
+	for tier in _slots:
+		_slots[tier].empty = tier > earned
 
 
 ## Everything the end panel shows, for tests.
@@ -355,7 +359,7 @@ func result_text() -> String:
 		if _best.visible:
 			lines.append(_best.text)
 		if _medal.visible:
-			lines.append(_medal_label.text)
+			lines.append("Medals: %s" % ", ".join(_slots.keys().filter(func(t: int) -> bool: return not _slots[t].empty).map(func(t: int) -> String: return Progress.Medal.keys()[t].capitalize())))
 		for kind in _parts:
 			lines.append(_parts[kind].text)
 	else:
