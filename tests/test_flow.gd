@@ -132,39 +132,30 @@ func test_loss_cause_out_of_fuel() -> void:
 	check(lvl.hud.result_text().contains("Out of fuel"), "loss cause missing: %s" % lvl.hud.result_text())
 
 
-func test_result_card_shows_medal_and_next_threshold() -> void:
+func test_result_card_counts_up_and_fills_medal_slots() -> void:
 	var points := Progress.points(Ship.MAX_FUEL, Ship.MAX_HEALTH, 0.0)  # a win with nothing spent
-	var lvl := scored_level(Vector2(3000, 0))
-	lvl.par = 2 * points  # bronze at 0.8 × points, silver at 1.4 ×
-	lvl.finish(true)
-	await frames(2)
-	check(medal_tiers(lvl.hud) == [Progress.Medal.BRONZE], "the card must show the bronze medal: %s" % [medal_tiers(lvl.hud)])
-	check(lvl.hud.result_text().split("\n").has("Bronze · Silver at %d" % ceili(Progress.SILVER_FRACTION * lvl.par)), "earned medal and next threshold missing: %s" % lvl.hud.result_text())
-	lvl.free()
-	lvl = scored_level(Vector2(3000, 0))
-	lvl.par = points
-	lvl.finish(true)
-	await frames(2)
-	check(medal_tiers(lvl.hud) == [Progress.Medal.GOLD], "the card must show the gold medal: %s" % [medal_tiers(lvl.hud)])
-	check(lvl.hud.result_text().split("\n").has("Gold") and not lvl.hud.result_text().contains(" at "), "gold has nothing above it: %s" % lvl.hud.result_text())
-	lvl.free()
-	lvl = scored_level(Vector2(3000, 0))
-	lvl.par = 4 * points
-	lvl.finish(true)
-	await frames(2)
-	check(medal_tiers(lvl.hud).is_empty(), "a run under bronze earns no medal: %s" % [medal_tiers(lvl.hud)])
-	check(lvl.hud.result_text().split("\n").has("Bronze at %d" % ceili(Progress.BRONZE_FRACTION * lvl.par)), "bronze threshold missing: %s" % lvl.hud.result_text())
+	var cases := [[2 * points, "Medals: Bronze"], [points, "Medals: Bronze, Silver, Gold"], [4 * points, "Medals: "]]
+	for case in cases:
+		var lvl := scored_level(Vector2(3000, 0))
+		lvl.par = case[0]
+		lvl.finish(true)
+		await frames(2)
+		check(medal_tiers(lvl.hud) == [Progress.Medal.BRONZE, Progress.Medal.SILVER, Progress.Medal.GOLD], "three slots must show: %s" % [medal_tiers(lvl.hud)])
+		check(int(lvl.hud.result_text().split("\n")[2]) < points, "the total must count up, not jump: %s" % lvl.hud.result_text())
+		await frames(ceili(lvl.hud.COUNT_SECONDS * 60) + 5)
+		var lines := lvl.hud.result_text().split("\n")
+		check(lines[2] == str(points), "the count must end at the points: %s" % lvl.hud.result_text())
+		check(lines.has(case[1]), "par %d: expected '%s' in %s" % [case[0], case[1], lvl.hud.result_text()])
+		lvl.free()
 
 
-func test_training_result_has_no_medal_line() -> void:
+func test_training_result_has_no_medal_slots() -> void:
 	var lvl := training_stage(Progress.trainings()[0])
 	await frames(2)
 	lvl.finish(true)
 	await frames(2)
-	var text := lvl.hud.result_text()
-	check(medal_tiers(lvl.hud).is_empty(), "a stage without par earns no medal: %s" % [medal_tiers(lvl.hud)])
-	for word in ["Bronze", "Silver", "Gold", " at "]:
-		check(not text.contains(word), "a stage without par must not show '%s': %s" % [word, text])
+	check(medal_tiers(lvl.hud).is_empty(), "a stage without par shows no medal slots: %s" % [medal_tiers(lvl.hud)])
+	check(not lvl.hud.result_text().contains("Medals"), "a stage without par has no medal line: %s" % lvl.hud.result_text())
 	lvl.free()
 
 

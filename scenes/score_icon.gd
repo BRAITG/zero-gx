@@ -26,6 +26,11 @@ var tier := Progress.Medal.NONE:
 	set(value):
 		tier = value
 		queue_redraw()
+## A medal slot not yet earned: the tier's shape as a faint outline.
+var empty := false:
+	set(value):
+		empty = value
+		queue_redraw()
 
 
 func _init(icon_kind: Kind, medal_tier := Progress.Medal.NONE) -> void:
@@ -54,12 +59,17 @@ func _draw() -> void:
 			draw_line(c, c + Vector2(r * 0.5, 0), color, 2.5, true)
 
 
-## Both halves of the medal in the tier's colour; nothing for NONE.
+## Both halves of the medal in the tier's colour, or as a faint outline when `empty`; nothing for NONE.
 func _draw_medal() -> void:
 	if not MEDAL_COLORS.has(tier):
 		return
+	var color: Color = MEDAL_COLORS[tier]
 	for mirrored in [false, true]:
 		var half := PackedVector2Array()
 		for point: Vector2 in MEDAL_LEFT:
 			half.append(Vector2(1.0 - point.x if mirrored else point.x, point.y) * SIZE)
-		draw_colored_polygon(half, MEDAL_COLORS[tier])
+		if empty:
+			half.append(half[0])
+			draw_polyline(half, Color(color, 0.35), 1.5, true)
+		else:
+			draw_colored_polygon(half, color)
