@@ -232,6 +232,7 @@ jobs:
           ~/godot/godot --headless --path . --export-release "Linux" build/zero-gx-linux.x86_64
           ~/godot/godot --headless --path . --export-release "macOS" build/zero-gx-macos.zip
           ls -lh build/zero-gx-windows.exe build/zero-gx-linux.x86_64 build/zero-gx-macos.zip
+          mkdir -p build/web
           ~/godot/godot --headless --path . --export-release "Web" build/web/index.html
           test -s build/web/index.pck
           # Android AARs and Worker package/dependency files must not be in any free desktop/Web PCK.
