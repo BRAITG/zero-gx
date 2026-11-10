@@ -13,7 +13,7 @@ var _prior_focus: Control  # what had focus before the overlay opened
 
 
 ## Shows a new overlay titled `title` on its own top layer under `parent`, with focus on Close.
-static func open(parent: Node, title: String) -> Overlay:
+static func open(parent: Node, title: String, allow_monetization: bool = false) -> Overlay:
 	var layer := CanvasLayer.new()
 	layer.layer = 10
 	var overlay := Overlay.new()
@@ -21,6 +21,7 @@ static func open(parent: Node, title: String) -> Overlay:
 	overlay._build(title)
 	layer.add_child(overlay)
 	parent.add_child(layer)
+	Monetization.set_surface(overlay, allow_monetization)
 	overlay._close.grab_focus(true)
 	return overlay
 

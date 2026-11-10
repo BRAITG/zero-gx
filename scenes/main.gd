@@ -42,9 +42,13 @@ func _ready() -> void:
 		_build_list()
 	Progress.changed.connect(_refresh)
 	_refresh()
+	Monetization.set_surface(self, page == Page.HOME)
 	if page == Page.HOME and get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
 		_official.grab_focus(true)
 
+
+func _exit_tree() -> void:
+	Monetization.clear_surface(self)
 
 func _build_home() -> void:
 	_column.add_child(_title("ZERO-GX"))

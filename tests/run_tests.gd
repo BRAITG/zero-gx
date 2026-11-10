@@ -37,6 +37,12 @@ func _run() -> void:
 			var name: String = method.name
 			if not name.begins_with("test_") or (only != "" and not (file + "::" + name).contains(only)):
 				continue
+			var test_window: Window = root
+			var original_window_size: Vector2i = test_window.size
+			var monetization_window: bool = file == "test_monetization.gd" or file == "test_monetization_screens.gd"
+			if monetization_window:
+				test_window.size = Vector2i(1280, 720)
+				await process_frame
 			var test = script.new()
 			test.tree = self
 			root.get_node("Tuning").reset()  # a test that changes a value must not leak it
@@ -59,6 +65,9 @@ func _run() -> void:
 			community.session_path = "user://test_community.cfg"
 			community.history_path = "user://test_community_history.json"  # never touch the player's play history; redirected before any use
 			community.use_defaults()  # a test that swaps in fakes must not leak them, and no timer or loaded history survives it
+			var monetization: Variant = root.get_node_or_null("Monetization")
+			if monetization != null:
+				monetization.use_defaults()
 			DirAccess.remove_absolute(community.session_path)
 			DirAccess.remove_absolute(community.history_path)
 			DirAccess.remove_absolute(community.history_path + ".tmp")
@@ -82,6 +91,9 @@ func _run() -> void:
 			test.world.queue_free()
 			test.failures.append_array(_errors.seen)
 			await process_frame
+			if monetization_window:
+				test_window.size = original_window_size
+				await process_frame
 			if test.failures.is_empty():
 				passed += 1
 				print("PASS %s::%s" % [file, name])

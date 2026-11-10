@@ -18,6 +18,7 @@ Settings="*res://scripts/settings.gd"
 Community="*res://scripts/community.gd"
 Sfx="*res://scripts/sfx.gd"
 Style="*res://scripts/style.gd"
+Monetization="*res://scripts/monetization.gd"
 GodotPlayGameServices="*res://addons/GodotPlayGameServices/scripts/autoloads/godot_play_game_services.gd"
 
 [community]
@@ -36,7 +37,7 @@ window/handheld/orientation=4
 
 [editor_plugins]
 
-enabled=PackedStringArray("res://addons/GodotPlayGameServices/plugin.cfg", "res://addons/zero_gx_integrity/plugin.cfg")
+enabled=PackedStringArray("res://addons/GodotPlayGameServices/plugin.cfg", "res://addons/zero_gx_integrity/plugin.cfg", "res://addons/zero_gx_monetization/plugin.cfg")
 
 [gui]
 

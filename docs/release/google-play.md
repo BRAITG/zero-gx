@@ -1,6 +1,6 @@
 # Google Play Release Preparation
 
-Status: the build side is ready; the Play Console account is being set up. The first release goes to **internal testing**, then **closed testing**; production comes later.
+Status: the existing bundle path is in place; monetization remains opt-in and is not release-ready until the Play product, AdMob IDs, required account permissions and policy copies are verified. The first release goes to **internal testing**, then **closed testing**; production comes later.
 
 ## Already in place
 
@@ -10,7 +10,7 @@ Status: the build side is ready; the Play Console account is being set up. The f
 | Target API | 36 (Android 16), from Godot 4.7.2. Meets the rule that new apps target API 36 from 31 August 2026. Min API 24. |
 | Permissions | `VIBRATE`, and `INTERNET` for the community features |
 | App bundle | Both Android presets build with Gradle: `Android Play` makes `build/zero-gx.aab`, `Android` makes the sideload `build/zero-gx.apk`. CI builds them on every push to `master` and attaches them to the prerelease. |
-| Android plugins | Sign-in is the vendored `addons/GodotPlayGameServices/` (MIT, v3.4.0, unchanged). Play Integrity is our own `addons/zero_gx_integrity/`; its prebuilt AARs in `bin/` come from `android/plugins/integrity/` (rebuild instructions at the top of its `build.gradle`). Both are added to Android exports only; desktop builds carry no AAR. CI fails a build that lacks them. Community shows only in `Android Play` builds (custom feature `community`, set on that preset alone): a sideloaded APK is not recognised by Play Integrity, so the server would refuse its sign-in. |
+| Android plugins | Sign-in is the vendored `addons/GodotPlayGameServices/` (MIT, v3.4.0, unchanged). Play Integrity is our own `addons/zero_gx_integrity/`. The optional `ZeroGxMonetization` plugin is `addons/zero_gx_monetization/` plus the compiled source at `android/plugins/monetization/src/main/java/dev/braitg/zerogx/monetization/`; its AAR and Ads/UMP/Billing dependencies are exported only when `zero_gx_monetization/enabled` is enabled on Android. That option defaults off; release exports require real AdMob app and banner IDs, never the sample IDs. Community remains limited to `Android Play` (custom feature `community`); ordinary desktop/web/source/sideload builds without the Android component stay ad-free. |
 | Version code | CI sets `version/code` to the workflow run number, so every bundle is higher than the last. `version/name` stays `0.1.0` until we tag versions. |
 | Upload key | An RSA 4096 keystore, alias `upload`, valid 10,000 days. CI reads it from the secrets `ANDROID_UPLOAD_KEYSTORE_B64` and `ANDROID_UPLOAD_KEYSTORE_PASSWORD`. The original lives outside the repository in `~/.zero-gx/` on the maintainer's Mac; keep a backup in a password manager. Upload certificate SHA-256: `BB:D0:06:DA:67:BC:DA:49:B7:5D:EA:E6:5A:5D:2A:4A:DA:BF:DD:57:F2:B7:22:14:15:2A:62:01:FF:70:FB:21`. |
 | App icon | `assets/icon.svg`, with adaptive foreground and background layers for Android launchers |
@@ -18,7 +18,7 @@ Status: the build side is ready; the Play Console account is being set up. The f
 | Feature graphic | `store/feature-graphic.png` (1024 × 500) |
 | Screenshots | `store/screenshots/` (four 1920 × 1080 landscape shots) |
 | Listing text | `store/listing.md` (draft) |
-| Privacy policy | `PRIVACY.md` (covers the community features, Play Games, community play history and difficulty ratings), published at `https://braitg.dev/zero-gx/privacy/` from the `BRAITG/braitg.github.io` repository. Update both copies together: the published copy must carry the 23 October 2026 text (Play Games sign-in at launch, play history and difficulty ratings) before the first release. |
+| Privacy policy | `PRIVACY.md` in this repository still describes the community-only build. The published `https://braitg.dev/zero-gx/privacy/` copy has the monetization update (BRAITG/braitg.github.io#3), including **Settings → Privacy choices** and **Restore purchases**. Synchronize the repository and published copies before a monetization-enabled release; no external legal review is claimed. |
 | License | AGPL-3.0-or-later (`LICENSE`) with an additional permission under section 7 for Google Play's client libraries (`LICENSE-EXCEPTION`); third-party assets in `assets/LICENSES.md` |
 
 ## Building the bundle locally
@@ -40,7 +40,7 @@ The export installs the Gradle template in `android/build/` (ignored by git; `an
 1. **Create the app:** name Zero-GX, game, free, default language English.
 2. **App signing:** keep "Google-generated app signing key" (Play App Signing). Our upload key signs uploads only.
 3. **Internal testing:** create a release, upload the latest `zero-gx.aab` from the GitHub prerelease, and add testers by email (up to 100). Testers join through the opt-in link and install from the Play Store.
-4. **App content forms:** privacy policy URL (above), app access (see below), ads (none), content rating questionnaire (see below), target audience (13+), data safety (see below), government apps (no), financial features (none), health (none).
+4. **App content forms:** privacy policy URL (synchronize both copies before enabling monetization), app access, ads (yes only for an enabled monetization build), in-app purchases (the permanent `remove_ads` product when enabled), content rating questionnaire, target audience (13+), data safety, government apps (no), financial features (none), health (none).
 
    **Data safety:** the app includes the Google Play Games Services SDK (`com.google.android.gms:play-services-games-v2`, through the vendored plugin). It starts at every launch and may sign the player in to Play Games then, before they open Community. When filling in the form, check the SDK's data-safety entry in the [Google Play SDK Index](https://play.google.com/sdks) and add what that entry lists to the answers below; this file does not say what the SDK collects. Zero-GX's own servers receive nothing until the player signs in to the community features (by opening Community or submitting a level), and `PRIVACY.md` says so.
 5. **Store listing:** text from `store/listing.md`, icon, feature graphic and screenshots from `store/`.
@@ -65,13 +65,20 @@ These match `PRIVACY.md` from the community release on. Play counts data as coll
 | App activity → **Other actions** (community play history: attempt starts, outcomes and times; difficulty ratings) | Collected, not shared, optional, purposes: App functionality, Analytics |
 | Every other data type (location, contacts, email, device IDs, diagnostics, …) | Not collected |
 
-The new rows cover the community play history and difficulty ratings. The play history is keyed by the Zero-GX player ID, a pseudonymous identifier that must be declared; that is why the User IDs row gains the Analytics purpose. Analytics here covers only the community play and difficulty statistics. This change adds no SDK and no advertising, so declare nothing new for any SDK.
+The monetization export option adds Google Mobile Ads Next-Gen, UMP and Play Billing SDKs to the Android artifact only when enabled. Before enabling it, check each SDK's current Data Safety entry in the [Google Play SDK Index](https://play.google.com/sdks) and update the answers and both policy copies from verified collection/use details; this file does not infer what those SDKs collect. With the option disabled, those SDKs and ad requests are absent. Purchase verification sends the Play token to this app's `/purchases/ad-free` Worker route, which verifies the fixed `remove_ads` product; do not declare the token as stored by Zero-GX.
 
 "Optional" is right because every community feature is opt-in: the game is fully playable without signing in.
 
 **App access:** "All functionality is available without special access". Community features sign in with Play Games, which works with any Google account, including the reviewer's; there is no Zero-GX account or password.
 
-**Content rating:** answer yes to users interacting or sharing content (players publish levels and appear on leaderboards; submissions are reviewed by a moderator before they are published). No location sharing, no purchases, no unrestricted internet access, no chat.
+**Content rating:** answer for the game's existing user interaction and user-generated content. On a monetization-enabled build, disclose the banner ads and the one-time non-consumable `remove_ads` purchase in the corresponding Play Console forms; there are no subscriptions, gambling or unrestricted chat.
+
+## Monetization activation prerequisites
+
+- Keep the Android export option disabled until real AdMob app/banner IDs and the permanent Play product `remove_ads` exist for package `dev.braitg.zerogx`.
+- Verify the Google Play Developer API credentials and account permissions used by the Worker to verify and acknowledge purchases. Never substitute sample IDs or a simulated successful purchase.
+- Synchronize `PRIVACY.md` with the published privacy page, then complete the Ads, in-app purchases and SDK Data Safety sections for the enabled artifact.
+- A real purchase requires a Play Store-enabled test environment; the project's read-only emulator cannot prove a successful purchase. Use it only for UI and unavailable-store behavior.
 
 ## Automatic uploads
 
