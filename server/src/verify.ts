@@ -1,5 +1,5 @@
 import type { Env } from "./env";
-import { base64url, fromBase64url } from "./util";
+import { serviceAccountAssertion } from "./google";
 
 /** The device verdict a request needs: "device" for sign-in and submissions, "strong" (hardware-backed) for scores. */
 export type DeviceLevel = "device" | "strong";
@@ -99,16 +99,8 @@ export class GoogleVerifier implements Verifier {
 
   /** An OAuth access token for the service account, from a JWT signed with its private key. */
   private async serviceAccountToken(): Promise<string> {
-    const { client_email, private_key } = JSON.parse(this.secrets.PLAY_SERVICE_ACCOUNT);
-    const der = fromBase64url(private_key.replace(/-----[A-Z ]+-----|\s/g, "").replace(/\+/g, "-").replace(/\//g, "_"));
-    const key = await crypto.subtle.importKey("pkcs8", der, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"]);
-    const iat = Math.floor(Date.now() / 1000);
-    const encode = (value: object) => base64url(new TextEncoder().encode(JSON.stringify(value)));
-    const unsigned =
-      `${encode({ alg: "RS256", typ: "JWT" })}.` +
-      encode({ iss: client_email, scope: "https://www.googleapis.com/auth/playintegrity", aud: TOKEN_URL, iat, exp: iat + 3600 });
-    const signature = await crypto.subtle.sign("RSASSA-PKCS1-v1_5", key, new TextEncoder().encode(unsigned));
-    return this.token({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion: `${unsigned}.${base64url(new Uint8Array(signature))}` });
+    const assertion = await serviceAccountAssertion(this.secrets.PLAY_SERVICE_ACCOUNT, "https://www.googleapis.com/auth/playintegrity");
+    return this.token({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion });
   }
 
   async integrity(token: string, nonce: string, level: DeviceLevel) {

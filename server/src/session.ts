@@ -1,5 +1,5 @@
 import type { Env } from "./env";
-import { HttpError, readJson } from "./http";
+import { HttpError, limitAuth, readJson } from "./http";
 import { base64url, fromBase64url, randomId } from "./util";
 import { type DeviceLevel, type Verifier, verifierFor } from "./verify";
 
@@ -14,12 +14,6 @@ export interface Player {
 }
 
 const now = () => Math.floor(Date.now() / 1000);
-
-/** 429 when the client IP is over the limit of the unauthenticated routes. */
-async function limitAuth(request: Request, env: Env): Promise<void> {
-  const outcome = await env.AUTH_LIMITER?.limit({ key: request.headers.get("cf-connecting-ip") ?? "unknown" });
-  if (outcome && !outcome.success) throw new HttpError(429, "Too many requests; try again in a minute.");
-}
 
 export async function getNonce(request: Request, env: Env): Promise<Response> {
   await limitAuth(request, env);

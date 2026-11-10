@@ -5,12 +5,14 @@ import { deleteDifficulty, getFeedback, putDifficulty } from "./feedback";
 import { postPlays } from "./plays";
 import { getBoard, getDemo, postOfficial, postScore } from "./scores";
 import { deleteMe, getNonce, postSession } from "./session";
+import { postAdFreePurchase } from "./purchases";
 import { getMySubmissions, postGithub, postSubmission } from "./submissions";
 
 /** Method + path pattern -> handler. `:name` segments are captured into the handler's params. */
 const routes: [method: string, pattern: string, handler: Handler][] = [
   ["GET", "/nonce", getNonce],
   ["POST", "/session", postSession],
+  ["POST", "/purchases/ad-free", postAdFreePurchase],
   ["DELETE", "/me", deleteMe],
   ["POST", "/scores", postScore],
   ["POST", "/plays", postPlays],

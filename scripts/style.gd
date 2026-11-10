@@ -146,15 +146,21 @@ class MenuFrame extends Control:
 
 	func _ready() -> void:
 		get_viewport().size_changed.connect(_layout)
+		Monetization.changed.connect(_layout)
 		_layout()
+
+	func _exit_tree() -> void:
+		if is_instance_valid(Monetization) and Monetization.changed.is_connected(_layout):
+			Monetization.changed.disconnect(_layout)
 
 	func _layout() -> void:
 		var safe := Rect2()
 		if OS.has_feature("mobile"):
 			safe = get_viewport().get_screen_transform().affine_inverse() * Rect2(DisplayServer.get_display_safe_area())
 		var area := Style.menu_rect(get_viewport_rect(), safe)
+		var footer := Monetization.footer_height if is_instance_valid(Monetization) else 0.0
 		position = area.position
-		size = area.size
+		size = Vector2(area.size.x, maxf(0.0, area.size.y - footer))
 
 
 ## Bright things (lasers, flames, the ship) glow. Only the game world blooms: HUD and menus sit

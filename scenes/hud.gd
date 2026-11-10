@@ -48,6 +48,7 @@ var _countdown_number: Label
 var _countdown_caption: Label
 var _countdown_second := -1
 var _result: PanelContainer
+var _result_frame: Control
 var _pause: PauseCard
 var _resume: Button
 var _prior_focus: Control  # what had focus before the pause card opened
@@ -153,10 +154,11 @@ func _ready() -> void:
 	card.add_child(_intro_hint)
 	add_child(_intro)
 
+	_result_frame = Style.menu_frame(self)
 	_result = PanelContainer.new()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_result.hide()
-	add_child(_result)
+	_result_frame.add_child(_result)
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 12)
 	_result.add_child(column)
@@ -277,6 +279,7 @@ func toggle_pause() -> void:
 
 func _exit_tree() -> void:
 	get_tree().paused = false  # a scene change from the pause card must not leave the next scene paused
+	Monetization.clear_surface(self)
 
 
 func show_intro(title: String, hint: String) -> void:
@@ -319,6 +322,7 @@ func show_result(won: bool, result: Dictionary) -> void:
 	_result.reset_size()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_result.show()
+	Monetization.set_surface(self, true)
 	get_tree().create_timer(RESULT_FOCUS_DELAY).timeout.connect(_focus_result)
 
 

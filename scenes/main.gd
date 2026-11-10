@@ -42,9 +42,13 @@ func _ready() -> void:
 		_build_list()
 	Progress.changed.connect(_refresh)
 	_refresh()
+	Monetization.set_surface(self, page == Page.HOME)
 	if page == Page.HOME and get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
 		_official.grab_focus(true)
 
+
+func _exit_tree() -> void:
+	Monetization.clear_surface(self)
 
 func _build_home() -> void:
 	_column.add_child(_title("ZERO-GX"))
@@ -266,6 +270,10 @@ static func window_size(scale: float, usable: Vector2i) -> Vector2i:
 ## project.godot turns off quit_on_go_back so levels can return here: a list goes back to HOME, and HOME quits.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		var sheets := find_children("*", "Overlay", true, false)
+		if not sheets.is_empty():
+			sheets.back().close()
+			return
 		if page == Page.HOME:
 			get_tree().quit()
 		else:

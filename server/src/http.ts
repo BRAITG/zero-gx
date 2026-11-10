@@ -12,6 +12,12 @@ export class HttpError extends Error {
 
 export type Handler = (request: Request, env: Env, params: Record<string, string>) => Promise<Response>;
 
+/** 429 when the client IP is over the limit of the unauthenticated routes. */
+export async function limitAuth(request: Request, env: Env): Promise<void> {
+  const outcome = await env.AUTH_LIMITER?.limit({ key: request.headers.get("cf-connecting-ip") ?? "unknown" });
+  if (outcome && !outcome.success) throw new HttpError(429, "Too many requests; try again in a minute.");
+}
+
 /** Reads the raw body, refusing more than `maxBytes` actually received (Content-Length is only a shortcut). */
 export async function readBytes(request: Request, maxBytes: number): Promise<Uint8Array<ArrayBuffer>> {
   const tooBig = new HttpError(413, `The request body is over ${maxBytes} bytes.`);

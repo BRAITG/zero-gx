@@ -65,6 +65,11 @@ func _ready() -> void:
 	_more.hide()
 	_load(_sort, 0)
 	Style.focus_first.call_deferred(_column)  # after layout
+	Monetization.set_surface(self, true)
+
+
+func _exit_tree() -> void:
+	Monetization.clear_surface(self)
 
 
 ## Shows page `page` of `sort`: page 0 replaces the rows, a later page adds to them.

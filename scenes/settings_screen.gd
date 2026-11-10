@@ -4,7 +4,7 @@ extends RefCounted
 
 
 static func open(parent: Node) -> Overlay:
-	var o := Overlay.open(parent, "Settings")
+	var o := Overlay.open(parent, "Settings", true)
 	_setting(o, "Show the velocity arrow in levels",
 		"The arrow points where your ship is going; its length shows how fast. The training stages always show it.",
 		Settings.show_velocity, func(on: bool): Settings.show_velocity = on)
@@ -32,6 +32,20 @@ static func open(parent: Node) -> Overlay:
 	slider.value_changed.connect(func(v: float): Settings.volume = v)
 	slider.drag_ended.connect(func(_changed: bool): Sfx.play("tap"))
 	_button(o.body, "Controls", func(): ControlsScreen.open(o))
+	if Monetization.available():
+		_button(o.body, "Restore purchases", Monetization.restore, true)
+	var privacy := {"button": null}
+	var update_privacy := func() -> void:
+		var button: Variant = privacy.button
+		var required := Monetization.available() and Monetization.privacy_required
+		if required and button == null:
+			privacy.button = _button(o.body, "Privacy choices", Monetization.show_privacy_options, true)
+		elif not required and button != null and is_instance_valid(button):
+			button.free()
+			privacy.button = null
+	Monetization.changed.connect(update_privacy)
+	o.tree_exited.connect(_disconnect_privacy_update.bind(update_privacy), CONNECT_ONE_SHOT)
+	update_privacy.call()
 	_button(o.body, "Developer options", func():
 		var options := Overlay.open(o, "Developer options")
 		options.paragraph("Tuning changes last until the app closes. Reset progress permanently deletes saved best scores.")
@@ -39,7 +53,7 @@ static func open(parent: Node) -> Overlay:
 	return o
 
 
-static func _button(parent: Control, text: String, action: Callable) -> void:
+static func _button(parent: Control, text: String, action: Callable, touch_safe: bool = false) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(160, 52)
@@ -47,6 +61,9 @@ static func _button(parent: Control, text: String, action: Callable) -> void:
 	button.pressed.connect(Sfx.play.bind("tap"))
 	button.pressed.connect(action)
 	parent.add_child(button)
+	if touch_safe:
+		MonetizationChrome.ensure_touch_target(button)
+	return button
 
 
 ## One panelled card: an enlarged toggle over a dim explanation of what it does.
@@ -73,5 +90,11 @@ static func _big_switch(toggle: CheckButton) -> void:
 		var image := icon.get_image()
 		if image == null:
 			continue
+		image = image.duplicate()
 		image.resize(int(image.get_width() * SWITCH_SCALE), int(image.get_height() * SWITCH_SCALE), Image.INTERPOLATE_LANCZOS)
 		toggle.add_theme_icon_override(icon_name, ImageTexture.create_from_image(image))
+
+
+static func _disconnect_privacy_update(update_privacy: Callable) -> void:
+	if Monetization.changed.is_connected(update_privacy):
+		Monetization.changed.disconnect(update_privacy)

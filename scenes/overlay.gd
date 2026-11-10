@@ -10,26 +10,46 @@ var body: VBoxContainer
 
 var _close: Button
 var _prior_focus: Control  # what had focus before the overlay opened
+var _focus_fallback: Node
 
 
 ## Shows a new overlay titled `title` on its own top layer under `parent`, with focus on Close.
-static func open(parent: Node, title: String) -> Overlay:
+static func open(parent: Node, title: String, allow_monetization: bool = false) -> Overlay:
 	var layer := CanvasLayer.new()
 	layer.layer = 10
 	var overlay := Overlay.new()
 	overlay._prior_focus = parent.get_viewport().gui_get_focus_owner()
+	overlay._focus_fallback = parent
 	overlay._build(title)
 	layer.add_child(overlay)
 	parent.add_child(layer)
+	Monetization.set_surface(overlay, allow_monetization)
+	MonetizationChrome.ensure_touch_target(overlay._close)
 	overlay._close.grab_focus(true)
 	return overlay
 
 
 ## Closes, handing focus back to what had it before.
 func close() -> void:
-	if is_instance_valid(_prior_focus) and _prior_focus.is_visible_in_tree():
+	var layer := get_parent()
+	if layer == null:
+		return
+	if is_instance_valid(_prior_focus) and _can_restore_focus(_prior_focus):
 		_prior_focus.grab_focus(true)
-	get_parent().queue_free()
+	else:
+		layer.tree_exited.connect(Overlay._restore_focus_after_exit.bind(_prior_focus, _focus_fallback), CONNECT_ONE_SHOT)
+	layer.queue_free()
+
+
+static func _can_restore_focus(control: Control) -> bool:
+	return is_instance_valid(control) and control.is_visible_in_tree() and control.focus_mode != Control.FOCUS_NONE and not (control is BaseButton and control.disabled)
+
+
+static func _restore_focus_after_exit(prior: Control, fallback: Node) -> void:
+	if _can_restore_focus(prior):
+		prior.grab_focus(true)
+	elif is_instance_valid(fallback):
+		Style.focus_first(fallback)
 
 
 ## Esc and B close it. `_unhandled_input`: events a control already used (a key capture) never get here.
