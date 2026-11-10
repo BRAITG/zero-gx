@@ -13,6 +13,7 @@ Auth, in the table below:
 |---|---|---|
 | `GET /nonce` | none | A one-time nonce, valid 5 minutes. |
 | `POST /session` | none (nonce, auth code, integrity token in the body) | Signs a player in with a Play Games auth code; returns a 7-day session token. |
+| `POST /purchases/ad-free` | none | Verifies and acknowledges the permanent `remove_ads` purchase from `{purchaseToken}` (max 2048 characters, 4096 raw body bytes); no community account is required. |
 | `POST /scores` | session + integrity | Re-checks the posted demo against its level, scores it, keeps the player's best. |
 | `POST /plays` | session + integrity | Records the caller's attempts (at most 32 per 16 KiB batch, 30 batches a minute) and acknowledges each one. Attempts up to a version's first clear feed the vote eligibility. |
 | `DELETE /me` | session | Erases the caller: Play Games link, name, scores, likes, reports, play history, difficulty votes, rate counters and ranking row. The demo sweep deletes the orphaned demos. Their levels and submissions stay under the bare player id, with the author shown as "Deleted player". |
@@ -30,6 +31,8 @@ Auth, in the table below:
 | `GET /index` | session | The commit of the levels repository the game should read `index.json` from. |
 | `POST /admin/official` | admin | Registers the SHA-256 hashes of a release's official levels. |
 | `POST /github` | webhook | Records pull request outcomes and `hidden.txt` changes. A merge stores the pull request's one `difficulty:<label>` as the version's reviewed difficulty, or none when there is not exactly one. It stores the one `par:<points>` label as the version's par, else the sketch's `par` when that is a positive whole number, else none. It also stores the text of the version's `levels/<id>/v<N>.sketch.json` (null when the merge has none). |
+
+For `POST /purchases/ad-free`, ambiguous Publisher failures—including generic 404 responses—return 503. Only validated purchase rejections carry the stable `purchase_invalid` or `purchase_inactive` code.
 
 A cron trigger runs every 10 minutes: it recomputes the player ranking, deletes expired nonces and old rate counters, expires score demos (each level keeps the demos of its top 10 runs, ties at the cut included; every other demo, and every banned player's, is deleted 14 days after it was posted, and the score stays without a demo), sweeps orphaned demos from R2 and rebuilds `index.json`.
 
@@ -82,7 +85,7 @@ All commands run in `server/`.
 |---|---|
 | `SESSION_KEY` | A random string of at least 32 bytes, e.g. `openssl rand -base64 48`. Changing it signs everyone out. |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | The OAuth web client of the Play Games project (see Google setup). |
-| `PLAY_SERVICE_ACCOUNT` | The whole JSON key of the Google service account that may call the Play Integrity API. |
+| `PLAY_SERVICE_ACCOUNT` | The whole JSON key of the Google service account allowed to call Play Integrity and Android Publisher APIs. |
 | `GITHUB_APP_ID` | The numeric App ID of the GitHub App. |
 | `GITHUB_APP_KEY` | The App's private key as **PKCS#8** PEM. GitHub issues PKCS#1; convert it: `openssl pkcs8 -topk8 -nocrypt -in app.pem -out app-pkcs8.pem`. |
 | `GITHUB_INSTALLATION_ID` | The installation id of the App on `zero-gx-levels` (the number in the installation's URL). |
@@ -96,9 +99,9 @@ Non-secret variables are in `wrangler.toml` under `[vars]`:
 
 ### Rate limiting
 
-`GET /nonce` is unauthenticated and writes to D1, and `POST /session` calls Google, so per-player limits cannot cover them. The Worker limits both per client IP with a Workers Rate Limiting binding, `AUTH_LIMITER` in `wrangler.toml` (30 requests per 60 seconds, answered with 429). `namespace_id` is any number that is unique in the Cloudflare account; change it only if another Worker already uses `1001`. When the binding is absent (tests, plain local runs) the check is skipped. The limiter is per Cloudflare location and approximate.
+`GET /nonce` is unauthenticated and writes to D1, while `POST /session` and `POST /purchases/ad-free` call Google; per-player limits cannot cover them. The Worker limits these routes per client IP with a Workers Rate Limiting binding, `AUTH_LIMITER` in `wrangler.toml` (30 requests per 60 seconds, answered with 429). `namespace_id` is any number that is unique in the Cloudflare account; change it only if another Worker already uses `1001`. When the binding is absent (tests, plain local runs) the check is skipped. The limiter is per Cloudflare location and approximate.
 
-Alternative: a Cloudflare WAF rate-limiting rule on `/nonce` and `/session` (for example 30 requests per minute per IP, action Block). The Worker already runs on the `braitg.dev` zone with `workers_dev = false`, so such a rule covers every request.
+Alternative: a Cloudflare WAF rate-limiting rule on `/nonce`, `/session` and `/purchases/ad-free` (for example 30 requests per minute per IP, action Block). The Worker already runs on the `braitg.dev` zone with `workers_dev = false`, so such a rule covers every request.
 
 ### Google setup
 
@@ -107,7 +110,8 @@ To complete when the Play Console account exists.
 1. In Play Console, create the app `dev.braitg.zerogx` and enable Play Games Services; link the Google Cloud project that Play Games creates.
 2. In that project, create an OAuth client of type **Web application**. Its client id and secret are `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. The game asks Play Games for a server auth code for this client.
 3. Enable the Play Integrity API in the same project and link the project to the app in Play Console (App integrity).
-4. Create a service account, download its JSON key and store it as `PLAY_SERVICE_ACCOUNT`. The server uses it to decode integrity tokens.
+4. Enable the [Google Play Developer API](https://developers.google.com/android-publisher/getting_started) in the Google Cloud project used by `PLAY_SERVICE_ACCOUNT`.
+5. Create a service account and store its JSON key as `PLAY_SERVICE_ACCOUNT`. In Play Console **Users and permissions**, invite that service-account email and grant **View financial data, orders, and cancellation survey responses** and **Manage orders and subscriptions** for purchase verification and acknowledgement. The server uses the key with scopes `https://www.googleapis.com/auth/playintegrity` and `https://www.googleapis.com/auth/androidpublisher`; see the [purchase lookup](https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.productsv2/getproductpurchasev2) and [acknowledgement](https://developers.google.com/android-publisher/api-ref/rest/v3/purchases.products/acknowledge) API references.
 
 ### GitHub setup
 
