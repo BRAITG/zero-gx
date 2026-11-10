@@ -33,13 +33,13 @@ static func open(parent: Node) -> Overlay:
 	slider.drag_ended.connect(func(_changed: bool): Sfx.play("tap"))
 	_button(o.body, "Controls", func(): ControlsScreen.open(o))
 	if Monetization.available():
-		_button(o.body, "Restore purchases", Monetization.restore)
+		_button(o.body, "Restore purchases", Monetization.restore, true)
 	var privacy := {"button": null}
 	var update_privacy := func() -> void:
 		var button: Variant = privacy.button
 		var required := Monetization.available() and Monetization.privacy_required
 		if required and button == null:
-			privacy.button = _button(o.body, "Privacy choices", Monetization.show_privacy_options)
+			privacy.button = _button(o.body, "Privacy choices", Monetization.show_privacy_options, true)
 		elif not required and button != null and is_instance_valid(button):
 			button.free()
 			privacy.button = null
@@ -53,7 +53,7 @@ static func open(parent: Node) -> Overlay:
 	return o
 
 
-static func _button(parent: Control, text: String, action: Callable) -> Button:
+static func _button(parent: Control, text: String, action: Callable, touch_safe: bool = false) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(160, 52)
@@ -61,7 +61,8 @@ static func _button(parent: Control, text: String, action: Callable) -> Button:
 	button.pressed.connect(Sfx.play.bind("tap"))
 	button.pressed.connect(action)
 	parent.add_child(button)
-	MonetizationChrome.ensure_touch_target(button)
+	if touch_safe:
+		MonetizationChrome.ensure_touch_target(button)
 	return button
 
 

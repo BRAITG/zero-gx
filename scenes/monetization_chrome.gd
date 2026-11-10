@@ -5,6 +5,8 @@ extends CanvasLayer
 var _root: Control
 var _button: Button
 var _surface: Node
+const TOUCH_TARGET_BASE_META := &"monetization_touch_target_base_height"
+const TOUCH_TARGET_WATCHED_META := &"monetization_touch_target_watched"
 
 
 func _ready() -> void:
@@ -98,10 +100,41 @@ func button_minimum() -> Vector2:
 static func ensure_touch_target(control: Control) -> void:
 	if not control.is_inside_tree() or not Monetization.available():
 		return
+	if not control.has_meta(TOUCH_TARGET_BASE_META):
+		control.set_meta(TOUCH_TARGET_BASE_META, control.custom_minimum_size.y)
+	if not control.has_meta(TOUCH_TARGET_WATCHED_META):
+		var viewport: Viewport = control.get_viewport()
+		var window: Window = control.get_window()
+		var update: Callable = func() -> void:
+			MonetizationChrome._update_touch_target(control)
+		viewport.size_changed.connect(update)
+		if window != null and window != viewport:
+			window.size_changed.connect(update)
+		var cleanup := Callable(MonetizationChrome, "_disconnect_touch_target").bind(control, viewport, window, update)
+		control.tree_exited.connect(cleanup, CONNECT_ONE_SHOT)
+		control.set_meta(TOUCH_TARGET_WATCHED_META, true)
+	_update_touch_target(control)
+
+
+static func _update_touch_target(control: Control) -> void:
+	if not is_instance_valid(control) or not control.is_inside_tree() or not Monetization.available():
+		return
 	var scale_y := control.get_viewport().get_screen_transform().y.length()
 	if scale_y <= 0.0:
 		return
-	var density := 1.0
-	if Monetization.available() and Monetization.platform.has_method("getDensity"):
-		density = float(Monetization.platform.call("getDensity"))
-	control.custom_minimum_size.y = maxf(control.custom_minimum_size.y, 48.0 * density / scale_y)
+	var density := float(Monetization.platform.call("getDensity")) if Monetization.platform.has_method("getDensity") else 1.0
+	var base_height := float(control.get_meta(TOUCH_TARGET_BASE_META, control.custom_minimum_size.y))
+	control.custom_minimum_size.y = maxf(base_height, 48.0 * density / scale_y)
+
+
+static func _disconnect_touch_target(control: Control, viewport: Viewport, window: Window, update: Callable) -> void:
+	if is_instance_valid(viewport) and viewport.size_changed.is_connected(update):
+		viewport.size_changed.disconnect(update)
+	if is_instance_valid(window) and window != viewport and window.size_changed.is_connected(update):
+		window.size_changed.disconnect(update)
+	if is_instance_valid(control):
+		control.custom_minimum_size.y = float(control.get_meta(TOUCH_TARGET_BASE_META, control.custom_minimum_size.y))
+		if control.has_meta(TOUCH_TARGET_BASE_META):
+			control.remove_meta(TOUCH_TARGET_BASE_META)
+		if control.has_meta(TOUCH_TARGET_WATCHED_META):
+			control.remove_meta(TOUCH_TARGET_WATCHED_META)

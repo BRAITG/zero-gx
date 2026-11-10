@@ -507,11 +507,19 @@ func test_payment_and_privacy_controls_keep_48dp_touch_height() -> void:
 		check(button != null, "purchase screen must show %s" % text)
 		if button != null:
 			check(_touch_height_dp(button, platform.density) >= 48.0, "%s must remain at least 48 dp high" % text)
+	tree.root.size = Vector2i(1280, 720)
+	await frames(2)
+	for text: String in ["Terms of Service", "Privacy Policy", "Buy", "Restore purchases", "Close"]:
+		var button := _button(purchase, text)
+		if button != null:
+			check(_touch_height_dp(button, platform.density) >= 48.0, "%s must stay 48 dp after screen resize" % text)
 	purchase.close()
 	await frames(2)
 
 	platform.emit_ad_state(false, true, false, "")
 	await frames(1)
+	tree.root.size = Vector2i(1920, 1080)
+	await frames(2)
 	var settings := SettingsScreen.open(host)
 	await frames(2)
 	for text: String in ["Restore purchases", "Privacy choices", "Close"]:
@@ -519,6 +527,12 @@ func test_payment_and_privacy_controls_keep_48dp_touch_height() -> void:
 		check(button != null, "Settings must show %s in this state" % text)
 		if button != null:
 			check(_touch_height_dp(button, platform.density) >= 48.0, "Settings %s must remain at least 48 dp high" % text)
+	tree.root.size = Vector2i(1280, 720)
+	await frames(2)
+	for text: String in ["Restore purchases", "Privacy choices", "Close"]:
+		var button := _button(settings, text)
+		if button != null:
+			check(_touch_height_dp(button, platform.density) >= 48.0, "Settings %s must stay 48 dp after screen resize" % text)
 	settings.close()
 	await frames(2)
 	tree.root.size = previous_window_size
