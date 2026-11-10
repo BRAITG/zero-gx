@@ -77,11 +77,11 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     override fun onMainDestroy() {
+        started = false
         bannerAds?.destroy()
         bannerAds = null
         billing?.close()
         billing = null
-        started = false
     }
 
     @UsedByGodot
@@ -146,6 +146,7 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun handlePurchaseState(generation: Long, status: String, token: String, error: String) {
+        if (!started) return
         val currentBilling = billing ?: return
         if (!currentBilling.isCurrentPurchaseGeneration(generation)) return
         ownership.applyPurchaseState(status)
@@ -163,11 +164,11 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun emitStoreState(generation: Long, available: Boolean, formattedPrice: String, error: String) {
-        emitSignal(storeStateSignal.name, generation, available, formattedPrice, error)
+        if (started) emitSignal(storeStateSignal.name, generation, available, formattedPrice, error)
     }
 
     private fun emitAdState(loaded: Boolean, privacyRequired: Boolean, consentOpen: Boolean, error: String) {
-        emitSignal(adStateSignal.name, loaded, privacyRequired, consentOpen, error)
+        if (started) emitSignal(adStateSignal.name, loaded, privacyRequired, consentOpen, error)
     }
 
     private companion object {

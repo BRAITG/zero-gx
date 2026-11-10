@@ -87,26 +87,24 @@ func start() -> void:
 	if _started or not available():
 		return
 	_connect_platform()
-	_ad_free = bool(platform.call("getCachedAdFree")) if platform.has_method("getCachedAdFree") else false
+	_ad_free = bool(platform.call("getCachedAdFree"))
 	_ownership_known = _ad_free
 	_store_ready = false
 	_price = ""
 	_purchase_unverified = false
 	_started = true
 	_refresh()
-	if platform.has_method("start"):
-		platform.call("start")
+	platform.call("start")
 
 
 func buy() -> void:
 	if not _started or not available() or not _store_ready or _ad_free:
 		return
-	if platform.has_method("buy"):
-		platform.call("buy")
+	platform.call("buy")
 
 
 func restore() -> void:
-	if not _started or not available() or not platform.has_method("refreshPurchases"):
+	if not _started or not available():
 		return
 	_verification_generation += 1
 	_verification_token = ""
@@ -120,7 +118,7 @@ func restore() -> void:
 
 
 func show_privacy_options() -> void:
-	if _started and available() and platform.has_method("showPrivacyOptions"):
+	if _started and available():
 		platform.call("showPrivacyOptions")
 
 
@@ -128,10 +126,8 @@ func show_privacy_options() -> void:
 func use_defaults() -> void:
 	_disconnect_platform()
 	if _started and available():
-		if platform.has_method("setAdvertisingAllowed"):
-			platform.call("setAdvertisingAllowed", false)
-		if platform.has_method("setBannerBounds"):
-			platform.call("setBannerBounds", 0, 0, 0, 0)
+		platform.call("setAdvertisingAllowed", false)
+		platform.call("setBannerBounds", 0, 0, 0, 0)
 	_verification_generation += 1
 	_verification_token = ""
 	_started = false
@@ -235,7 +231,7 @@ func _refresh() -> void:
 		var safe_area := Rect2()
 		if OS.has_feature("mobile"):
 			safe_area = viewport.get_screen_transform().affine_inverse() * Rect2(DisplayServer.get_display_safe_area())
-		var density := float(platform.call("getDensity")) if platform.has_method("getDensity") else 1.0
+		var density := float(platform.call("getDensity"))
 		layout = MonetizationChromeScript.layout(
 			viewport.get_visible_rect(),
 			safe_area,
@@ -257,7 +253,7 @@ func _refresh() -> void:
 
 
 func _set_advertising_allowed(allowed: bool) -> void:
-	if not _started or not available() or not platform.has_method("setAdvertisingAllowed"):
+	if not _started or not available():
 		return
 	if _advertising_allowed_known and _last_advertising_allowed == allowed:
 		return
@@ -267,7 +263,7 @@ func _set_advertising_allowed(allowed: bool) -> void:
 
 
 func _set_banner_bounds(bounds: Rect2i) -> void:
-	if not _started or not available() or not platform.has_method("setBannerBounds"):
+	if not _started or not available():
 		return
 	if _banner_bounds_known and _last_banner_bounds == bounds:
 		return
@@ -283,17 +279,16 @@ func _connect_platform() -> void:
 	_store_callback = Callable(self, "_store_state").bind(_callback_epoch)
 	_purchase_callback = Callable(self, "_purchase_state").bind(_callback_epoch)
 	_ad_callback = Callable(self, "_ad_state").bind(_callback_epoch)
-	for signal_name in ["store_state", "purchase_state", "ad_state"]:
-		if platform.has_signal(signal_name):
-			var callback: Callable = _store_callback if signal_name == "store_state" else (_purchase_callback if signal_name == "purchase_state" else _ad_callback)
-			platform.connect(signal_name, callback)
+	platform.connect("store_state", _store_callback)
+	platform.connect("purchase_state", _purchase_callback)
+	platform.connect("ad_state", _ad_callback)
 	_connected_platform = platform
 
 
 func _disconnect_platform() -> void:
 	if _connected_platform != null and is_instance_valid(_connected_platform):
 		for pair in [["store_state", _store_callback], ["purchase_state", _purchase_callback], ["ad_state", _ad_callback]]:
-			if _connected_platform.has_signal(pair[0]) and _connected_platform.is_connected(pair[0], pair[1]):
+			if _connected_platform.is_connected(pair[0], pair[1]):
 				_connected_platform.disconnect(pair[0], pair[1])
 	_callback_epoch += 1
 	_connected_platform = null
@@ -423,7 +418,7 @@ func _revoke_purchase() -> void:
 
 
 func _set_verified_ad_free(value: bool) -> void:
-	if available() and platform.has_method("setVerifiedAdFree"):
+	if available():
 		platform.call("setVerifiedAdFree", value)
 
 

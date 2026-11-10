@@ -45,7 +45,7 @@ jobs:
           path: |
             ~/godot
             ~/.local/share/godot/export_templates
-          key: godot-${{ env.GODOT_VERSION }}-android-gradle-desktop
+          key: godot-${{ env.GODOT_VERSION }}-android-gradle-desktop-web
 
       - name: Install Godot and Android templates
         if: steps.godot-cache.outputs.cache-hit != 'true'
@@ -55,12 +55,12 @@ jobs:
           curl -fsSL -o /tmp/godot.zip "$base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
           unzip -q /tmp/godot.zip -d ~/godot
           mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
-          # Only the templates we export (the full bundle is ~1 GB of other platforms): the two APKs for
-          # the sideload build, the Gradle source for the Play bundle, and the three desktop builds.
+          # Only the Android, desktop and Web templates exported below; the full bundle is ~1 GB.
+          # The Web template is needed to inspect the free Web package in CI.
           curl -fsSL -o /tmp/templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
           dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
           mkdir -p "$dest"
-          unzip -q -j /tmp/templates.tpz templates/android_debug.apk templates/android_release.apk templates/android_source.zip templates/version.txt templates/linux_release.x86_64 templates/windows_release_x86_64.exe templates/macos.zip -d "$dest"
+          unzip -q -j /tmp/templates.tpz templates/android_debug.apk templates/android_release.apk templates/android_source.zip templates/version.txt templates/linux_release.x86_64 templates/windows_release_x86_64.exe templates/macos.zip templates/web_release.zip -d "$dest"
           rm /tmp/godot.zip /tmp/templates.tpz
 
       - name: Test
@@ -93,6 +93,65 @@ jobs:
           "$aapt2" dump xmltree --file AndroidManifest.xml build/zero-gx.apk | grep -q 'com.google.android.gms.games.APP_ID'
           ls -lh build/zero-gx.apk
 
+          # The checked-in Android sideload preset stays free.
+          if unzip -p build/zero-gx.apk 'classes*.dex' | grep -aqE 'Ldev/braitg/zerogx/monetization/|Lcom/google/android/libraries/ads/mobile/sdk/|Lcom/google/android/ump/|Lcom/android/billingclient/'; then
+            echo "Monetization classes are present in the free sideload APK."
+            exit 1
+          fi
+          if "$aapt2" dump xmltree --file AndroidManifest.xml build/zero-gx.apk | grep -Eq 'com.android.vending.BILLING|com.google.android.gms.permission.AD_ID|com.google.android.gms.ads.APPLICATION_ID|dev.braitg.zerogx.BANNER_UNIT_ID'; then
+            echo "Monetization permission or ad metadata is present in the free sideload APK."
+            exit 1
+          fi
+
+      - name: Build and compare monetization AARs
+        run: |
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          android/build/gradlew -p android/plugins/monetization assembleDebug assembleRelease
+          cmp android/plugins/monetization/build/outputs/aar/zero_gx_monetization-debug.aar addons/zero_gx_monetization/bin/zero_gx_monetization-debug.aar
+          cmp android/plugins/monetization/build/outputs/aar/zero_gx_monetization-release.aar addons/zero_gx_monetization/bin/zero_gx_monetization-release.aar
+          dependencies=$(android/build/gradlew -p android/plugins/monetization dependencies --configuration releaseRuntimeClasspath)
+          grep -Fq 'com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.6.0' <<< "$dependencies"
+          grep -Fq 'com.google.android.ump:user-messaging-platform:4.0.0' <<< "$dependencies"
+          grep -Fq 'com.android.billingclient:billing:9.1.0' <<< "$dependencies"
+          if grep -Eq 'com\.google\.android\.gms:play-services-ads(:| )' <<< "$dependencies"; then
+            echo "The legacy Google Mobile Ads SDK must not be added alongside Next-Gen."
+            exit 1
+          fi
+
+      - name: Export monetization debug sample APK
+        run: |
+          backup="$RUNNER_TEMP/export_presets.cfg"
+          cp export_presets.cfg "$backup"
+          restore_presets() { cp "$backup" export_presets.cfg; }
+          trap restore_presets EXIT
+          sed -i '/^zero_gx_monetization\/enabled=/d; /^\[preset\.0\.options\]$/a zero_gx_monetization/enabled=true' export_presets.cfg
+          export JAVA_HOME="$JAVA_HOME_17_X64"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PATH="$RUNNER_TEMP/debug.keystore"
+          export GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey
+          export GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android
+          ~/godot/godot --headless --path . --script res://tools/check_monetization_export.gd -- --preset "Android" --debug
+          ~/godot/godot --headless --path . --export-debug "Android" build/zero-gx-monetization-test.apk
+          dex="$RUNNER_TEMP/monetization-test.dex"
+          unzip -p build/zero-gx-monetization-test.apk 'classes*.dex' > "$dex"
+          grep -aFq 'Ldev/braitg/zerogx/monetization/MonetizationPlugin;' "$dex"
+          grep -aFq 'Lcom/google/android/libraries/ads/mobile/sdk/' "$dex"
+          grep -aFq 'Lcom/google/android/ump/' "$dex"
+          grep -aFq 'Lcom/android/billingclient/' "$dex"
+          aapt2=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/aapt2
+          manifest=$("$aapt2" dump xmltree --file AndroidManifest.xml build/zero-gx-monetization-test.apk)
+          printf '%s\n' "$manifest" | grep -Fq 'com.android.vending.BILLING'
+          printf '%s\n' "$manifest" | grep -Fq 'com.google.android.gms.ads.APPLICATION_ID'
+          printf '%s\n' "$manifest" | grep -Fq 'ca-app-pub-3940256099942544~3347511713'
+          printf '%s\n' "$manifest" | grep -Fq 'dev.braitg.zerogx.BANNER_UNIT_ID'
+          printf '%s\n' "$manifest" | grep -Fq 'ca-app-pub-3940256099942544/9214589741'
+          if printf '%s\n' "$manifest" | grep -Fq 'com.google.android.gms.permission.AD_ID'; then
+            echo "The enabled debug export retained AD_ID in the merged manifest."
+            exit 1
+          fi
+          rm "$dex"
+          restore_presets
+          trap - EXIT
+
       - name: Export Play bundle
         # Signed with the upload key; Play re-signs it for delivery. Fork PRs have no secrets: skip.
         if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -108,12 +167,37 @@ jobs:
           # Play needs a higher version code for every upload: the run number always grows.
           sed -i "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" export_presets.cfg
           ~/godot/godot --headless --path . --script res://tools/check_monetization_export.gd -- --preset "Android Play"
-          ~/godot/godot --headless --path . --install-android-build-template --export-release "Android Play" build/zero-gx.aab
+          ~/godot/godot --headless --path . --export-release "Android Play" build/zero-gx.aab
           jarsigner -verify build/zero-gx.aab
           unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Ldev/braitg/zerogx/integrity/IntegrityPlugin;'
           unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Lcom/google/android/gms/games/PlayGames;'
           unzip -p build/zero-gx.aab base/manifest/AndroidManifest.xml | grep -aq 'android.permission.INTERNET'
           unzip -p build/zero-gx.aab base/manifest/AndroidManifest.xml | grep -aq 'com.google.android.gms.games.APP_ID'
+          if unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Ldev/braitg/zerogx/monetization/MonetizationPlugin;'; then
+            dex="$RUNNER_TEMP/monetization-play.dex"
+            unzip -p build/zero-gx.aab 'base/dex/*.dex' > "$dex"
+            grep -aFq 'Lcom/google/android/libraries/ads/mobile/sdk/' "$dex"
+            grep -aFq 'Lcom/google/android/ump/' "$dex"
+            grep -aFq 'Lcom/android/billingclient/' "$dex"
+            manifest=$(unzip -p build/zero-gx.aab base/manifest/AndroidManifest.xml | strings -a)
+            printf '%s\n' "$manifest" | grep -Fq 'com.android.vending.BILLING'
+            printf '%s\n' "$manifest" | grep -Fq 'com.google.android.gms.ads.APPLICATION_ID'
+            printf '%s\n' "$manifest" | grep -Fq 'dev.braitg.zerogx.BANNER_UNIT_ID'
+            if printf '%s\n' "$manifest" | grep -Fq 'com.google.android.gms.permission.AD_ID'; then
+              echo "The enabled Play bundle retained AD_ID in the merged manifest."
+              exit 1
+            fi
+            rm "$dex"
+          else
+            if unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aqE 'Lcom/google/android/libraries/ads/mobile/sdk/|Lcom/google/android/ump/|Lcom/android/billingclient/'; then
+              echo "Monetization SDK classes are present without the plugin in the Play bundle."
+              exit 1
+            fi
+            if unzip -p build/zero-gx.aab base/manifest/AndroidManifest.xml | strings -a | grep -aqE 'com.android.vending.BILLING|com.google.android.gms.permission.AD_ID|com.google.android.gms.ads.APPLICATION_ID|dev.braitg.zerogx.BANNER_UNIT_ID'; then
+              echo "Monetization permission or ad metadata is present in the free Play bundle."
+              exit 1
+            fi
+          fi
           ls -lh build/zero-gx.aab
 
       - name: Export desktop builds
@@ -122,6 +206,19 @@ jobs:
           ~/godot/godot --headless --path . --export-release "Linux" build/zero-gx-linux.x86_64
           ~/godot/godot --headless --path . --export-release "macOS" build/zero-gx-macos.zip
           ls -lh build/zero-gx-windows.exe build/zero-gx-linux.x86_64 build/zero-gx-macos.zip
+          ~/godot/godot --headless --path . --export-release "Web" build/web/index.html
+          test -s build/web/index.pck
+          # Android AARs and Worker package/dependency files must not be in any free desktop/Web PCK.
+          for binary in build/zero-gx-windows.exe build/zero-gx-linux.x86_64 build/web/index.pck; do
+            if strings -a "$binary" | grep -Eiq '\.aar|server/(package\.json|node_modules)'; then
+              echo "Android or Worker packaging files are present in $binary."
+              exit 1
+            fi
+          done
+          if unzip -p build/zero-gx-macos.zip '*/Zero-GX.pck' | strings -a | grep -Eiq '\.aar|server/(package\.json|node_modules)'; then
+            echo "Android or Worker packaging files are present in the macOS PCK."
+            exit 1
+          fi
           # The plugins' Android libraries belong to Android builds only.
           if unzip -p build/zero-gx-macos.zip '*/Zero-GX.pck' | strings -a | grep -qi '\.aar'; then echo "An AAR is in the macOS build."; exit 1; fi
 
@@ -134,6 +231,7 @@ jobs:
             build/zero-gx-windows.exe
             build/zero-gx-linux.x86_64
             build/zero-gx-macos.zip
+            build/web/
           if-no-files-found: error
 
       - name: Publish prerelease

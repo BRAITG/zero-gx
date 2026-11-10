@@ -19,6 +19,11 @@ Zero-GX is a physics puzzle-racer about flying a small spaceship from start to g
 
 Zero-GX is free software, released under the GNU Affero General Public License v3.
 
+Monetization-enabled Google Play builds may show small banners on Home, between-stage results, Community and Settings. There are no ads during a flight or full-screen, rewarded or app-open ads. The optional, permanent one-time `remove_ads` purchase removes banners; the price shown is the localized price supplied by Google Play. All levels, Training and the editor remain free, with no gameplay purchases, subscriptions or consumable currency. Purchases can be restored in Settings.
+
+Privacy Policy: https://braitg.dev/zero-gx/privacy/
+Terms of Service: https://braitg.dev/zero-gx/terms/
+
 **Category**: Game → Puzzle (alternative: Arcade)
 
 **Tags**: physics, space, gravity, arcade

@@ -96,3 +96,10 @@ class AndroidExportPlugin extends EditorExportPlugin:
 			<meta-data android:name="com.google.android.gms.ads.APPLICATION_ID" android:value="%s" />
 			<meta-data android:name="dev.braitg.zerogx.BANNER_UNIT_ID" android:value="%s" />
 		""" % [app_id.xml_escape(true), banner_id.xml_escape(true)]
+
+	func _get_android_manifest_element_contents(platform: EditorExportPlatform, _debug: bool) -> String:
+		if not _supports_platform(platform) or not bool(get_option(ENABLED_OPTION)):
+			return ""
+		return """
+			<uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
+		"""

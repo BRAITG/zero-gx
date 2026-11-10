@@ -122,7 +122,7 @@ static func _update_touch_target(control: Control) -> void:
 	var scale_y := control.get_viewport().get_screen_transform().y.length()
 	if scale_y <= 0.0:
 		return
-	var density := float(Monetization.platform.call("getDensity")) if Monetization.platform.has_method("getDensity") else 1.0
+	var density := float(Monetization.platform.call("getDensity"))
 	var base_height := float(control.get_meta(TOUCH_TARGET_BASE_META, control.custom_minimum_size.y))
 	control.custom_minimum_size.y = maxf(base_height, 48.0 * density / scale_y)
 
