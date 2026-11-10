@@ -52,25 +52,39 @@ static func layout(viewport: Rect2, safe_area: Rect2, screen_transform: Transfor
 	var frame := Style.menu_rect(viewport, safe_area)
 	var dp := Vector2(density / scale_x, density / scale_y)
 	var padding := 8.0 * dp
-	var ad_size := Vector2(320.0, 50.0) * dp
+	var banner_size_px := Vector2i(ceili(320.0 * density), ceili(50.0 * density))
+	var ad_size := Vector2(banner_size_px.x / scale_x, banner_size_px.y / scale_y)
 	var button_size := Vector2(maxf(button_minimum.x, 0.0), maxf(button_minimum.y, 48.0 * dp.y))
-	var footer_height := maxf(ad_size.y, button_size.y) + 2.0 * padding.y
-	if frame.size.x < button_size.x + 2.0 * padding.x or frame.size.y < footer_height:
+	var button_footer := button_size.y + 2.0 * padding.y
+	var banner_footer := ad_size.y + 2.0 * padding.y
+	if frame.size.x < button_size.x + 2.0 * padding.x or frame.size.y < button_footer:
 		return empty
 
 	var button_rect := Rect2(
 		Vector2(frame.end.x - padding.x - button_size.x, frame.end.y - padding.y - button_size.y),
 		button_size,
 	)
-	var ad_rect := Rect2(
-		Vector2(frame.get_center().x - ad_size.x / 2.0, frame.end.y - padding.y - ad_size.y),
-		ad_size,
+	var screen_frame: Rect2 = screen_transform * frame
+	var banner_padding_px := ceili(8.0 * density)
+	var ad_pixels := Rect2i(
+		Vector2i(
+			roundi(screen_frame.get_center().x - banner_size_px.x / 2.0),
+			floori(screen_frame.end.y - banner_padding_px) - banner_size_px.y,
+		),
+		banner_size_px,
 	)
-	var show_ad := ad_rect.position.x >= frame.position.x + padding.x \
-		and ad_rect.end.x <= frame.end.x - padding.x \
-		and button_rect.position.x - ad_rect.end.x >= 24.0 * dp.x
+	var screen_ad: Rect2 = Rect2(ad_pixels)
+	var screen_button: Rect2 = screen_transform * button_rect
+	var banner_fits := frame.size.y >= banner_footer
+	var show_ad := banner_fits \
+		and screen_ad.position.x - screen_frame.position.x >= 8.0 * density \
+		and screen_frame.end.x - screen_ad.end.x >= 8.0 * density \
+		and screen_ad.position.y - screen_frame.position.y >= 8.0 * density \
+		and screen_frame.end.y - screen_ad.end.y >= 8.0 * density \
+		and screen_button.position.x - screen_ad.end.x >= ceili(24.0 * density)
+	var footer_height := maxf(button_size.y, ad_size.y) + 2.0 * padding.y if banner_fits else button_footer
 	return {
-		"ad_pixels": Rect2i(screen_transform * ad_rect) if show_ad else Rect2i(),
+		"ad_pixels": ad_pixels if show_ad else Rect2i(),
 		"button_rect": button_rect,
 		"footer_height": footer_height,
 		"show_ad": show_ad,
@@ -79,3 +93,15 @@ static func layout(viewport: Rect2, safe_area: Rect2, screen_transform: Transfor
 
 func button_minimum() -> Vector2:
 	return _button.get_combined_minimum_size()
+
+
+static func ensure_touch_target(control: Control) -> void:
+	if not control.is_inside_tree() or not Monetization.available():
+		return
+	var scale_y := control.get_viewport().get_screen_transform().y.length()
+	if scale_y <= 0.0:
+		return
+	var density := 1.0
+	if Monetization.available() and Monetization.platform.has_method("getDensity"):
+		density = float(Monetization.platform.call("getDensity"))
+	control.custom_minimum_size.y = maxf(control.custom_minimum_size.y, 48.0 * density / scale_y)

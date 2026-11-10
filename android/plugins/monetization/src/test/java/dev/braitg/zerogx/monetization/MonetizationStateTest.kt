@@ -39,14 +39,14 @@ class MonetizationStateTest {
     }
 
     @Test
-    fun purchaseUpdatesAdvanceTheMonotonicPurchaseGeneration() {
+    fun newerPendingPurchaseQueryMakesOlderGenerationNonCurrent() {
         val generations = BillingGenerationState()
-        val query = generations.nextPurchase()
+        val olderQuery = generations.nextPurchaseQuery()
+        val newerQuery = generations.nextPurchaseQuery()
 
-        val update = generations.nextPurchase()
-
-        assertTrue(update > query)
-        assertTrue(generations.isCurrentPurchase(update))
+        assertTrue(newerQuery > olderQuery)
+        assertFalse(generations.isCurrentPurchase(olderQuery))
+        assertTrue(generations.isCurrentPurchase(newerQuery))
     }
 
     @Test
@@ -159,4 +159,6 @@ class MonetizationStateTest {
         assertTrue(state.inFlight)
         assertFalse(state.loaded)
     }
+
 }
+

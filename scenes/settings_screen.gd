@@ -61,6 +61,7 @@ static func _button(parent: Control, text: String, action: Callable) -> Button:
 	button.pressed.connect(Sfx.play.bind("tap"))
 	button.pressed.connect(action)
 	parent.add_child(button)
+	MonetizationChrome.ensure_touch_target(button)
 	return button
 
 
@@ -88,6 +89,7 @@ static func _big_switch(toggle: CheckButton) -> void:
 		var image := icon.get_image()
 		if image == null:
 			continue
+		image = image.duplicate()
 		image.resize(int(image.get_width() * SWITCH_SCALE), int(image.get_height() * SWITCH_SCALE), Image.INTERPOLATE_LANCZOS)
 		toggle.add_theme_icon_override(icon_name, ImageTexture.create_from_image(image))
 

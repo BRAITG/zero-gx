@@ -36,6 +36,11 @@ func _button(node: Node, text: String) -> Button:
 	return buttons[0] if not buttons.is_empty() else null
 
 
+func _touch_height_dp(button: Button, density: float) -> float:
+	var physical: Rect2 = button.get_viewport().get_screen_transform() * button.get_global_rect()
+	return physical.size.y / density
+
+
 func _texts(node: Node) -> Array[String]:
 	var texts: Array[String] = []
 	for label: Label in node.find_children("*", "Label", true, false):
@@ -166,6 +171,25 @@ func test_safe_frame_layout_tracks_insets_density_and_display_transform() -> voi
 			check((screen_frame.end.y - ad.end.y) / density >= 8.0, "the banner must keep its 8 dp outer footer padding")
 			check(absf(ad.get_center().x - screen_frame.get_center().x) <= 1.0, "the banner must be centered after screen translation/scaling")
 			check(layout.footer_height >= 66.0, "the fixed footer must reserve 50 dp plus 8 dp outer padding on each edge")
+
+
+func test_fractional_density_rounds_banner_to_native_pixels() -> void:
+	if not ResourceLoader.exists(CHROME_PATH):
+		check(false, "the shared monetization chrome layout must exist")
+		return
+	var chrome: Variant = load(CHROME_PATH)
+	var density := 2.75
+	var viewport := Rect2(0, 0, 1280, 720)
+	var transform := Transform2D(Vector2(density, 0), Vector2(0, density), Vector2(20, 19.5))
+	var layout: Dictionary = chrome.layout(viewport, Rect2(), transform, density, Vector2(160, 48))
+	var frame: Rect2 = transform * Style.call("menu_rect", viewport, Rect2())
+	var ad: Rect2 = Rect2(layout.ad_pixels)
+	var screen_button: Rect2 = transform * layout.button_rect
+	check(layout.show_ad, "the fractional-density viewport must fit banner and shortcut")
+	check(layout.ad_pixels.size == Vector2i(880, 138), "the banner must ceil to native 320 × 50 dp pixels at density 2.75: %s" % layout.ad_pixels.size)
+	check(frame.encloses(ad), "rounded native banner bounds must remain inside the transformed safe frame")
+	check((screen_button.position.x - ad.end.x) / density >= 24.0, "rounded native banner bounds must preserve 24 dp clearance")
+	check((frame.end.y - ad.end.y) / density >= 8.0, "rounded native banner bounds must preserve 8 dp bottom padding")
 
 
 func test_narrow_safe_frame_omits_banner_and_suppresses_an_unfittable_shortcut() -> void:
@@ -454,3 +478,120 @@ func test_editor_root_suppresses_monetization() -> void:
 	check(money.footer_height == 0.0 and _button(tree.root, "Remove ads") == null, "the editor root must suppress ads and purchase chrome")
 	editor.free()
 	MyLevels.delete(id)
+
+
+func test_payment_and_privacy_controls_keep_48dp_touch_height() -> void:
+	var setup := _boot()
+	if setup.is_empty():
+		return
+	var money: Variant = setup.money
+	var platform: Variant = setup.platform
+	platform.density = 3.0
+	var previous_window_size: Vector2i = tree.root.size
+	tree.root.size = Vector2i(1920, 1080)
+	await frames(2)
+	var display_scale := tree.root.get_viewport().get_screen_transform().y.length()
+	check(is_equal_approx(display_scale, 1.5), "48 dp UI fixture must use an actual 1.5 screen scale")
+	platform.store_state.emit(110, true, PRICE, "")
+	platform.purchase_state.emit(111, "not_owned", "", "")
+	var host := Control.new()
+	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	world.add_child(host)
+	var purchase := _purchase_screen(host)
+	if purchase == null:
+		tree.root.size = previous_window_size
+		return
+	await frames(2)
+	for text: String in ["Terms of Service", "Privacy Policy", "Buy", "Restore purchases", "Close"]:
+		var button := _button(purchase, text)
+		check(button != null, "purchase screen must show %s" % text)
+		if button != null:
+			check(_touch_height_dp(button, platform.density) >= 48.0, "%s must remain at least 48 dp high" % text)
+	purchase.close()
+	await frames(2)
+
+	platform.emit_ad_state(false, true, false, "")
+	await frames(1)
+	var settings := SettingsScreen.open(host)
+	await frames(2)
+	for text: String in ["Restore purchases", "Privacy choices", "Close"]:
+		var button := _button(settings, text)
+		check(button != null, "Settings must show %s in this state" % text)
+		if button != null:
+			check(_touch_height_dp(button, platform.density) >= 48.0, "Settings %s must remain at least 48 dp high" % text)
+	settings.close()
+	await frames(2)
+	tree.root.size = previous_window_size
+	await frames(2)
+
+
+func test_shortcut_purchase_close_restores_focus_before_and_after_payment() -> void:
+	_leave_scene()
+	var setup := _boot()
+	if setup.is_empty():
+		return
+	var money: Variant = setup.money
+	var platform: Variant = setup.platform
+	var transport: FakeTransport = setup.transport
+	platform.store_state.emit(120, true, PRICE, "")
+	platform.purchase_state.emit(121, "not_owned", "", "")
+	platform.emit_ad_state(true, false, false, "")
+	var host := Control.new()
+	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var continue_button := Button.new()
+	continue_button.text = "Continue"
+	host.add_child(continue_button)
+	world.add_child(host)
+	money.set_surface(host, true)
+	await frames(2)
+	var shortcut := _button(tree.root, "Remove ads")
+	check(shortcut != null, "eligible surface must expose Remove ads")
+	if shortcut == null:
+		return
+	shortcut.grab_focus(true)
+	shortcut.pressed.emit()
+	await frames(2)
+	var purchase := _top_overlay(host)
+	check(purchase != null, "the real shortcut must open the purchase sheet")
+	if purchase == null:
+		return
+	var close := _button(purchase, "Close")
+	if close != null:
+		close.pressed.emit()
+	await frames(2)
+	check(shortcut.is_visible_in_tree() and tree.root.gui_get_focus_owner() == shortcut, "closing an unpaid purchase sheet must restore focus to the eligible shortcut")
+
+	shortcut.grab_focus(true)
+	shortcut.pressed.emit()
+	await frames(2)
+	purchase = _top_overlay(host)
+	if purchase == null:
+		check(false, "the shortcut must reopen the purchase sheet")
+		return
+	transport.answer("POST", PURCHASE_ROUTE, 200, {"ad_free": true})
+	var buy := _button(purchase, "Buy")
+	check(buy != null and not buy.disabled, "Buy must remain an explicit available action")
+	if buy != null:
+		buy.pressed.emit()
+	platform.purchase_state.emit(122, "purchased", "focus-test-token", "")
+	await frames(3)
+	check(money.ad_free and _button(tree.root, "Remove ads") == null, "verified payment must hide the shortcut")
+	close = _button(purchase, "Close")
+	if close != null:
+		close.pressed.emit()
+	await frames(2)
+	var focus := tree.root.gui_get_focus_owner()
+	check(focus == continue_button and focus.is_visible_in_tree() and not continue_button.disabled, "after payment, focus must return to a visible underlying control instead of the hidden shortcut")
+
+
+func test_touch_target_minimum_uses_density_separate_from_screen_scale() -> void:
+	if not ResourceLoader.exists(CHROME_PATH):
+		check(false, "the shared monetization chrome layout must exist")
+		return
+	var chrome: Variant = load(CHROME_PATH)
+	var viewport := Rect2(0, 0, 1280, 720)
+	var transform := Transform2D(Vector2(1.5, 0), Vector2(0, 1.5), Vector2(11, 7))
+	var layout: Dictionary = chrome.layout(viewport, Rect2(), transform, 3.0, Vector2(160, 48))
+	var screen_button: Rect2 = transform * layout.button_rect
+	check(layout.button_rect.size.y >= 96.0, "a 48 dp target at density 3 and scale 1.5 needs 96 viewport pixels")
+	check(is_equal_approx(screen_button.size.y / 3.0, 48.0), "the transformed shortcut must remain 48 dp high at independent density and scale")

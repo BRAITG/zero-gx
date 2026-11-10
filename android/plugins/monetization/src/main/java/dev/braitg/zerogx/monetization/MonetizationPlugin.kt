@@ -146,10 +146,10 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun handlePurchaseState(generation: Long, status: String, token: String, error: String) {
-        if (billing?.isCurrentPurchaseGeneration(generation) == true) {
-            ownership.applyPurchaseState(status)
-            syncOwnership()
-        }
+        val currentBilling = billing ?: return
+        if (!currentBilling.isCurrentPurchaseGeneration(generation)) return
+        ownership.applyPurchaseState(status)
+        syncOwnership()
         emitSignal(purchaseStateSignal.name, generation, status, token, error)
     }
 

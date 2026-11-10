@@ -24,6 +24,7 @@ static func open(parent: Node) -> Overlay:
 	buy.add_theme_font_size_override("font_size", 24)
 	buy.pressed.connect(Monetization.buy)
 	overlay.body.add_child(buy)
+	MonetizationChrome.ensure_touch_target(buy)
 	_button(overlay.body, "Restore purchases", Monetization.restore)
 	var refresh := func() -> void:
 		price.text = Monetization.price if Monetization.store_ready else ""
@@ -48,6 +49,7 @@ static func _button(parent: Control, text: String, action: Callable) -> Button:
 	button.pressed.connect(Sfx.play.bind("tap"))
 	button.pressed.connect(action)
 	parent.add_child(button)
+	MonetizationChrome.ensure_touch_target(button)
 	return button
 
 
