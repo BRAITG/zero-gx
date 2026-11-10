@@ -58,6 +58,7 @@ internal class PlayBilling(
     }
 
     fun refreshPurchases(onComplete: (() -> Unit)? = null) {
+        markOwnershipUnknown()
         val queryGeneration = nextPurchaseGeneration()
         onMain {
             ensureConnected(
