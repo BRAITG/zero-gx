@@ -1,0 +1,298 @@
+<!doctype html>
+<!-- Run from this worktree: python3 -m http.server 8766 --bind 127.0.0.1
+     Open http://127.0.0.1:8766/tools/ad-banner-preview-prototype.html
+     Question: does a reserved banner feel unobtrusive? Compare ?variant=footer, header, or free. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZERO-GX · Banner placement prototype</title>
+<style>
+@font-face { font-family: Orbitron; src: url('../assets/fonts/Orbitron.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: Exo2; src: url('../assets/fonts/Exo2.ttf') format('truetype'); font-weight: 500; font-display: swap; }
+:root { color-scheme: dark; --ink: #dfe9ff; --dim: #6f7d96; --accent: #3aa0ff; --panel: rgba(10,15,31,.88); --border: #2a4a7a; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; background: #060912; color: var(--ink); font: 500 16px/1.45 Exo2, sans-serif; }
+main { width: min(100%, 1120px); margin: auto; padding: 28px 24px 32px; }
+h1, h2, h3, .brand { font-family: Orbitron, sans-serif; font-weight: 700; }
+h1 { font-size: 24px; margin: 4px 0 8px; }
+p { margin: 0; }
+.eyebrow { color: #92caff; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; }
+.intro { max-width: 850px; color: #b2bfd4; }
+.notice { color: #b2bfd4; font-size: 13px; }
+.screen-picker { display: flex; flex-wrap: wrap; gap: 8px; margin: 20px 0 14px; }
+button, select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+button { cursor: pointer; padding: 9px 16px; }
+button:hover:not(:disabled) { background: #142745; border-color: var(--accent); }
+button[aria-pressed="true"], .primary { border-color: var(--accent); background: #112c4a; }
+button:disabled { opacity: .52; cursor: not-allowed; }
+:focus-visible { outline: 3px solid #b9e4ff; outline-offset: 3px; }
+.preview { margin: 0; }
+.phone { width: min(100%, 884px); margin: auto; border: 10px solid #02040a; border-radius: 29px; box-shadow: 0 0 0 1px #33415a; overflow: hidden; }
+.viewport { position: relative; width: 100%; aspect-ratio: 844 / 390; overflow: hidden; border-radius: 18px; }
+.canvas { position: absolute; left: 0; top: 0; width: 844px; height: 390px; display: flex; flex-direction: column; transform-origin: top left; background-color: #030817; background-image: radial-gradient(circle at 6% 18%, #8cafffa6 0 1px, transparent 1.5px), radial-gradient(circle at 14% 79%, #6384bd 0 .8px, transparent 1.4px), radial-gradient(circle at 29% 30%, #91afff 0 .7px, transparent 1.3px), radial-gradient(circle at 41% 86%, #88b4ff99 0 1px, transparent 1.5px), radial-gradient(circle at 57% 12%, #a5c0ff 0 .7px, transparent 1.3px), radial-gradient(circle at 72% 64%, #7399dd 0 1px, transparent 1.5px), radial-gradient(circle at 86% 29%, #adcbff 0 .8px, transparent 1.4px), radial-gradient(circle at 95% 88%, #a3bdff 0 1px, transparent 1.5px); background-size: 307px 211px; }
+.canvas::after { content: ''; position: absolute; left: 6px; top: 153px; width: 5px; height: 84px; border-radius: 4px; background: #01030b; pointer-events: none; }
+.game { position: relative; flex: 1; min-height: 0; padding: 16px 32px 20px; font-size: 13px; }
+.screen { height: 100%; }
+.canvas button { padding: 7px 15px; font-size: 13px; min-height: 32px; }
+.canvas h2 { font-size: 19px; margin: 0; }
+.canvas h3 { font-size: 14px; margin: 0; }
+.dim { color: var(--dim); }
+.home { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px; }
+.home .brand { font-size: 42px; line-height: 1.2; letter-spacing: .1em; text-shadow: 0 0 24px #3aa0ff55; }
+.home .tagline { color: #96a8c6; font-size: 11px; letter-spacing: .22em; margin-bottom: 5px; }
+.home .main-actions { display: grid; gap: 7px; width: 316px; }
+.home .small-actions { display: flex; gap: 8px; margin-top: 4px; }
+.home .small-actions button { min-width: 96px; font-size: 11px; }
+.results { display: grid; place-items: center; }
+.score-panel { width: 534px; padding: 13px 22px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; text-align: center; }
+.stage-title { color: #9cafcb; font-size: 12px; margin-bottom: 2px; }
+.score-panel h2 { color: #8fcaff; letter-spacing: .08em; }
+.total { display: flex; justify-content: center; align-items: baseline; gap: 14px; margin: 7px 0; }
+.total strong { font-family: Orbitron, sans-serif; font-size: 26px; }
+.best { color: #d9cb83; font-size: 11px; }
+.stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; padding: 9px 0; border-top: 1px solid #233957; border-bottom: 1px solid #233957; }
+.stats span { display: block; color: #9eafc9; font-size: 11px; }
+.stats strong { font-size: 15px; font-weight: 500; }
+.medals { color: #e6d28c; font-size: 12px; margin: 8px 0; }
+.result-actions { display: flex; justify-content: center; gap: 8px; margin-top: 8px; }
+.screen-head { display: flex; align-items: center; gap: 12px; min-height: 35px; }
+.screen-head h2 { flex: 1; }
+.community { display: flex; flex-direction: column; gap: 9px; }
+.tabs { display: flex; gap: 7px; }
+.tabs button { min-height: 26px; padding: 3px 20px; }
+.level-list { list-style: none; margin: 0; padding: 0 4px 0 0; overflow-y: auto; min-height: 0; scrollbar-color: #426594 #0a1021; }
+.level { display: flex; align-items: center; gap: 12px; padding: 9px 10px; margin-bottom: 7px; min-height: 76px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; }
+.thumb { flex: 0 0 88px; height: 54px; border: 1px solid #284669; border-radius: 5px; background: #050b17; }
+.thumb path { fill: none; stroke: #6b8dba; stroke-width: 3; }
+.thumb .route { stroke: #3aa0ff; stroke-width: 1; stroke-dasharray: 3 3; }
+.thumb circle { fill: #85c7ff; }
+.level-info { flex: 1; }
+.level-title { font-size: 15px; }
+.version { color: #8fa3c0; font-size: 11px; margin-left: 5px; }
+.byline { color: #9eafc9; font-size: 11px; }
+.difficulty { font-size: 11px; color: #c5d4ea; padding: 3px 8px; border: 1px solid #3a4f6a; border-radius: 6px; }
+.level-actions { display: flex; gap: 6px; }
+.level-actions button { font-size: 11px; padding: 5px 10px; }
+.settings { position: absolute; inset: 0; display: grid; place-items: center; background: #010511bd; padding: 14px 32px 20px; }
+.settings-panel { width: 676px; max-height: 100%; display: flex; flex-direction: column; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: #0a0f1ff5; }
+.settings-body { display: grid; grid-template-columns: 1.08fr 1fr; gap: 18px; margin-top: 10px; overflow-y: auto; }
+.setting { margin-bottom: 10px; }
+.setting label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
+.setting p { color: #9aaac2; font-size: 11px; margin-top: 2px; max-width: 255px; }
+input[type="checkbox"] { accent-color: var(--accent); width: 17px; height: 17px; margin: 0 2px; }
+input[type="range"] { width: 150px; accent-color: var(--accent); }
+.sound { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.sound output { width: 36px; font-size: 11px; }
+.settings-links { display: grid; align-content: start; gap: 7px; }
+.settings-links button { width: 100%; text-align: left; }
+.purchase-note { font-size: 10px; color: #9aaac2; }
+.active-purchase { color: #a9d8ff; border: 1px solid var(--border); border-radius: 10px; padding: 7px 12px; }
+.ad-strip { flex: 0 0 66px; height: 66px; display: grid; place-items: center; background: #070b14; border-top: 1px solid #1b2a40; }
+.canvas[data-variant="header"] .ad-strip { order: -1; border-top: 0; border-bottom: 1px solid #1b2a40; }
+.sample-ad { width: 320px; height: 50px; display: flex; align-items: center; gap: 9px; padding: 5px 9px; background: #f1eee4; color: #233b34; font: 12px/1.15 Arial, sans-serif; border: 1px solid #d5d2c9; }
+.ad-badge { align-self: flex-start; font: 9px Arial, sans-serif; border: 1px solid #68746c; padding: 1px 3px; border-radius: 2px; }
+.ad-mountain { font-size: 25px; line-height: 1; color: #496b52; }
+.ad-copy { flex: 1; }
+.ad-copy strong { display: block; font-size: 12px; margin-bottom: 3px; }
+.ad-copy small { display: block; font-size: 9px; }
+.ad-cta { font-size: 10px; font-weight: bold; border-left: 1px solid #a4afa6; padding-left: 9px; }
+figcaption { width: min(100%, 884px); margin: 12px auto 0; }
+.caption-line { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 4px 16px; margin-bottom: 5px; font-size: 12px; color: #a1b2cb; }
+.switcher { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; width: fit-content; max-width: 100%; padding: 10px; margin: 18px auto 10px; border: 1px solid #49627e; background: #111c2b; border-radius: 12px; }
+.switcher label { font-size: 12px; color: #bacbe0; }
+.switcher select { padding: 8px; min-width: 220px; }
+.switcher button { min-width: 42px; padding: 8px 12px; }
+.summary { text-align: center; color: #c2d4eb; font-size: 13px; }
+.footnote { max-width: 884px; margin: 10px auto 0; text-align: center; }
+dialog { width: min(440px, calc(100% - 32px)); color: var(--ink); background: #0a0f1f; border: 1px solid var(--accent); border-radius: 12px; padding: 24px; }
+dialog::backdrop { background: #000b; }
+dialog h2 { margin: 0 0 12px; font-size: 20px; }
+dialog p { margin-bottom: 12px; }
+.dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+@media (max-width: 320px) { main { padding: 16px 10px; } h1 { font-size: 19px; } .screen-picker { gap: 5px; } .screen-picker button { padding: 7px 10px; font-size: 13px; } .phone { border-width: 6px; border-radius: 20px; } .switcher { gap: 5px; padding: 8px 5px; } .switcher label { width: 100%; text-align: center; } .switcher select { min-width: 0; width: 184px; font-size: 12px; } .switcher button { min-width: 30px; padding: 8px; } }
+@media (min-width: 321px) and (max-width: 767px) { main { padding: 20px 14px; } h1 { font-size: 21px; } .screen-picker button { padding: 8px 12px; font-size: 14px; } .phone { border-width: 7px; } .switcher label { width: 100%; text-align: center; } }
+@media (min-width: 768px) { main { padding: 28px 28px 36px; } .intro { font-size: 16px; } }
+@media (min-width: 1024px) { main { padding: 32px 40px 40px; } .screen-picker { margin-top: 24px; } }
+@media (min-width: 1440px) { main { padding-top: 40px; } h1 { font-size: 28px; } .screen-picker { margin-bottom: 20px; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Throwaway visual prototype · not a Godot export</p>
+    <h1>Does a reserved banner stay out of the way?</h1>
+    <p class="intro">Approximate HTML reconstructions of ZERO-GX screens. All levels, scores and advertisements below are sample content. No real ads, billing, transactions or saved changes.</p>
+  </header>
+  <nav class="screen-picker" aria-label="Preview screen">
+    <button data-screen="home" aria-pressed="true">Home</button>
+    <button data-screen="results" aria-pressed="false">Between stages</button>
+    <button data-screen="community" aria-pressed="false">Community</button>
+    <button data-screen="settings" aria-pressed="false">Settings</button>
+  </nav>
+  <figure class="preview">
+    <div class="phone"><div class="viewport" id="viewport"><div class="canvas" id="canvas" data-variant="footer">
+      <div class="game">
+        <section class="screen home" id="home" aria-label="Home preview">
+          <div class="brand">ZERO-GX</div>
+          <p class="tagline">PRECISION IN ZERO GRAVITY</p>
+          <div class="main-actions">
+            <button class="primary" disabled title="Illustrative only: official level navigation is not part of this prototype">Official levels</button>
+            <button data-screen="community">Community levels</button>
+            <button disabled title="Illustrative only: training is not part of this prototype">Training</button>
+          </div>
+          <div class="small-actions">
+            <button disabled title="Illustrative only">My levels</button>
+            <button data-screen="settings">Settings</button>
+            <button disabled title="Illustrative only">Credits</button>
+          </div>
+        </section>
+        <section class="screen results" id="results" aria-label="Between-stage results preview" hidden>
+          <div class="score-panel">
+            <p class="stage-title">03 · ORBITAL RELAY</p>
+            <h2>STAGE CLEAR</h2>
+            <div class="total"><span>TOTAL</span><strong>12,840</strong><span class="best">NEW BEST</span></div>
+            <div class="stats"><div><span>FUEL</span><strong>68%</strong></div><div><span>HULL</span><strong>92%</strong></div><div><span>TIME</span><strong>00:47.26</strong></div><div><span>MEDALS</span><strong>3 / 3</strong></div></div>
+            <p class="medals">◆ Precision &nbsp; ◆ Efficiency &nbsp; ◆ Speed</p>
+            <div class="result-actions">
+              <button class="primary" disabled title="Illustrative only: no gameplay in this visual prototype">Next</button>
+              <button disabled title="Illustrative only: no gameplay in this visual prototype">Retry</button>
+              <button disabled title="Illustrative only: no replay in this visual prototype">Replay</button>
+              <button data-screen="home">Menu</button>
+            </div>
+          </div>
+        </section>
+        <section class="screen community" id="community" aria-label="Community preview" hidden>
+          <div class="screen-head"><button data-screen="home">‹ Back</button><h2>Community</h2><button data-screen="settings">Settings</button></div>
+          <div class="tabs" aria-label="Sample level sorting"><button id="top" aria-pressed="true">Top</button><button id="new" aria-pressed="false">New</button></div>
+          <ul class="level-list" id="levels" tabindex="0" aria-label="Sample community levels, scroll for more">
+            <li class="level"><svg class="thumb" viewBox="0 0 88 54" aria-hidden="true"><path d="M2 8H29V21H62V8H86M2 46H23V32H48V46H86"/><path class="route" d="M10 28H35L54 26H78"/><circle cx="10" cy="28" r="3"/><circle cx="78" cy="26" r="3"/></svg><div class="level-info"><div class="level-title">Blue Meridian <span class="version">v1.3</span></div><p class="byline">by NovaPilot · ♥ 248</p></div><span class="difficulty">Medium</span><div class="level-actions"><button disabled title="Illustrative only">Details</button><button class="primary" disabled title="Illustrative only: no gameplay">Play</button></div></li>
+            <li class="level"><svg class="thumb" viewBox="0 0 88 54" aria-hidden="true"><path d="M2 8H65V18H40V36H74V47H2M18 8V24H27"/><path class="route" d="M9 38L32 29L52 27L77 25"/><circle cx="9" cy="38" r="3"/><circle cx="77" cy="25" r="3"/></svg><div class="level-info"><div class="level-title">The Quiet Drift <span class="version">v2.0</span></div><p class="byline">by apoapsis · ♥ 193</p></div><span class="difficulty">Easy</span><div class="level-actions"><button disabled title="Illustrative only">Details</button><button class="primary" disabled title="Illustrative only: no gameplay">Play</button></div></li>
+            <li class="level"><svg class="thumb" viewBox="0 0 88 54" aria-hidden="true"><path d="M2 8H24V36H40V8H56V36H74V8H86M2 47H86"/><path class="route" d="M10 24L31 43L48 24L65 43L80 24"/><circle cx="10" cy="24" r="3"/><circle cx="80" cy="24" r="3"/></svg><div class="level-info"><div class="level-title">Needlework <span class="version">v1.1</span></div><p class="byline">by VectorFox · ♥ 127</p></div><span class="difficulty">Hard</span><div class="level-actions"><button disabled title="Illustrative only">Details</button><button class="primary" disabled title="Illustrative only: no gameplay">Play</button></div></li>
+            <li class="level"><svg class="thumb" viewBox="0 0 88 54" aria-hidden="true"><path d="M2 8H86M2 46H31V20H57V46H86"/><path class="route" d="M10 30L28 14H62L78 32"/><circle cx="10" cy="30" r="3"/><circle cx="78" cy="32" r="3"/></svg><div class="level-info"><div class="level-title">First Light <span class="version">v1.0</span></div><p class="byline">by Solstice · ♥ 42</p></div><span class="difficulty">Easy</span><div class="level-actions"><button disabled title="Illustrative only">Details</button><button class="primary" disabled title="Illustrative only: no gameplay">Play</button></div></li>
+          </ul>
+        </section>
+        <section class="screen settings" id="settings" aria-label="Settings overlay preview" hidden>
+          <div class="settings-panel">
+            <div class="screen-head"><button id="settings-back">‹ Back</button><h2>Settings</h2></div>
+            <div class="settings-body">
+              <div>
+                <div class="setting"><label for="velocity">Show the velocity arrow in levels <input id="velocity" type="checkbox" checked></label><p>The arrow points where your ship is going; its length shows how fast.</p></div>
+                <div class="setting"><label for="gravity">Show gravity fields <input id="gravity" type="checkbox" checked></label><p>Faint discs show how far each planet, black hole and star pulls.</p></div>
+                <div class="setting"><label for="sound">Sound</label><div class="sound"><input id="sound" type="range" min="0" max="100" value="70"><output for="sound" id="volume">70%</output></div></div>
+              </div>
+              <div class="settings-links">
+                <button disabled title="Illustrative only">Controls</button>
+                <button disabled title="Illustrative only">Developer options</button>
+                <button class="primary" id="remove-ads">Remove ads — €2.90</button>
+                <p class="active-purchase" id="ad-free-active" hidden>✓ Ad-free active</p>
+                <button disabled title="Illustrative only: no Google Play connection">Restore purchases · preview only</button>
+                <p class="purchase-note">Permanent one-time purchase concept. Restore is illustrative only.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+      <aside class="ad-strip" id="ad-strip" aria-label="Reserved 66 pixel banner strip, fictional sample advertisement">
+        <div class="sample-ad"><span class="ad-badge">Ad</span><span class="ad-mountain" aria-hidden="true">△</span><div class="ad-copy"><strong>FIELDLINE OUTDOOR</strong><span>Pack light. Find your trail.</span><small>Fictional brand · sample advertisement</small></div><span class="ad-cta">Trail gear<br>Spring range</span></div>
+      </aside>
+    </div></div></div>
+    <figcaption>
+      <div class="caption-line"><span id="dimensions">844 × 390 logical pixels · safe-area side gutters</span><span>Banner: 320 × 50 inside a reserved 66 px strip</span></div>
+      <p class="notice">Sample content only, including community levels. This sample is not a guaranteed network creative: real ad artwork, colors and text will vary.</p>
+    </figcaption>
+  </figure>
+  <div class="switcher" role="group" aria-label="Compare banner placements">
+    <label for="variant">Placement</label>
+    <button id="previous" aria-label="Previous placement">←</button>
+    <select id="variant"><option value="footer">Footer · recommended</option><option value="header">Header · top strip</option><option value="free">Ad-free · reclaim space</option></select>
+    <button id="next" aria-label="Next placement">→</button>
+  </div>
+  <p class="summary" id="summary" role="status" aria-live="polite"></p>
+  <p class="notice footnote">Use Left / Right to compare. Disabled game actions are illustrative. No gameplay ads, animation, audio, video or external links. Purchase preview opens only when requested.</p>
+</main>
+<dialog id="purchase" aria-labelledby="purchase-title" aria-describedby="purchase-description">
+  <p class="eyebrow">Visual prototype · no transaction</p>
+  <h2 id="purchase-title">Purchase PREVIEW</h2>
+  <p id="purchase-description">Remove ads permanently with a proposed one-time Google Play purchase of <strong>€2.90</strong>.</p>
+  <p class="notice">This is not Google Play billing. No payment will be requested or processed. Simulating changes this page only; reloading clears the simulated purchase.</p>
+  <div class="dialog-actions"><button id="cancel-purchase">Cancel</button><button class="primary" id="simulate-purchase">Simulate ad-free</button></div>
+</dialog>
+<script>
+const screens = ['home', 'results', 'community', 'settings'];
+const variants = ['footer', 'header', 'free'];
+const names = { home: 'Home', results: 'Between stages', community: 'Community', settings: 'Settings' };
+const query = new URLSearchParams(location.search);
+let screen = screens.includes(query.get('screen')) ? query.get('screen') : 'home';
+let variant = variants.includes(query.get('variant')) ? query.get('variant') : 'footer';
+let previousScreen = 'home';
+let simulated = false;
+const canvas = document.getElementById('canvas');
+const purchase = document.getElementById('purchase');
+const variantSelect = document.getElementById('variant');
+function render() {
+  const adFree = variant === 'free';
+  for (const name of screens) document.getElementById(name).hidden = name !== screen && !(screen === 'settings' && name === previousScreen);
+  if (screen === 'settings') document.getElementById(previousScreen).inert = true;
+  for (const name of screens) if (screen !== 'settings' || name !== previousScreen) document.getElementById(name).inert = false;
+  for (const button of document.querySelectorAll('.screen-picker button')) button.setAttribute('aria-pressed', String(button.dataset.screen === screen));
+  canvas.dataset.variant = variant;
+  document.getElementById('ad-strip').hidden = adFree;
+  document.getElementById('remove-ads').hidden = adFree;
+  document.getElementById('ad-free-active').hidden = !adFree;
+  variantSelect.value = variant;
+  document.getElementById('summary').textContent = `Screen: ${names[screen]} · Placement: ${variant === 'free' ? 'none (space reclaimed)' : variant + ' (66 px reserved)'} · Mock ad-free: ${adFree ? simulated ? 'active (simulated purchase)' : 'active (comparison)' : 'off'}`;
+  const url = new URL(location.href);
+  url.searchParams.set('screen', screen);
+  url.searchParams.set('variant', variant);
+  history.replaceState(null, '', url);
+}
+function showScreen(next) {
+  if (next === 'settings' && screen !== 'settings') previousScreen = screen;
+  screen = next;
+  render();
+}
+function setVariant(next) {
+  variant = next;
+  simulated = false;
+  render();
+}
+function cycle(direction) { setVariant(variants[(variants.indexOf(variant) + direction + variants.length) % variants.length]); }
+for (const button of document.querySelectorAll('[data-screen]')) button.addEventListener('click', () => showScreen(button.dataset.screen));
+document.getElementById('settings-back').addEventListener('click', () => showScreen(previousScreen));
+variantSelect.addEventListener('change', () => setVariant(variantSelect.value));
+document.getElementById('previous').addEventListener('click', () => cycle(-1));
+document.getElementById('next').addEventListener('click', () => cycle(1));
+document.addEventListener('keydown', event => {
+  if (purchase.open || event.altKey || event.ctrlKey || event.metaKey || event.target.closest('input, select, textarea, [contenteditable]:not([contenteditable="false"])')) return;
+  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+    event.preventDefault();
+    cycle(event.key === 'ArrowLeft' ? -1 : 1);
+  }
+});
+document.getElementById('remove-ads').addEventListener('click', () => purchase.showModal());
+document.getElementById('cancel-purchase').addEventListener('click', () => purchase.close());
+document.getElementById('simulate-purchase').addEventListener('click', () => {
+  variant = 'free';
+  simulated = true;
+  render();
+  purchase.close();
+  document.getElementById('settings-back').focus();
+});
+document.getElementById('sound').addEventListener('input', event => { document.getElementById('volume').value = event.target.value + '%'; });
+const originalLevels = [...document.getElementById('levels').children];
+for (const sort of ['top', 'new']) document.getElementById(sort).addEventListener('click', () => {
+  document.getElementById('top').setAttribute('aria-pressed', String(sort === 'top'));
+  document.getElementById('new').setAttribute('aria-pressed', String(sort === 'new'));
+  document.getElementById('levels').replaceChildren(...(sort === 'top' ? originalLevels : [...originalLevels].reverse()));
+});
+new ResizeObserver(entries => {
+  const width = entries[0].contentRect.width;
+  canvas.style.transform = `scale(${width / 844})`;
+  document.getElementById('dimensions').textContent = `844 × 390 logical pixels · displayed at ${Math.round(width / 844 * 100)}% · safe-area side gutters`;
+}).observe(document.getElementById('viewport'));
+render();
+</script>
+</body>
+</html>
