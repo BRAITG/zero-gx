@@ -52,7 +52,6 @@ internal class BannerAds(
     private var consentUpdated = false
     private var consentInformationUpdated = false
     private var consentFormAttempted = false
-    private var consentGeneration = 0L
     private var privacyRequired = false
     private var sdkInitializing = false
     private var sdkInitialized = false
@@ -63,7 +62,6 @@ internal class BannerAds(
         paid = adFree
         onMain {
             if (adFree) {
-                consentGeneration++
                 invalidateAdRequest()
                 destroyAdView()
                 emit()
@@ -76,10 +74,11 @@ internal class BannerAds(
         foreground = value
         onMain {
             if (!value) {
-                consentGeneration++
                 invalidateAdRequest()
                 hideBanner()
             } else {
+                // A failed consent-information refresh is retried once per foreground.
+                if (!consentInformationUpdated) consentUpdated = false
                 maybeContinue()
             }
         }
@@ -89,7 +88,6 @@ internal class BannerAds(
         allowed = value
         onMain {
             if (!value) {
-                consentGeneration++
                 invalidateAdRequest()
                 hideBanner()
             }
@@ -101,7 +99,6 @@ internal class BannerAds(
         paymentDialogOpen = value
         onMain {
             if (value) {
-                consentGeneration++
                 invalidateAdRequest()
                 hideBanner()
             } else {
@@ -162,7 +159,6 @@ internal class BannerAds(
         allowed = false
         foreground = false
         paid = true
-        consentGeneration++
         onMain {
             destroyAdView()
             consentInformation = null
@@ -229,7 +225,7 @@ internal class BannerAds(
                 consentOpen = consentOpen,
             )
         ) {
-            showRequiredConsentForm(consentGeneration, information)
+            showRequiredConsentForm(information)
             return
         }
         if (canRequestAds) initializeAds()
@@ -284,7 +280,7 @@ internal class BannerAds(
         )
     }
 
-    private fun showRequiredConsentForm(requestGeneration: Long, information: ConsentInformation) {
+    private fun showRequiredConsentForm(information: ConsentInformation) {
         if (!canBeginConsent()) {
             emit()
             return
@@ -297,19 +293,11 @@ internal class BannerAds(
         UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { formError ->
             onMain {
                 consentOpen = false
+                if (destroyed) return@onMain
                 updatePrivacyRequirement()
                 canRequestAds = information.canRequestAds()
-                if (requestGeneration != consentGeneration || destroyed) {
-                    if (!destroyed) consentFormAttempted = false
-                    emit()
-                    maybeContinue()
-                    return@onMain
-                }
-                if (canRequestAds) initializeAds()
-                else {
-                    hideBanner()
-                    emit(if (formError == null) "" else "Consent form could not be completed.")
-                }
+                emit(if (formError == null || canRequestAds) "" else "Consent form could not be completed.")
+                maybeContinue()
             }
         }
     }
