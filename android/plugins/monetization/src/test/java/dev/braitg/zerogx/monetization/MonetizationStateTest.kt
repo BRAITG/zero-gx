@@ -50,6 +50,133 @@ class MonetizationStateTest {
     }
 
     @Test
+    fun staleInactiveVerificationCannotClearPaidOwnershipAfterNewerRefreshErrors() {
+        val generations = BillingGenerationState()
+        val ownership = OwnershipState()
+        ownership.restoreCached(true)
+        val staleVerification = generations.beginPurchaseQuery(ownership)
+        val currentRefresh = generations.beginPurchaseQuery(ownership)
+        assertFalse(generations.isCurrentPurchase(staleVerification))
+        assertTrue(generations.isCurrentPurchase(currentRefresh))
+        assertFalse(generations.setVerifiedAdFreeIfCurrent(staleVerification, ownership, false))
+        ownership.applyPurchaseState("error")
+
+        assertTrue(ownership.verifiedAdFree)
+        assertFalse(ownership.canAdvertise())
+    }
+
+    @Test
+    fun currentPurchaseGenerationCanCommitVerifiedOwnership() {
+        val generations = BillingGenerationState()
+        val ownership = OwnershipState()
+        ownership.restoreCached(true)
+        val currentRefresh = generations.beginPurchaseQuery(ownership)
+        ownership.applyPurchaseState("not_owned")
+
+        assertTrue(generations.setVerifiedAdFreeIfCurrent(currentRefresh, ownership, false))
+        assertFalse(ownership.verifiedAdFree)
+        assertTrue(ownership.canAdvertise())
+    }
+
+    @Test
+    fun paidColdStartDiscoversPrivacyInformationAndLaterUnpaidCanShowRequiredForm() {
+        assertTrue(
+            MonetizationGates.canRefreshConsentInformation(
+                destroyed = false,
+                foreground = true,
+                consentUpdateInFlight = false,
+                paymentDialogOpen = false,
+                consentOpen = false,
+            ),
+        )
+        assertFalse(
+            MonetizationGates.canRefreshConsentInformation(
+                destroyed = false,
+                foreground = true,
+                consentUpdateInFlight = false,
+                paymentDialogOpen = true,
+                consentOpen = false,
+            ),
+        )
+        assertFalse(
+            MonetizationGates.shouldShowRequiredConsentForm(
+                informationAvailable = true,
+                informationUpdated = true,
+                formAttempted = false,
+                destroyed = false,
+                advertisingAllowed = false,
+                foreground = true,
+                ownershipKnown = false,
+                paid = true,
+                paymentDialogOpen = false,
+                consentOpen = false,
+            ),
+        )
+        assertFalse(
+            MonetizationGates.canInitializeAds(
+                destroyed = false,
+                advertisingAllowed = true,
+                foreground = true,
+                ownershipKnown = true,
+                paid = true,
+                paymentDialogOpen = false,
+                consentOpen = false,
+                canRequestAds = true,
+            ),
+        )
+        assertFalse(
+            MonetizationGates.canShowPrivacyChoices(
+                destroyed = false,
+                foreground = true,
+                informationAvailable = false,
+                privacyRequired = true,
+                consentOpen = false,
+                paymentDialogOpen = false,
+            ),
+        )
+        assertTrue(
+            MonetizationGates.shouldShowRequiredConsentForm(
+                informationAvailable = true,
+                informationUpdated = true,
+                formAttempted = false,
+                destroyed = false,
+                advertisingAllowed = true,
+                foreground = true,
+                ownershipKnown = true,
+                paid = false,
+                paymentDialogOpen = false,
+                consentOpen = false,
+            ),
+        )
+        assertFalse(
+            MonetizationGates.shouldShowRequiredConsentForm(
+                informationAvailable = true,
+                informationUpdated = true,
+                formAttempted = true,
+                destroyed = false,
+                advertisingAllowed = true,
+                foreground = true,
+                ownershipKnown = true,
+                paid = false,
+                paymentDialogOpen = false,
+                consentOpen = false,
+            ),
+        )
+        assertFalse(
+            MonetizationGates.canInitializeAds(
+                destroyed = false,
+                advertisingAllowed = true,
+                foreground = true,
+                ownershipKnown = true,
+                paid = false,
+                paymentDialogOpen = false,
+                consentOpen = false,
+                canRequestAds = false,
+            ),
+        )
+    }
+
+    @Test
     fun requiredPrivacyChoicesDoNotDependOnAdvertisingEligibility() {
         assertTrue(
             MonetizationGates.canShowPrivacyChoices(

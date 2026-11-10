@@ -17,10 +17,12 @@ import com.android.billingclient.api.QueryPurchasesParams
 internal class PlayBilling(
     context: Context,
     private val activity: () -> Activity?,
+    private val generationState: BillingGenerationState,
+    private val ownership: OwnershipState,
     private val emitStoreState: (Long, Boolean, String, String) -> Unit,
     private val emitPurchaseState: (Long, String, String, String) -> Unit,
+    private val emitPurchaseRefreshStarted: (Long) -> Unit,
     private val setPurchaseDialogOpen: (Boolean) -> Unit,
-    private val markOwnershipUnknown: () -> Unit,
 ) {
     private data class ConnectionRequest(
         val ready: () -> Unit,
@@ -42,7 +44,11 @@ internal class PlayBilling(
 
     fun start() {
         val productGeneration = nextGeneration()
-        val purchasesGeneration = nextPurchaseGeneration()
+        val purchasesGeneration = synchronized(generationState) {
+            val generation = generationState.beginPurchaseQuery(ownership)
+            emitPurchaseRefreshStarted(generation)
+            generation
+        }
         onMain {
             ensureConnected(
                 ready = {
@@ -58,8 +64,11 @@ internal class PlayBilling(
     }
 
     fun refreshPurchases(onComplete: (() -> Unit)? = null) {
-        markOwnershipUnknown()
-        val queryGeneration = nextPurchaseGeneration()
+        val queryGeneration = synchronized(generationState) {
+            val generation = generationState.beginPurchaseQuery(ownership)
+            emitPurchaseRefreshStarted(generation)
+            generation
+        }
         onMain {
             ensureConnected(
                 ready = { queryOwnedPurchases(queryGeneration, onComplete) },
@@ -232,7 +241,6 @@ internal class PlayBilling(
         when (result.responseCode) {
             BillingClient.BillingResponseCode.OK -> Unit
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> {
-                markOwnershipUnknown()
                 refreshPurchases { setFlowOpen(false) }
             }
             BillingClient.BillingResponseCode.USER_CANCELED -> {
@@ -264,7 +272,6 @@ internal class PlayBilling(
                 setFlowOpen(false)
             }
             BillingClient.BillingResponseCode.ITEM_ALREADY_OWNED -> {
-                markOwnershipUnknown()
                 refreshPurchases { setFlowOpen(false) }
             }
             else -> {
@@ -301,6 +308,5 @@ internal class PlayBilling(
 
     private companion object {
         const val PRODUCT_ID = "remove_ads"
-        private val generationState = BillingGenerationState()
     }
 }

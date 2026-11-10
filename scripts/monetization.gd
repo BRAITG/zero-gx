@@ -15,11 +15,13 @@ var _http: CommunityTransport
 var _connected_platform: Object
 var _store_callback: Callable
 var _purchase_callback: Callable
+var _purchase_refresh_callback: Callable
 var _ad_callback: Callable
 var _callback_epoch := 0
 var _started := false
 var _last_store_generation := -1
 var _last_purchase_generation := -1
+var _last_purchase_refresh_generation := -1
 var _verification_generation := 0
 var _verification_token := ""
 var _store_ready := false
@@ -132,6 +134,7 @@ func use_defaults() -> void:
 	_verification_token = ""
 	_started = false
 	_last_store_generation = -1
+	_last_purchase_refresh_generation = -1
 	_last_purchase_generation = -1
 	_store_ready = false
 	_price = ""
@@ -224,7 +227,7 @@ func _refresh() -> void:
 	var old_footer := _footer_height
 	var old_ad_loaded := _ad_loaded
 	var owner := _latest_surface()
-	var chrome_visible := available() and owner != null and _active_surface_eligible and not _ad_free
+	var chrome_visible := available() and owner != null and _active_surface_eligible and not _ad_free and not _consent_open
 	var layout := {"ad_pixels": Rect2i(), "button_rect": Rect2(), "footer_height": 0.0, "show_ad": false}
 	if chrome_visible and _chrome != null and is_inside_tree():
 		var viewport := get_viewport()
@@ -278,16 +281,18 @@ func _connect_platform() -> void:
 	_disconnect_platform()
 	_store_callback = Callable(self, "_store_state").bind(_callback_epoch)
 	_purchase_callback = Callable(self, "_purchase_state").bind(_callback_epoch)
+	_purchase_refresh_callback = Callable(self, "_purchase_refresh_started").bind(_callback_epoch)
 	_ad_callback = Callable(self, "_ad_state").bind(_callback_epoch)
 	platform.connect("store_state", _store_callback)
 	platform.connect("purchase_state", _purchase_callback)
+	platform.connect("purchase_refresh_started", _purchase_refresh_callback)
 	platform.connect("ad_state", _ad_callback)
 	_connected_platform = platform
 
 
 func _disconnect_platform() -> void:
 	if _connected_platform != null and is_instance_valid(_connected_platform):
-		for pair in [["store_state", _store_callback], ["purchase_state", _purchase_callback], ["ad_state", _ad_callback]]:
+		for pair in [["store_state", _store_callback], ["purchase_state", _purchase_callback], ["purchase_refresh_started", _purchase_refresh_callback], ["ad_state", _ad_callback]]:
 			if _connected_platform.is_connected(pair[0], pair[1]):
 				_connected_platform.disconnect(pair[0], pair[1])
 	_callback_epoch += 1
@@ -311,8 +316,21 @@ func _store_state(generation: int, available_on_play: bool, formatted_price: Str
 	changed.emit()
 
 
+func _purchase_refresh_started(generation: int, epoch: int) -> void:
+	if epoch != _callback_epoch or generation <= _last_purchase_refresh_generation or generation <= _last_purchase_generation:
+		return
+	_last_purchase_refresh_generation = generation
+	_verification_generation += 1
+	_verification_token = ""
+	_purchase_unverified = false
+	if not _ad_free:
+		_ownership_known = false
+	_refresh()
+	changed.emit()
+
+
 func _purchase_state(generation: int, status: String, token: String, error: String, epoch: int) -> void:
-	if epoch != _callback_epoch or generation <= _last_purchase_generation:
+	if epoch != _callback_epoch or generation <= _last_purchase_generation or generation < _last_purchase_refresh_generation:
 		return
 	_last_purchase_generation = generation
 	_verification_generation += 1
@@ -320,10 +338,11 @@ func _purchase_state(generation: int, status: String, token: String, error: Stri
 	_purchase_unverified = false
 	match status:
 		"not_owned":
+			if not _set_verified_ad_free(false, generation):
+				return
 			_ownership_known = true
 			_ad_free = false
 			_message = ""
-			_set_verified_ad_free(false)
 		"purchased":
 			if token == "":
 				if not _ad_free:
@@ -336,7 +355,7 @@ func _purchase_state(generation: int, status: String, token: String, error: Stri
 				_purchase_unverified = true
 				_verification_token = token
 				_message = "Verifying purchase…"
-				_verify_purchase(token, _verification_generation)
+				_verify_purchase(token, _verification_generation, generation)
 		"pending":
 			if not _ad_free:
 				_ownership_known = false
@@ -370,7 +389,7 @@ func _ad_state(loaded: bool, privacy_needed: bool, consent_dialog_open: bool, er
 		changed.emit()
 
 
-func _verify_purchase(token: String, generation: int) -> void:
+func _verify_purchase(token: String, verification_generation: int, purchase_generation: int) -> void:
 	var sender := transport
 	if sender == null:
 		_verification_token = ""
@@ -381,26 +400,29 @@ func _verify_purchase(token: String, generation: int) -> void:
 	var url := str(ProjectSettings.get_setting("community/api_url", DEFAULT_API_URL)).trim_suffix("/") + PURCHASE_PATH
 	var body := JSON.stringify({"purchaseToken": token}).to_utf8_buffer()
 	var response: Dictionary = await sender.send("POST", url, PackedStringArray(["Content-Type: application/json"]), body)
-	if generation != _verification_generation or token != _verification_token:
+	if verification_generation != _verification_generation or token != _verification_token:
 		return
 	_verification_token = ""
 	var status := int(response.get("status", 0))
 	var data: Variant = _parse_json(response.get("body", PackedByteArray()))
 	if status == 200 and data is Dictionary and data.size() == 1 and data.get("ad_free") is bool and data.ad_free:
+		if not _set_verified_ad_free(true, purchase_generation):
+			return
 		_ad_free = true
 		_ownership_known = true
 		_purchase_unverified = false
 		_verification_token = ""
 		_ad_loaded = false
 		_message = "Purchase verified. Ads have been removed."
-		_set_verified_ad_free(true)
 	elif status == 202 and data is Dictionary and data.size() == 1 and data.get("pending") is bool and data.pending:
 		_message = "Purchase pending. Ads will be removed after Google Play confirms it."
 	elif status == 404 and data is Dictionary and data.get("code") == "purchase_invalid":
-		_revoke_purchase()
+		if not _revoke_purchase(purchase_generation):
+			return
 		_message = "Google Play did not recognize this purchase."
 	elif status == 409 and data is Dictionary and data.get("code") == "purchase_inactive":
-		_revoke_purchase()
+		if not _revoke_purchase(purchase_generation):
+			return
 		_message = "This purchase is no longer active."
 	else:
 		_message = "Purchase verification is unavailable. Existing verified ownership has not changed."
@@ -408,19 +430,21 @@ func _verify_purchase(token: String, generation: int) -> void:
 	changed.emit()
 
 
-func _revoke_purchase() -> void:
+func _revoke_purchase(purchase_generation: int) -> bool:
+	if not _set_verified_ad_free(false, purchase_generation):
+		return false
 	_ad_free = false
 	_ownership_known = true
 	_purchase_unverified = false
 	_verification_token = ""
 	_ad_loaded = false
-	_set_verified_ad_free(false)
+	return true
 
 
-func _set_verified_ad_free(value: bool) -> void:
-	if available():
-		platform.call("setVerifiedAdFree", value)
-
+func _set_verified_ad_free(value: bool, generation: int) -> bool:
+	if not available():
+		return false
+	return bool(platform.call("setVerifiedAdFree", value, generation))
 
 func _parse_json(bytes: Variant) -> Variant:
 	if not bytes is PackedByteArray:

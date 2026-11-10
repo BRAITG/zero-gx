@@ -50,6 +50,8 @@ internal class BannerAds(
     private var consentInformation: ConsentInformation? = null
     private var consentUpdateInFlight = false
     private var consentUpdated = false
+    private var consentInformationUpdated = false
+    private var consentFormAttempted = false
     private var consentGeneration = 0L
     private var privacyRequired = false
     private var sdkInitializing = false
@@ -65,9 +67,8 @@ internal class BannerAds(
                 invalidateAdRequest()
                 destroyAdView()
                 emit()
-            } else {
-                maybeContinue()
             }
+            maybeContinue()
         }
     }
 
@@ -91,9 +92,8 @@ internal class BannerAds(
                 consentGeneration++
                 invalidateAdRequest()
                 hideBanner()
-            } else {
-                maybeContinue()
             }
+            maybeContinue()
         }
     }
 
@@ -171,14 +171,16 @@ internal class BannerAds(
     }
 
     private fun maybeContinue() {
-        if (!canBeginConsent()) {
+        if (!MonetizationGates.canRefreshConsentInformation(
+                destroyed = destroyed,
+                foreground = foreground,
+                consentUpdateInFlight = consentUpdateInFlight,
+                paymentDialogOpen = paymentDialogOpen,
+                consentOpen = consentOpen,
+            )
+        ) {
             hideBanner()
             emit()
-            return
-        }
-        if (appId.isBlank() || bannerUnitId.isBlank()) {
-            hideBanner()
-            emit("AdMob app or banner ID is not configured.")
             return
         }
         val information = consentInformation ?: UserMessagingPlatform.getConsentInformation(activity).also {
@@ -190,6 +192,46 @@ internal class BannerAds(
         }
         updatePrivacyRequirement()
         canRequestAds = information.canRequestAds()
+        if (!consentInformationUpdated) {
+            if (canRequestAds && canBeginConsent()) {
+                if (appId.isBlank() || bannerUnitId.isBlank()) {
+                    hideBanner()
+                    emit("AdMob app or banner ID is not configured.")
+                } else {
+                    initializeAds()
+                }
+            } else {
+                hideBanner()
+                emit()
+            }
+            return
+        }
+        if (!canBeginConsent()) {
+            hideBanner()
+            emit()
+            return
+        }
+        if (appId.isBlank() || bannerUnitId.isBlank()) {
+            hideBanner()
+            emit("AdMob app or banner ID is not configured.")
+            return
+        }
+        if (MonetizationGates.shouldShowRequiredConsentForm(
+                informationAvailable = consentInformation != null,
+                informationUpdated = consentInformationUpdated,
+                formAttempted = consentFormAttempted,
+                destroyed = destroyed,
+                advertisingAllowed = allowed,
+                foreground = foreground,
+                ownershipKnown = ownershipKnown,
+                paid = paid,
+                paymentDialogOpen = paymentDialogOpen,
+                consentOpen = consentOpen,
+            )
+        ) {
+            showRequiredConsentForm(consentGeneration, information)
+            return
+        }
         if (canRequestAds) initializeAds()
         else {
             hideBanner()
@@ -198,9 +240,15 @@ internal class BannerAds(
     }
 
     private fun requestConsentUpdate(information: ConsentInformation) {
-        if (consentUpdateInFlight || !canBeginConsent()) return
+        if (!MonetizationGates.canRefreshConsentInformation(
+                destroyed = destroyed,
+                foreground = foreground,
+                consentUpdateInFlight = consentUpdateInFlight,
+                paymentDialogOpen = paymentDialogOpen,
+                consentOpen = consentOpen,
+            )
+        ) return
         consentUpdateInFlight = true
-        val requestGeneration = ++consentGeneration
         val parameters = ConsentRequestParameters.Builder()
             .setTagForUnderAgeOfConsent(true)
             .build()
@@ -210,26 +258,23 @@ internal class BannerAds(
             {
                 onMain {
                     consentUpdateInFlight = false
-                    if (destroyed || requestGeneration != consentGeneration) {
-                        maybeContinue()
-                        return@onMain
-                    }
+                    if (destroyed) return@onMain
                     consentUpdated = true
+                    consentInformationUpdated = true
                     updatePrivacyRequirement()
-                    showRequiredConsentForm(requestGeneration, information)
+                    canRequestAds = information.canRequestAds()
+                    maybeContinue()
                 }
             },
             { _ ->
                 onMain {
                     consentUpdateInFlight = false
-                    if (destroyed || requestGeneration != consentGeneration) {
-                        maybeContinue()
-                        return@onMain
-                    }
+                    if (destroyed) return@onMain
                     consentUpdated = true
+                    consentInformationUpdated = false
                     updatePrivacyRequirement()
                     canRequestAds = information.canRequestAds()
-                    if (canRequestAds) initializeAds()
+                    if (canRequestAds && canBeginConsent()) maybeContinue()
                     else {
                         hideBanner()
                         emit("Consent information could not be refreshed.")
@@ -244,6 +289,7 @@ internal class BannerAds(
             emit()
             return
         }
+        consentFormAttempted = true
         consentOpen = true
         invalidateAdRequest()
         hideBanner()
@@ -254,6 +300,7 @@ internal class BannerAds(
                 updatePrivacyRequirement()
                 canRequestAds = information.canRequestAds()
                 if (requestGeneration != consentGeneration || destroyed) {
+                    if (!destroyed) consentFormAttempted = false
                     emit()
                     maybeContinue()
                     return@onMain
@@ -266,6 +313,7 @@ internal class BannerAds(
             }
         }
     }
+
 
     private fun updatePrivacyRequirement() {
         privacyRequired = consentInformation?.privacyOptionsRequirementStatus ==
@@ -374,9 +422,15 @@ internal class BannerAds(
         )
     }
 
-    private fun canBeginConsent(): Boolean =
-        !destroyed && allowed && foreground && ownershipKnown && !paid && !paymentDialogOpen && !consentOpen
-
+    private fun canBeginConsent(): Boolean = MonetizationGates.canBeginConsent(
+        destroyed = destroyed,
+        advertisingAllowed = allowed,
+        foreground = foreground,
+        ownershipKnown = ownershipKnown,
+        paid = paid,
+        paymentDialogOpen = paymentDialogOpen,
+        consentOpen = consentOpen,
+    )
     private fun canDisplayAds(): Boolean = canBeginConsent() && hasRoom() && canRequestAds && sdkInitialized
 
     private fun hasRoom(): Boolean =

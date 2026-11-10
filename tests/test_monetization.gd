@@ -130,6 +130,64 @@ func test_old_purchase_queries_and_verification_responses_cannot_reverse_newer_s
 	check(not current_platform.advertising_allowed, "a stale success must not revive advertising after reset")
 
 
+func test_refresh_start_invalidates_held_paid_verification_and_preserves_state() -> void:
+	var setup := _boot(true)
+	if setup.is_empty():
+		return
+	var money: Variant = setup.money
+	var platform: Variant = setup.platform
+	var transport: FakeTransport = setup.transport
+	transport.hold("POST", PURCHASE_ROUTE)
+	transport.answer("POST", PURCHASE_ROUTE, 409, {"error": "Inactive.", "code": "purchase_inactive"})
+	platform.purchase_state.emit(50, "purchased", "held-inactive-token", "")
+	await frames(2)
+	check(_purchase_requests(transport).size() == 1, "the paid token verification must be held in flight")
+
+	var newer_query: int = platform.begin_purchase_refresh()
+	check(platform.native_purchase_generation == newer_query, "the newer native query must be pending while A remains held")
+	transport.release_hold("POST", PURCHASE_ROUTE)
+	await frames(3)
+	check(money.ad_free and platform.cached_ad_free, "A's inactive response must not revoke paid ownership after B starts")
+	platform.purchase_state.emit(newer_query, "error", "", "Play query failed.")
+	await frames(2)
+	check(money.ad_free and platform.cached_ad_free, "B's query error must preserve the cached paid entitlement")
+
+
+func test_native_refresh_generation_rejects_verification_before_start_signal_arrives() -> void:
+	var setup := _boot(true)
+	if setup.is_empty():
+		return
+	var money: Variant = setup.money
+	var platform: Variant = setup.platform
+	var transport: FakeTransport = setup.transport
+	transport.hold("POST", PURCHASE_ROUTE)
+	transport.answer("POST", PURCHASE_ROUTE, 409, {"error": "Inactive.", "code": "purchase_inactive"})
+	platform.purchase_state.emit(60, "purchased", "race-inactive-token", "")
+	await frames(2)
+	check(_purchase_requests(transport).size() == 1, "the older token verification must be held in flight")
+
+	var newer_query: int = platform.begin_purchase_refresh(false)
+	transport.release_hold("POST", PURCHASE_ROUTE)
+	await frames(3)
+	check(money.ad_free and platform.cached_ad_free, "the native generation must reject A's write before Godot receives B's start signal")
+	platform.announce_purchase_refresh_started(newer_query)
+	platform.purchase_state.emit(newer_query, "error", "", "Play query failed.")
+	await frames(2)
+	check(money.ad_free and platform.cached_ad_free, "B's later start and error must leave cached paid ownership intact")
+
+
+func test_refresh_start_accepts_its_same_generation_ownership_result() -> void:
+	var setup := _boot(true)
+	if setup.is_empty():
+		return
+	var money: Variant = setup.money
+	var platform: Variant = setup.platform
+	var current_query: int = platform.begin_purchase_refresh()
+	platform.purchase_state.emit(current_query, "not_owned", "", "")
+	await frames(2)
+	check(not money.ad_free and not platform.cached_ad_free, "B's current same-generation not-owned result must revoke cached ownership")
+
+
 func test_offline_or_503_preserves_verified_ownership_but_authoritative_revocation_clears_it() -> void:
 	var setup := _boot(true)
 	if setup.is_empty():

@@ -5,6 +5,8 @@ extends CanvasLayer
 var _root: Control
 var _button: Button
 var _surface: Node
+var _restore_button_focus := false
+var _restore_focus_surface_id := 0
 const TOUCH_TARGET_BASE_META := &"monetization_touch_target_base_height"
 const TOUCH_TARGET_WATCHED_META := &"monetization_touch_target_watched"
 
@@ -25,10 +27,13 @@ func _ready() -> void:
 
 
 func update(layout: Dictionary, shown: bool, surface: Node) -> void:
+	var previous_surface := _surface
 	_surface = surface
 	var target: Rect2 = layout.get("button_rect", Rect2())
 	var visible := shown and target.size.x > 0.0 and target.size.y > 0.0
 	if _button.visible and not visible and get_viewport().gui_get_focus_owner() == _button:
+		_restore_button_focus = is_instance_valid(previous_surface)
+		_restore_focus_surface_id = previous_surface.get_instance_id() if _restore_button_focus else 0
 		_button.release_focus()
 		if is_instance_valid(_surface):
 			Style.focus_first(_surface)
@@ -36,6 +41,11 @@ func update(layout: Dictionary, shown: bool, surface: Node) -> void:
 	if visible:
 		_button.position = target.position
 		_button.size = target.size
+		if _restore_button_focus:
+			if is_instance_valid(surface) and surface.get_instance_id() == _restore_focus_surface_id:
+				_button.grab_focus()
+			_restore_button_focus = false
+			_restore_focus_surface_id = 0
 
 
 func _open_purchase() -> void:

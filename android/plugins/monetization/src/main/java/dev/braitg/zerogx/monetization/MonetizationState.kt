@@ -39,9 +39,6 @@ internal class OwnershipState {
         }
     }
 
-    fun markUnknown() {
-        if (!verifiedAdFree) ownershipKnown = false
-    }
 
     fun canAdvertise(): Boolean = ownershipKnown && !verifiedAdFree && !refreshInProgress
 }
@@ -65,6 +62,13 @@ internal class BillingGenerationState {
     fun nextPurchaseQuery(): Long = advancePurchase()
 
     @Synchronized
+    fun beginPurchaseQuery(ownership: OwnershipState): Long {
+        val generation = advancePurchase()
+        ownership.beginPurchaseRefresh()
+        return generation
+    }
+
+    @Synchronized
     fun nextPurchaseUpdate(): Long = advancePurchase()
 
     @Synchronized
@@ -72,6 +76,13 @@ internal class BillingGenerationState {
 
     @Synchronized
     fun isCurrentPurchase(generation: Long): Boolean = latestPurchase == generation
+
+    @Synchronized
+    fun setVerifiedAdFreeIfCurrent(generation: Long, ownership: OwnershipState, value: Boolean): Boolean {
+        if (latestPurchase != generation) return false
+        ownership.setVerifiedAdFree(value)
+        return true
+    }
 
     private fun advancePurchase(): Long {
         latest += 1
@@ -81,6 +92,50 @@ internal class BillingGenerationState {
 }
 
 internal object MonetizationGates {
+    fun canRefreshConsentInformation(
+        destroyed: Boolean,
+        foreground: Boolean,
+        consentUpdateInFlight: Boolean,
+        paymentDialogOpen: Boolean,
+        consentOpen: Boolean,
+    ): Boolean =
+        !destroyed && foreground && !consentUpdateInFlight && !paymentDialogOpen && !consentOpen
+
+    fun canBeginConsent(
+        destroyed: Boolean,
+        advertisingAllowed: Boolean,
+        foreground: Boolean,
+        ownershipKnown: Boolean,
+        paid: Boolean,
+        paymentDialogOpen: Boolean,
+        consentOpen: Boolean,
+    ): Boolean =
+        !destroyed && advertisingAllowed && foreground && ownershipKnown && !paid &&
+            !paymentDialogOpen && !consentOpen
+
+    fun shouldShowRequiredConsentForm(
+        informationAvailable: Boolean,
+        informationUpdated: Boolean,
+        formAttempted: Boolean,
+        destroyed: Boolean,
+        advertisingAllowed: Boolean,
+        foreground: Boolean,
+        ownershipKnown: Boolean,
+        paid: Boolean,
+        paymentDialogOpen: Boolean,
+        consentOpen: Boolean,
+    ): Boolean =
+        informationAvailable && informationUpdated && !formAttempted &&
+            canBeginConsent(
+                destroyed,
+                advertisingAllowed,
+                foreground,
+                ownershipKnown,
+                paid,
+                paymentDialogOpen,
+                consentOpen,
+            )
+
     fun canShowPrivacyChoices(
         destroyed: Boolean,
         foreground: Boolean,

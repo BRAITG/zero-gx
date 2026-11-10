@@ -25,6 +25,10 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
         String::class.java,
         String::class.java,
     )
+    private val purchaseRefreshStartedSignal = SignalInfo(
+        "purchase_refresh_started",
+        Long::class.javaObjectType,
+    )
     private val adStateSignal = SignalInfo(
         "ad_state",
         Boolean::class.javaObjectType,
@@ -34,6 +38,7 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     )
 
     private val ownership = OwnershipState()
+    private val purchaseGenerations = BillingGenerationState()
     @Volatile private var started = false
     private var bannerAds: BannerAds? = null
     private var billing: PlayBilling? = null
@@ -41,7 +46,7 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     override fun getPluginName(): String = "ZeroGxMonetization"
 
     override fun getPluginSignals(): Set<SignalInfo> =
-        setOf(storeStateSignal, purchaseStateSignal, adStateSignal)
+        setOf(storeStateSignal, purchaseStateSignal, purchaseRefreshStartedSignal, adStateSignal)
 
     override fun onMainCreate(activity: Activity?): View? {
         val activeActivity = activity ?: return null
@@ -64,12 +69,8 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     override fun shouldBeOnTop(): Boolean = true
 
     override fun onMainResume() {
-        if (started) {
-            ownership.beginPurchaseRefresh()
-            syncOwnership()
-        }
-        bannerAds?.setForeground(true)
         if (started) billing?.refreshPurchases()
+        bannerAds?.setForeground(true)
     }
 
     override fun onMainPause() {
@@ -89,24 +90,21 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
         if (started) return
         val hostActivity = activity ?: return
         started = true
-        ownership.beginPurchaseRefresh()
-        syncOwnership()
         billing = PlayBilling(
             hostActivity.applicationContext,
             { activity },
+            purchaseGenerations,
+            ownership,
             ::emitStoreState,
             ::handlePurchaseState,
+            ::emitPurchaseRefreshStarted,
             { open -> bannerAds?.setPurchaseDialogOpen(open) },
-            { markOwnershipUnknown() },
         ).also { it.start() }
     }
 
     @UsedByGodot
     fun refreshPurchases() {
-        val currentBilling = billing ?: return
-        ownership.beginPurchaseRefresh()
-        syncOwnership()
-        currentBilling.refreshPurchases()
+        billing?.refreshPurchases()
     }
 
     @UsedByGodot
@@ -123,14 +121,18 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     fun getCachedAdFree(): Boolean = ownership.verifiedAdFree
 
     @UsedByGodot
-    fun setVerifiedAdFree(value: Boolean) {
-        ownership.setVerifiedAdFree(value)
-        activity?.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            ?.edit()
-            ?.putBoolean(VERIFIED_AD_FREE, value)
-            ?.apply()
-        syncOwnership()
-    }
+    fun setVerifiedAdFree(value: Boolean, generation: Long): Boolean =
+        synchronized(purchaseGenerations) {
+            if (!started || !purchaseGenerations.setVerifiedAdFreeIfCurrent(generation, ownership, value)) {
+                return@synchronized false
+            }
+            activity?.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+                ?.edit()
+                ?.putBoolean(VERIFIED_AD_FREE, value)
+                ?.apply()
+            syncOwnership()
+            true
+        }
 
     @UsedByGodot
     fun getDensity(): Double = activity?.resources?.displayMetrics?.density?.toDouble() ?: 1.0
@@ -146,21 +148,24 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun handlePurchaseState(generation: Long, status: String, token: String, error: String) {
-        if (!started) return
-        val currentBilling = billing ?: return
-        if (!currentBilling.isCurrentPurchaseGeneration(generation)) return
-        ownership.applyPurchaseState(status)
-        syncOwnership()
-        emitSignal(purchaseStateSignal.name, generation, status, token, error)
+        synchronized(purchaseGenerations) {
+            if (!started) return@synchronized
+            val currentBilling = billing ?: return@synchronized
+            if (!currentBilling.isCurrentPurchaseGeneration(generation)) return@synchronized
+            ownership.applyPurchaseState(status)
+            syncOwnership()
+            emitSignal(purchaseStateSignal.name, generation, status, token, error)
+        }
     }
 
-    private fun markOwnershipUnknown() {
-        ownership.markUnknown()
-        syncOwnership()
-    }
 
     private fun syncOwnership() {
         bannerAds?.setOwnership(ownership.canAdvertise(), ownership.verifiedAdFree)
+    }
+    private fun emitPurchaseRefreshStarted(generation: Long) {
+        if (!started) return
+        syncOwnership()
+        emitSignal(purchaseRefreshStartedSignal.name, generation)
     }
 
     private fun emitStoreState(generation: Long, available: Boolean, formattedPrice: String, error: String) {

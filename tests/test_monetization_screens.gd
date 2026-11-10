@@ -461,6 +461,46 @@ func test_required_privacy_choices_remain_explicit_when_ads_are_disallowed() -> 
 		await frames(2)
 
 
+func test_consent_dialog_suppresses_chrome_and_restores_focus_after_close() -> void:
+	_leave_scene()
+	var setup := _boot()
+	if setup.is_empty():
+		return
+	var money: Variant = setup.money
+	var platform: Variant = setup.platform
+	platform.store_state.emit(70, true, PRICE, "")
+	platform.purchase_state.emit(71, "not_owned", "", "")
+	platform.emit_ad_state(true, false, false, "")
+	var home: Control = MAIN.menu(MAIN.Page.HOME)
+	tree.root.add_child(home)
+	tree.current_scene = home
+	money.set_surface(home, true)
+	await frames(2)
+
+	var shortcut := _button(tree.root, "Remove ads")
+	check(shortcut != null, "an eligible unpaid Home surface must expose its purchase shortcut")
+	if shortcut == null:
+		_leave_scene()
+		return
+	shortcut.grab_focus()
+	check(tree.root.gui_get_focus_owner() == shortcut, "the shortcut must own focus before the consent dialog opens")
+
+	platform.emit_ad_state(false, false, true, "")
+	await frames(2)
+	check(money.consent_open and money.footer_height == 0.0, "an open consent dialog must suppress the Godot footer")
+	check(_button(tree.root, "Remove ads") == null, "an open consent dialog must hide the purchase shortcut")
+	check(not platform.advertising_allowed and not money.ad_loaded, "an open consent dialog must suppress advertising")
+	var focus_during_consent: Control = tree.root.gui_get_focus_owner() as Control
+	check(focus_during_consent != null and focus_during_consent.is_visible_in_tree() and focus_during_consent != shortcut, "focus must leave the hidden shortcut while consent is open")
+
+	platform.emit_ad_state(true, false, false, "")
+	await frames(2)
+	check(not money.consent_open and money.footer_height > 0.0, "closing consent must restore eligible Home chrome")
+	check(_button(tree.root, "Remove ads") == shortcut, "closing consent must restore the purchase shortcut")
+	check(tree.root.gui_get_focus_owner() == shortcut, "closing consent must restore the prior focus")
+	_leave_scene()
+
+
 func test_editor_root_suppresses_monetization() -> void:
 	var setup := _boot()
 	if setup.is_empty():
