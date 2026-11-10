@@ -131,7 +131,15 @@ The native build uses conservative restricted treatment for every player: it set
 3. Create exactly one purchase option with a unique option ID chosen by the publisher. Set **Purchase type: Buy**; never choose Rent. Do not add other purchase options or offers.
 4. In Advanced options, leave **Quantities and limits** disabled so a user cannot buy multiple units in one transaction. Make the option available only in regions where the app is available.
 5. In the regional **Price** column, edit the specific rows manually to **EUR 3.00**, **USD 5.00** and **BRL 10.00**. Inspect the resulting regional prices; do not use bulk currency conversion for these overrides.
-6. Activate the single purchase option/product only when the release prerequisites below are met. Do not add discount, pre-order or Play Points offers.
+6. Activate the single Buy purchase option after its product details and regional prices are correct; the active product is required for license-test purchases but does not enable monetization in the app. Keep the checked-in `Android Play` preset off. For a local purchase test, temporarily enable the `Android` debug preset and use `--debug` preflight/sample IDs.
+
+
+### License testers and test purchases
+
+1. In Play Console open **Manage account → Play apps settings → Monetization settings → License testing**. Add tester email lists or Google Groups, then save changes ([Google setup guide](https://support.google.com/googleplay/android-developer/answer/6062777?hl=en)).
+2. Publish the app package to an internal test track and publish/activate the one-time product. Add the tester to that track. Use a matching-package monetization test build: a temporarily enabled `Android` debug APK with `--debug` sample ad IDs, or a separately approved enabled internal bundle after release prerequisites. Install the test build on a Play-enabled device signed in to the license-tester account; the account that downloaded the app must be licensed.
+3. License testers see Google Play test payment methods, including always-approves, always-declines and delayed test instruments ([Billing test guidance](https://developer.android.com/google/play/billing/test)); these avoid real charges and exercise the normal purchase flow. Do not test with a non-license account or real payment method.
+4. Test purchase acknowledgement, restore after reinstall, offline entitlement and refund/revocation only against an explicitly authorized HTTPS staging verifier; never send test purchase tokens to the default production endpoint. If staging is unavailable, defer these tests. The current AVD lacks a Play Billing service, so it cannot prove this lifecycle.
 
 The examples above are manual overrides, not prices computed from exchange rates or price-charming defaults. In the app, show Google Play's returned formatted price and currency; never hard-code these examples.
 
@@ -151,9 +159,9 @@ Use **Manage account → Account details → About you** for account-level trade
 
 ### Activation prerequisites
 
-- Keep monetization disabled until the active one-time `remove_ads` product, real AdMob app/banner IDs, tester accounts and exact manual regional prices are ready.
+- Product activation for license testing is safe while `zero_gx_monetization/enabled` remains false in the app presets. Keep the monetization export disabled until real AdMob IDs, policy/Data safety answers, publisher age settings, service-account permissions and the authorized test purchase lifecycle are verified.
 - Verify Google Play Developer API enablement and the service account's **View financial data, orders, and cancellation survey responses** and **Manage orders and subscriptions** permissions for this app. The secret name alone does not prove permissions.
-- Complete a genuine Play license-test purchase, pending/cancellation, acknowledgement, restore after reinstall, offline entitlement and refund/revocation refresh using a Play-installed test build and authorized HTTPS staging Worker.
+- Complete an actual Play license-test transaction with a listed license tester and displayed test payment method (no real charge): pending/cancellation, acknowledgement, restore after reinstall, offline entitlement and refund/revocation refresh on an authorized HTTPS staging Worker.
 - Verify publisher target-audience and privacy settings, final merged APK/AAB permissions and data declarations, and the app-ads.txt/ad-readiness state before activation.
 - Never use sample IDs or simulated success in a release. The read-only AVD does not include a real Play Billing service; no real store purchase or test-ad lifecycle has been proven.
 

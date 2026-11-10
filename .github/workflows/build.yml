@@ -45,7 +45,7 @@ jobs:
           path: |
             ~/godot
             ~/.local/share/godot/export_templates
-          key: godot-${{ env.GODOT_VERSION }}-android-gradle-desktop-web
+          key: godot-${{ env.GODOT_VERSION }}-android-gradle-desktop-web-nothreads
 
       - name: Install Godot and Android templates
         if: steps.godot-cache.outputs.cache-hit != 'true'
@@ -60,7 +60,7 @@ jobs:
           curl -fsSL -o /tmp/templates.tpz "$base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
           dest=~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
           mkdir -p "$dest"
-          unzip -q -j /tmp/templates.tpz templates/android_debug.apk templates/android_release.apk templates/android_source.zip templates/version.txt templates/linux_release.x86_64 templates/windows_release_x86_64.exe templates/macos.zip templates/web_release.zip -d "$dest"
+          unzip -q -j /tmp/templates.tpz templates/android_debug.apk templates/android_release.apk templates/android_source.zip templates/version.txt templates/linux_release.x86_64 templates/windows_release_x86_64.exe templates/macos.zip templates/web_release.zip templates/web_nothreads_debug.zip templates/web_nothreads_release.zip -d "$dest"
           rm /tmp/godot.zip /tmp/templates.tpz
 
       - name: Test
@@ -81,6 +81,15 @@ jobs:
               -storepass android -keypass android -keyalg RSA -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
           mkdir -p build
+          android_preflight=$(~/godot/godot --headless --path . --script res://tools/check_monetization_export.gd -- --preset "Android")
+          printf '%s\n' "$android_preflight"
+          case "$android_preflight" in
+            *"Monetization preflight passed for 'Android' (monetization disabled)."*) ;;
+            *)
+              echo "The ordinary Android export preset must remain monetization-disabled."
+              exit 1
+              ;;
+          esac
           ~/godot/godot --headless --path . --install-android-build-template --export-debug "Android" build/zero-gx.apk
           apksigner=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)/apksigner
           "$apksigner" verify --print-certs build/zero-gx.apk | head -3
@@ -110,11 +119,18 @@ jobs:
           cmp android/plugins/monetization/build/outputs/aar/zero_gx_monetization-debug.aar addons/zero_gx_monetization/bin/zero_gx_monetization-debug.aar
           cmp android/plugins/monetization/build/outputs/aar/zero_gx_monetization-release.aar addons/zero_gx_monetization/bin/zero_gx_monetization-release.aar
           dependencies=$(android/build/gradlew -p android/plugins/monetization dependencies --configuration releaseRuntimeClasspath)
-          grep -Fq 'com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.6.0' <<< "$dependencies"
-          grep -Fq 'com.google.android.ump:user-messaging-platform:4.0.0' <<< "$dependencies"
-          grep -Fq 'com.android.billingclient:billing:9.1.0' <<< "$dependencies"
-          if grep -Eq 'com\.google\.android\.gms:play-services-ads(:| )' <<< "$dependencies"; then
-            echo "The legacy Google Mobile Ads SDK must not be added alongside Next-Gen."
+          for pin in \
+            'com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk:1.6.0' \
+            'com.google.android.ump:user-messaging-platform:4.0.0' \
+            'com.android.billingclient:billing:9.1.0'; do
+            awk -v pin="$pin" '{ for (i = 1; i <= NF; i++) if ($i == pin) found = 1 } END { exit !found }' <<< "$dependencies" || { echo "Missing exact pinned dependency token: $pin"; exit 1; }
+            if grep -F "$pin" <<< "$dependencies" | grep -Fq -- ' -> '; then
+              echo "Dependency resolved away from pinned version: $pin"
+              exit 1
+            fi
+          done
+          if grep -Eq 'com\.google\.android\.gms:play-services-ads(-lite)?(:| )' <<< "$dependencies"; then
+            echo "Legacy Google Mobile Ads full/Lite SDK must not be added alongside Next-Gen."
             exit 1
           fi
 
@@ -166,14 +182,24 @@ jobs:
           echo "$UPLOAD_KEYSTORE_B64" | base64 -d > "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
           # Play needs a higher version code for every upload: the run number always grows.
           sed -i "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" export_presets.cfg
-          ~/godot/godot --headless --path . --script res://tools/check_monetization_export.gd -- --preset "Android Play"
+          play_preflight=$(~/godot/godot --headless --path . --script res://tools/check_monetization_export.gd -- --preset "Android Play")
+          printf '%s\n' "$play_preflight"
+          case "$play_preflight" in
+            *"Monetization preflight passed for 'Android Play' (monetization disabled)."*) play_monetization=disabled ;;
+            *"Monetization preflight passed for 'Android Play' (valid release IDs)."*) play_monetization=enabled ;;
+            *)
+              echo "The Play preset did not report a valid monetization mode."
+              exit 1
+              ;;
+          esac
           ~/godot/godot --headless --path . --export-release "Android Play" build/zero-gx.aab
           jarsigner -verify build/zero-gx.aab
           unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Ldev/braitg/zerogx/integrity/IntegrityPlugin;'
           unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Lcom/google/android/gms/games/PlayGames;'
           unzip -p build/zero-gx.aab base/manifest/AndroidManifest.xml | grep -aq 'android.permission.INTERNET'
           unzip -p build/zero-gx.aab base/manifest/AndroidManifest.xml | grep -aq 'com.google.android.gms.games.APP_ID'
-          if unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Ldev/braitg/zerogx/monetization/MonetizationPlugin;'; then
+          if [ "$play_monetization" = enabled ]; then
+            unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Ldev/braitg/zerogx/monetization/MonetizationPlugin;'
             dex="$RUNNER_TEMP/monetization-play.dex"
             unzip -p build/zero-gx.aab 'base/dex/*.dex' > "$dex"
             grep -aFq 'Lcom/google/android/libraries/ads/mobile/sdk/' "$dex"
@@ -189,12 +215,12 @@ jobs:
             fi
             rm "$dex"
           else
-            if unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aqE 'Lcom/google/android/libraries/ads/mobile/sdk/|Lcom/google/android/ump/|Lcom/android/billingclient/'; then
-              echo "Monetization SDK classes are present without the plugin in the Play bundle."
+            if unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aqE 'Ldev/braitg/zerogx/monetization/MonetizationPlugin;|Lcom/google/android/libraries/ads/mobile/sdk/|Lcom/google/android/ump/|Lcom/android/billingclient/'; then
+              echo "Monetization plugin/SDK classes are present in the disabled Play bundle."
               exit 1
             fi
             if unzip -p build/zero-gx.aab base/manifest/AndroidManifest.xml | strings -a | grep -aqE 'com.android.vending.BILLING|com.google.android.gms.permission.AD_ID|com.google.android.gms.ads.APPLICATION_ID|dev.braitg.zerogx.BANNER_UNIT_ID'; then
-              echo "Monetization permission or ad metadata is present in the free Play bundle."
+              echo "Monetization permission or ad metadata is present in the disabled Play bundle."
               exit 1
             fi
           fi
@@ -285,10 +311,34 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Check that graphify-out/graph.json is fresh
         run: |
-          sh tools/ensure-graphify.sh
+          git show HEAD:graphify-out/graph.json > "$RUNNER_TEMP/graph-committed.json"
           PYTHONHASHSEED=0 graphify update .
-          git diff --exit-code --stat -- graphify-out/graph.json ||
-            { echo "::error::graphify-out/graph.json is stale: run 'sh tools/setup-hooks.sh' and commit again, or 'PYTHONHASHSEED=0 graphify update .' and commit the graph."; exit 1; }
+          if ! git diff --quiet -- graphify-out/graph.json; then
+            echo "::error::graphify-out/graph.json is stale; bounded node/edge delta follows."
+            git diff --stat -- graphify-out/graph.json
+            jq -n \
+              --slurpfile committed "$RUNNER_TEMP/graph-committed.json" \
+              --slurpfile rebuilt graphify-out/graph.json '
+              ($committed[0].nodes | map(.id) | sort) as $old_nodes |
+              ($rebuilt[0].nodes | map(.id) | sort) as $new_nodes |
+              ($committed[0].links | map({source, target, relation}) | unique_by([.source, .target, .relation])) as $old_edges |
+              ($rebuilt[0].links | map({source, target, relation}) | unique_by([.source, .target, .relation])) as $new_edges |
+              ($new_nodes - $old_nodes) as $added_nodes |
+              ($old_nodes - $new_nodes) as $removed_nodes |
+              ($new_edges - $old_edges) as $added_edges |
+              ($old_edges - $new_edges) as $removed_edges |
+              {
+                added_node_count: ($added_nodes | length),
+                added_node_ids: $added_nodes[:50],
+                removed_node_count: ($removed_nodes | length),
+                removed_node_ids: $removed_nodes[:50],
+                added_edge_count: ($added_edges | length),
+                added_edge_endpoints: $added_edges[:50],
+                removed_edge_count: ($removed_edges | length),
+                removed_edge_endpoints: $removed_edges[:50]
+              }'
+            exit 1
+          fi
 
   server:
     runs-on: ubuntu-24.04

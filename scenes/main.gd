@@ -270,6 +270,10 @@ static func window_size(scale: float, usable: Vector2i) -> Vector2i:
 ## project.godot turns off quit_on_go_back so levels can return here: a list goes back to HOME, and HOME quits.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		var sheets := find_children("*", "Overlay", true, false)
+		if not sheets.is_empty():
+			sheets.back().close()
+			return
 		if page == Page.HOME:
 			get_tree().quit()
 		else:

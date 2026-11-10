@@ -609,3 +609,43 @@ func test_touch_target_minimum_uses_density_separate_from_screen_scale() -> void
 	var screen_button: Rect2 = transform * layout.button_rect
 	check(layout.button_rect.size.y >= 96.0, "a 48 dp target at density 3 and scale 1.5 needs 96 viewport pixels")
 	check(is_equal_approx(screen_button.size.y / 3.0, 48.0), "the transformed shortcut must remain 48 dp high at independent density and scale")
+
+
+
+
+func test_android_back_closes_purchase_sheet_before_list_navigation() -> void:
+	_leave_scene()
+	var setup := _boot()
+	if setup.is_empty():
+		return
+	var money: Variant = setup.money
+	var platform: Variant = setup.platform
+	platform.store_state.emit(130, true, PRICE, "")
+	var main: Control = MAIN.menu(MAIN.Page.OFFICIAL)
+	tree.root.add_child(main)
+	tree.current_scene = main
+	await frames(2)
+	var back: Button = _button(main, "Back")
+	check(back != null, "the safe Back test page must have its underlying list control")
+	if back == null:
+		_leave_scene()
+		money.use_defaults()
+		return
+	back.grab_focus(true)
+	var purchase: Overlay = _purchase_screen(main)
+	check(purchase != null, "the actual Remove ads sheet must open on the main scene")
+	if purchase == null:
+		_leave_scene()
+		money.use_defaults()
+		return
+	await frames(2)
+
+	main.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await frames(2)
+	var stayed_on_page := is_instance_valid(main) and tree.current_scene == main
+	check(stayed_on_page, "Back over a purchase sheet must not replace its underlying page")
+	if stayed_on_page:
+		check(_top_overlay(main) == null, "Android Back must close the top purchase sheet")
+		check(tree.root.gui_get_focus_owner() == back, "closing by Android Back must restore focus to the prior control")
+	_leave_scene()
+	money.use_defaults()
