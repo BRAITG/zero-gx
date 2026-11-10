@@ -1,7 +1,7 @@
 <!doctype html>
 <!-- Run from this worktree: python3 -m http.server 8766 --bind 127.0.0.1
      Open http://127.0.0.1:8766/tools/ad-banner-preview-prototype.html
-     Question: does a reserved banner feel unobtrusive? Compare ?variant=footer, header, or free. -->
+     Question: does a bottom banner with bottom-right purchase access work inside the 16:9 menu frame? Compare ?variant=footer or free. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -33,6 +33,8 @@ button:disabled { opacity: .52; cursor: not-allowed; }
 .viewport { position: relative; width: 100%; aspect-ratio: 844 / 390; overflow: hidden; border-radius: 18px; }
 .canvas { position: absolute; left: 0; top: 0; width: 844px; height: 390px; display: flex; flex-direction: column; transform-origin: top left; background-color: #030817; background-image: radial-gradient(circle at 6% 18%, #8cafffa6 0 1px, transparent 1.5px), radial-gradient(circle at 14% 79%, #6384bd 0 .8px, transparent 1.4px), radial-gradient(circle at 29% 30%, #91afff 0 .7px, transparent 1.3px), radial-gradient(circle at 41% 86%, #88b4ff99 0 1px, transparent 1.5px), radial-gradient(circle at 57% 12%, #a5c0ff 0 .7px, transparent 1.3px), radial-gradient(circle at 72% 64%, #7399dd 0 1px, transparent 1.5px), radial-gradient(circle at 86% 29%, #adcbff 0 .8px, transparent 1.4px), radial-gradient(circle at 95% 88%, #a3bdff 0 1px, transparent 1.5px); background-size: 307px 211px; }
 .canvas::after { content: ''; position: absolute; left: 6px; top: 153px; width: 5px; height: 84px; border-radius: 4px; background: #01030b; pointer-events: none; }
+.menu-frame { position: relative; width: calc(390px * 16 / 9); max-width: 100%; height: 100%; margin: 0 auto; display: flex; flex-direction: column; }
+.purchase-access { position: absolute; right: 16px; bottom: 11px; }
 .game { position: relative; flex: 1; min-height: 0; padding: 16px 32px 20px; font-size: 13px; }
 .screen { height: 100%; }
 .canvas button { padding: 7px 15px; font-size: 13px; min-height: 32px; }
@@ -75,8 +77,8 @@ button:disabled { opacity: .52; cursor: not-allowed; }
 .difficulty { font-size: 11px; color: #c5d4ea; padding: 3px 8px; border: 1px solid #3a4f6a; border-radius: 6px; }
 .level-actions { display: flex; gap: 6px; }
 .level-actions button { font-size: 11px; padding: 5px 10px; }
-.settings { position: absolute; inset: 0; display: grid; place-items: center; background: #010511bd; padding: 14px 32px 20px; }
-.settings-panel { width: 676px; max-height: 100%; display: flex; flex-direction: column; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: #0a0f1ff5; }
+.settings { position: absolute; inset: 0; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; background: #010511bd; padding: 14px 32px 20px; }
+.settings-panel { width: 676px; max-width: 100%; max-height: 100%; display: flex; flex-direction: column; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: #0a0f1ff5; }
 .settings-body { display: grid; grid-template-columns: 1.08fr 1fr; gap: 18px; margin-top: 10px; overflow-y: auto; }
 .setting { margin-bottom: 10px; }
 .setting label { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
@@ -90,7 +92,6 @@ input[type="range"] { width: 150px; accent-color: var(--accent); }
 .purchase-note { font-size: 10px; color: #9aaac2; }
 .active-purchase { color: #a9d8ff; border: 1px solid var(--border); border-radius: 10px; padding: 7px 12px; }
 .ad-strip { flex: 0 0 66px; height: 66px; display: grid; place-items: center; background: #070b14; border-top: 1px solid #1b2a40; }
-.canvas[data-variant="header"] .ad-strip { order: -1; border-top: 0; border-bottom: 1px solid #1b2a40; }
 .sample-ad { width: 320px; height: 50px; display: flex; align-items: center; gap: 9px; padding: 5px 9px; background: #f1eee4; color: #233b34; font: 12px/1.15 Arial, sans-serif; border: 1px solid #d5d2c9; }
 .ad-badge { align-self: flex-start; font: 9px Arial, sans-serif; border: 1px solid #68746c; padding: 1px 3px; border-radius: 2px; }
 .ad-mountain { font-size: 25px; line-height: 1; color: #496b52; }
@@ -133,6 +134,7 @@ dialog p { margin-bottom: 12px; }
   </nav>
   <figure class="preview">
     <div class="phone"><div class="viewport" id="viewport"><div class="canvas" id="canvas" data-variant="footer">
+      <div class="menu-frame">
       <div class="game">
         <section class="screen home" id="home" aria-label="Home preview">
           <div class="brand">ZERO-GX</div>
@@ -185,10 +187,7 @@ dialog p { margin-bottom: 12px; }
               <div class="settings-links">
                 <button disabled title="Illustrative only">Controls</button>
                 <button disabled title="Illustrative only">Developer options</button>
-                <button class="primary" id="remove-ads">Remove ads — €2.90</button>
                 <p class="active-purchase" id="ad-free-active" hidden>✓ Ad-free active</p>
-                <button disabled title="Illustrative only: no Google Play connection">Restore purchases · preview only</button>
-                <p class="purchase-note">Permanent one-time purchase concept. Restore is illustrative only.</p>
               </div>
             </div>
           </div>
@@ -197,16 +196,18 @@ dialog p { margin-bottom: 12px; }
       <aside class="ad-strip" id="ad-strip" aria-label="Reserved 66 pixel banner strip, fictional sample advertisement">
         <div class="sample-ad"><span class="ad-badge">Ad</span><span class="ad-mountain" aria-hidden="true">△</span><div class="ad-copy"><strong>FIELDLINE OUTDOOR</strong><span>Pack light. Find your trail.</span><small>Fictional brand · sample advertisement</small></div><span class="ad-cta">Trail gear<br>Spring range</span></div>
       </aside>
+      <button class="purchase-access" id="remove-ads">Remove ads</button>
+      </div>
     </div></div></div>
     <figcaption>
-      <div class="caption-line"><span id="dimensions">844 × 390 logical pixels · safe-area side gutters</span><span>Banner: 320 × 50 inside a reserved 66 px strip</span></div>
+      <div class="caption-line"><span id="dimensions">844 × 390 logical pixels · centered 16:9 menu frame</span><span>Banner: 320 × 50 inside a reserved 66 px strip</span></div>
       <p class="notice">Sample content only, including community levels. This sample is not a guaranteed network creative: real ad artwork, colors and text will vary.</p>
     </figcaption>
   </figure>
   <div class="switcher" role="group" aria-label="Compare banner placements">
     <label for="variant">Placement</label>
     <button id="previous" aria-label="Previous placement">←</button>
-    <select id="variant"><option value="footer">Footer · recommended</option><option value="header">Header · top strip</option><option value="free">Ad-free · reclaim space</option></select>
+    <select id="variant"><option value="footer">Footer · recommended</option><option value="free">Ad-free · reclaim space</option></select>
     <button id="next" aria-label="Next placement">→</button>
   </div>
   <p class="summary" id="summary" role="status" aria-live="polite"></p>
@@ -217,11 +218,13 @@ dialog p { margin-bottom: 12px; }
   <h2 id="purchase-title">Purchase PREVIEW</h2>
   <p id="purchase-description">Remove ads permanently with a proposed one-time Google Play purchase of <strong>€2.90</strong>.</p>
   <p class="notice">This is not Google Play billing. No payment will be requested or processed. Simulating changes this page only; reloading clears the simulated purchase.</p>
+  <button disabled title="Illustrative only: no Google Play connection">Restore purchases · preview only</button>
+  <p class="purchase-note">Permanent one-time purchase concept. Restore is illustrative only.</p>
   <div class="dialog-actions"><button id="cancel-purchase">Cancel</button><button class="primary" id="simulate-purchase">Simulate ad-free</button></div>
 </dialog>
 <script>
 const screens = ['home', 'results', 'community', 'settings'];
-const variants = ['footer', 'header', 'free'];
+const variants = ['footer', 'free'];
 const names = { home: 'Home', results: 'Between stages', community: 'Community', settings: 'Settings' };
 const query = new URLSearchParams(location.search);
 let screen = screens.includes(query.get('screen')) ? query.get('screen') : 'home';
@@ -246,7 +249,7 @@ function render() {
   const url = new URL(location.href);
   url.searchParams.set('screen', screen);
   url.searchParams.set('variant', variant);
-  history.replaceState(null, '', url);
+  if (location.protocol !== 'about:') history.replaceState(null, '', url);
 }
 function showScreen(next) {
   if (next === 'settings' && screen !== 'settings') previousScreen = screen;
@@ -278,7 +281,7 @@ document.getElementById('simulate-purchase').addEventListener('click', () => {
   simulated = true;
   render();
   purchase.close();
-  document.getElementById('settings-back').focus();
+  document.querySelector('#' + screen + ' button:not(:disabled)').focus();
 });
 document.getElementById('sound').addEventListener('input', event => { document.getElementById('volume').value = event.target.value + '%'; });
 const originalLevels = [...document.getElementById('levels').children];
@@ -290,7 +293,7 @@ for (const sort of ['top', 'new']) document.getElementById(sort).addEventListene
 new ResizeObserver(entries => {
   const width = entries[0].contentRect.width;
   canvas.style.transform = `scale(${width / 844})`;
-  document.getElementById('dimensions').textContent = `844 × 390 logical pixels · displayed at ${Math.round(width / 844 * 100)}% · safe-area side gutters`;
+  document.getElementById('dimensions').textContent = `844 × 390 logical pixels · displayed at ${Math.round(width / 844 * 100)}% · centered 16:9 menu frame`;
 }).observe(document.getElementById('viewport'));
 render();
 </script>
