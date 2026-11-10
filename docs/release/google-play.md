@@ -29,6 +29,7 @@ Gradle 8.11 needs JDK 17 (newer JDKs fail with "Unsupported class file major ver
 export GODOT_ANDROID_KEYSTORE_RELEASE_PATH=~/.zero-gx/upload.keystore
 export GODOT_ANDROID_KEYSTORE_RELEASE_USER=upload
 export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=<password from ~/.zero-gx/upload.keystore.txt>
+godot --headless --path . --script res://tools/check_monetization_export.gd -- --preset "Android Play"
 godot --headless --path . --install-android-build-template --export-release "Android Play" build/zero-gx.aab
 ```
 

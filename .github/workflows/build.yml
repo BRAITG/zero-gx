@@ -107,6 +107,7 @@ jobs:
           echo "$UPLOAD_KEYSTORE_B64" | base64 -d > "$GODOT_ANDROID_KEYSTORE_RELEASE_PATH"
           # Play needs a higher version code for every upload: the run number always grows.
           sed -i "s/^version\/code=.*/version\/code=${GITHUB_RUN_NUMBER}/" export_presets.cfg
+          ~/godot/godot --headless --path . --script res://tools/check_monetization_export.gd -- --preset "Android Play"
           ~/godot/godot --headless --path . --install-android-build-template --export-release "Android Play" build/zero-gx.aab
           jarsigner -verify build/zero-gx.aab
           unzip -p build/zero-gx.aab 'base/dex/*.dex' | grep -aq 'Ldev/braitg/zerogx/integrity/IntegrityPlugin;'
