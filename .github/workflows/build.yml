@@ -311,6 +311,7 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
       - name: Check that graphify-out/graph.json is fresh
         run: |
+          sh tools/ensure-graphify.sh
           git show HEAD:graphify-out/graph.json > "$RUNNER_TEMP/graph-committed.json"
           PYTHONHASHSEED=0 graphify update .
           if ! git diff --quiet -- graphify-out/graph.json; then
