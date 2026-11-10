@@ -1,7 +1,7 @@
 extends SceneTree
 
-const APP_ID_PATTERN := "^ca-app-pub-[0-9]{16}~[0-9]{10}$"
-const BANNER_ID_PATTERN := "^ca-app-pub-[0-9]{16}/[0-9]{10}$"
+const APP_ID_PATTERN := "^ca-app-pub-[0-9]{16}~[0-9]{10}\\z"
+const BANNER_ID_PATTERN := "^ca-app-pub-[0-9]{16}/[0-9]{10}\\z"
 const SAMPLE_PUBLISHER := "ca-app-pub-3940256099942544"
 const PRESET_OPTION := "zero_gx_monetization/enabled"
 const APP_ID_OPTION := "zero_gx_monetization/admob_app_id"

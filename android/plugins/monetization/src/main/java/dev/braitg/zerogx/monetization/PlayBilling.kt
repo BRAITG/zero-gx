@@ -13,7 +13,6 @@ import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchasesParams
-import java.util.concurrent.atomic.AtomicLong
 
 internal class PlayBilling(
     context: Context,
@@ -108,8 +107,9 @@ internal class PlayBilling(
         }
     }
 
-    fun isCurrentGeneration(value: Long): Boolean = generation.get() == value
-    fun isCurrentPurchaseGeneration(value: Long): Boolean = purchaseGeneration.get() == value
+    fun isCurrentGeneration(value: Long): Boolean = generationState.isCurrentProductDetails(value)
+
+    fun isCurrentPurchaseGeneration(value: Long): Boolean = generationState.isCurrentPurchase(value)
 
     fun close() {
         if (closed) return
@@ -213,10 +213,7 @@ internal class PlayBilling(
         }
     }
 
-    private fun launchPurchase(
-        product: ProductDetails,
-        offerToken: String,
-    ) {
+    private fun launchPurchase(product: ProductDetails, offerToken: String) {
         val host = activity()
         if (host == null || closed) {
             emitPurchaseState(nextPurchaseGeneration(), "error", "", "Google Play is unavailable without an Android activity.")
@@ -290,12 +287,9 @@ internal class PlayBilling(
         setPurchaseDialogOpen(open)
     }
 
-    private fun nextGeneration(): Long = generation.incrementAndGet()
-    private fun nextPurchaseGeneration(): Long {
-        val value = nextGeneration()
-        purchaseGeneration.set(value)
-        return value
-    }
+    private fun nextGeneration(): Long = generationState.nextProductDetails()
+
+    private fun nextPurchaseGeneration(): Long = generationState.nextPurchaseQuery()
 
     private fun billingError(operation: String, responseCode: Int): String =
         "$operation failed (Google Play response $responseCode)."
@@ -306,7 +300,6 @@ internal class PlayBilling(
 
     private companion object {
         const val PRODUCT_ID = "remove_ads"
-        private val generation = AtomicLong()
-        private val purchaseGeneration = AtomicLong()
+        private val generationState = BillingGenerationState()
     }
 }

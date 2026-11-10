@@ -29,8 +29,8 @@ Gradle 8.11 needs JDK 17 (newer JDKs fail with "Unsupported class file major ver
 export GODOT_ANDROID_KEYSTORE_RELEASE_PATH=~/.zero-gx/upload.keystore
 export GODOT_ANDROID_KEYSTORE_RELEASE_USER=upload
 export GODOT_ANDROID_KEYSTORE_RELEASE_PASSWORD=<password from ~/.zero-gx/upload.keystore.txt>
-godot --headless --path . --script res://tools/check_monetization_export.gd -- --preset "Android Play"
-godot --headless --path . --install-android-build-template --export-release "Android Play" build/zero-gx.aab
+godot --headless --path . --script res://tools/check_monetization_export.gd -- --preset "Android Play" &&
+  godot --headless --path . --install-android-build-template --export-release "Android Play" build/zero-gx.aab
 ```
 
 The export installs the Gradle template in `android/build/` (ignored by git; `android/plugins/` holds the tracked plugin sources). It needs `android_source.zip` in Godot's export templates. Without the Play Games project id (`godot_play_game_services/game_id` in the export presets) the build still succeeds, but Play Games sign-in fails on the device; see `play-games-setup.md`.

@@ -1,6 +1,7 @@
 package dev.braitg.zerogx.monetization
 
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Handler
 import android.os.Looper
@@ -28,16 +29,20 @@ internal class BannerAds(
     private val emitState: (Boolean, Boolean, Boolean, String) -> Unit,
 ) {
     private val handler = Handler(Looper.getMainLooper())
-    private val appId = activity.applicationInfo.metaData?.getString(APP_ID_METADATA).orEmpty()
-    private val bannerUnitId = activity.applicationInfo.metaData?.getString(BANNER_ID_METADATA).orEmpty()
+    private val metadata = readApplicationMetadata()
+    private val appId = metadata?.getString(APP_ID_METADATA).orEmpty()
+    private val bannerUnitId = metadata?.getString(BANNER_ID_METADATA).orEmpty()
+    private val adRequestState = AdRequestState()
 
     @Volatile private var allowed = false
     @Volatile private var foreground = false
     @Volatile private var ownershipKnown = false
     @Volatile private var paid = false
     @Volatile private var paymentDialogOpen = false
-
     @Volatile private var destroyed = false
+    @Volatile private var consentOpen = false
+    @Volatile private var canRequestAds = false
+
     private var boundsLeft = 0
     private var boundsTop = 0
     private var boundsWidth = 0
@@ -47,14 +52,9 @@ internal class BannerAds(
     private var consentUpdated = false
     private var consentGeneration = 0L
     private var privacyRequired = false
-    private var consentOpen = false
-    private var canRequestAds = false
     private var sdkInitializing = false
     private var sdkInitialized = false
     private var adView: AdView? = null
-    private var adLoaded = false
-    private var adRequestInFlight = false
-    private var adRequestGeneration = 0L
 
     fun setOwnership(known: Boolean, adFree: Boolean) {
         ownershipKnown = known
@@ -128,7 +128,15 @@ internal class BannerAds(
     fun showPrivacyOptions() {
         onMain {
             val information = consentInformation
-            if (destroyed || !allowed || !foreground || !ownershipKnown || paid || information == null || !privacyRequired || consentOpen) {
+            if (!MonetizationGates.canShowPrivacyChoices(
+                    destroyed = destroyed,
+                    foreground = foreground,
+                    informationAvailable = information != null,
+                    privacyRequired = privacyRequired,
+                    consentOpen = consentOpen,
+                    paymentDialogOpen = paymentDialogOpen,
+                )
+            ) {
                 emit()
                 return@onMain
             }
@@ -140,7 +148,7 @@ internal class BannerAds(
                 onMain {
                     consentOpen = false
                     updatePrivacyRequirement()
-                    canRequestAds = information.canRequestAds()
+                    canRequestAds = information?.canRequestAds() == true
                     val message = if (formError == null) "" else "Privacy choices could not be updated."
                     emit(message)
                     maybeContinue()
@@ -277,13 +285,6 @@ internal class BannerAds(
         if (sdkInitializing) return
         sdkInitializing = true
         Thread({
-            if (destroyed || !allowed || !foreground || !ownershipKnown || paid || paymentDialogOpen) {
-                onMain {
-                    sdkInitializing = false
-                    emit()
-                }
-                return@Thread
-            }
             try {
                 val requestConfiguration = RequestConfiguration.Builder()
                     .setAgeRestrictedTreatment(AgeRestrictedTreatment.CHILD)
@@ -293,11 +294,19 @@ internal class BannerAds(
                     .setRequestConfiguration(requestConfiguration)
                     .disableSdkCrashReporting()
                     .build()
+                if (!canInitializeAdsNow()) {
+                    onMain {
+                        sdkInitializing = false
+                        emit()
+                    }
+                    return@Thread
+                }
                 MobileAds.initialize(activity.applicationContext, config) {
                     MobileAds.setUserMutedApp(true)
                     MobileAds.setUserControlledAppVolume(0.0f)
                     onMain {
                         sdkInitializing = false
+                        canRequestAds = consentInformation?.canRequestAds() == true
                         sdkInitialized = true
                         if (canBeginConsent() && canRequestAds) loadBannerIfNeeded() else emit()
                     }
@@ -312,6 +321,17 @@ internal class BannerAds(
         }, "ZeroGxAdsInit").start()
     }
 
+    private fun canInitializeAdsNow(): Boolean = MonetizationGates.canInitializeAds(
+        destroyed = destroyed,
+        advertisingAllowed = allowed,
+        foreground = foreground,
+        ownershipKnown = ownershipKnown,
+        paid = paid,
+        paymentDialogOpen = paymentDialogOpen,
+        consentOpen = consentOpen,
+        canRequestAds = canRequestAds,
+    )
+
     private fun loadBannerIfNeeded() {
         if (!canDisplayAds() || !hasRoom()) {
             hideBanner()
@@ -319,7 +339,7 @@ internal class BannerAds(
             return
         }
         val existing = adView
-        if (existing != null && (adLoaded || adRequestInFlight)) {
+        if (existing != null && (adRequestState.loaded || adRequestState.inFlight)) {
             updateBannerVisibility()
             emit()
             return
@@ -330,23 +350,14 @@ internal class BannerAds(
             adView = it
         }
         updateBannerLayout()
-        adLoaded = false
-        adRequestInFlight = true
-        val requestGeneration = ++adRequestGeneration
+        val requestGeneration = adRequestState.beginRequest()
         view.visibility = View.GONE
         view.loadAd(
             BannerAdRequest.Builder(bannerUnitId, AdSize.BANNER).build(),
             object : AdLoadCallback<BannerAd> {
                 override fun onAdLoaded(ad: BannerAd) {
                     onMain {
-                        if (requestGeneration != adRequestGeneration || destroyed) {
-                            adRequestInFlight = false
-                            destroyAdView()
-                            if (canDisplayAds() && hasRoom()) loadBannerIfNeeded() else emit()
-                            return@onMain
-                        }
-                        adRequestInFlight = false
-                        adLoaded = true
+                        if (destroyed || !adRequestState.completeLoaded(requestGeneration)) return@onMain
                         if (canDisplayAds() && hasRoom()) updateBannerVisibility() else hideBanner()
                         emit()
                     }
@@ -354,14 +365,7 @@ internal class BannerAds(
 
                 override fun onAdFailedToLoad(adError: LoadAdError) {
                     onMain {
-                        if (requestGeneration != adRequestGeneration || destroyed) {
-                            adRequestInFlight = false
-                            destroyAdView()
-                            if (canDisplayAds() && hasRoom()) loadBannerIfNeeded() else emit()
-                            return@onMain
-                        }
-                        adRequestInFlight = false
-                        adLoaded = false
+                        if (destroyed || !adRequestState.completeFailed(requestGeneration)) return@onMain
                         hideBanner()
                         emit("Banner ad could not be loaded.")
                     }
@@ -391,7 +395,7 @@ internal class BannerAds(
     }
 
     private fun updateBannerVisibility() {
-        adView?.visibility = if (canDisplayAds() && adLoaded && hasRoom()) View.VISIBLE else View.GONE
+        adView?.visibility = if (canDisplayAds() && adRequestState.loaded && hasRoom()) View.VISIBLE else View.GONE
     }
 
     private fun hideBanner() {
@@ -400,20 +404,26 @@ internal class BannerAds(
     }
 
     private fun invalidateAdRequest() {
-        if (adRequestInFlight) adRequestGeneration++
+        if (adRequestState.invalidate()) destroyAdView()
     }
 
     private fun destroyAdView() {
         val view = adView ?: return
         adView = null
-        adLoaded = false
-        adRequestInFlight = false
+        adRequestState.resetForViewDestroy()
         (view.parent as? ViewGroup)?.removeView(view)
         view.destroy()
     }
 
     private fun emit(error: String = "") {
-        emitState(adLoaded, privacyRequired, consentOpen, error)
+        emitState(adRequestState.loaded, privacyRequired, consentOpen, error)
+    }
+
+    @Suppress("DEPRECATION")
+    private fun readApplicationMetadata() = try {
+        activity.packageManager.getApplicationInfo(activity.packageName, PackageManager.GET_META_DATA).metaData
+    } catch (_: PackageManager.NameNotFoundException) {
+        null
     }
 
     private fun onMain(action: () -> Unit) {

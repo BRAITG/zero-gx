@@ -33,8 +33,7 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
         String::class.java,
     )
 
-    @Volatile private var verifiedAdFree = false
-    @Volatile private var ownershipKnown = false
+    private val ownership = OwnershipState()
     @Volatile private var started = false
     private var bannerAds: BannerAds? = null
     private var billing: PlayBilling? = null
@@ -47,8 +46,7 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     override fun onMainCreate(activity: Activity?): View? {
         val activeActivity = activity ?: return null
         val preferences = activeActivity.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-        verifiedAdFree = preferences.getBoolean(VERIFIED_AD_FREE, false)
-        ownershipKnown = verifiedAdFree
+        ownership.restoreCached(preferences.getBoolean(VERIFIED_AD_FREE, false))
 
         bannerAds?.destroy()
         val overlay = FrameLayout(activeActivity).apply {
@@ -58,7 +56,7 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
             importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         }
         bannerAds = BannerAds(activeActivity, overlay, ::emitAdState).also {
-            it.setOwnership(ownershipKnown, verifiedAdFree)
+            it.setOwnership(ownership.canAdvertise(), ownership.verifiedAdFree)
         }
         return overlay
     }
@@ -66,6 +64,10 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     override fun shouldBeOnTop(): Boolean = true
 
     override fun onMainResume() {
+        if (started) {
+            ownership.beginPurchaseRefresh()
+            syncOwnership()
+        }
         bannerAds?.setForeground(true)
         if (started) billing?.refreshPurchases()
     }
@@ -87,6 +89,8 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
         if (started) return
         val hostActivity = activity ?: return
         started = true
+        ownership.beginPurchaseRefresh()
+        syncOwnership()
         billing = PlayBilling(
             hostActivity.applicationContext,
             { activity },
@@ -99,7 +103,10 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
 
     @UsedByGodot
     fun refreshPurchases() {
-        billing?.refreshPurchases()
+        val currentBilling = billing ?: return
+        ownership.beginPurchaseRefresh()
+        syncOwnership()
+        currentBilling.refreshPurchases()
     }
 
     @UsedByGodot
@@ -113,17 +120,16 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     @UsedByGodot
-    fun getCachedAdFree(): Boolean = verifiedAdFree
+    fun getCachedAdFree(): Boolean = ownership.verifiedAdFree
 
     @UsedByGodot
     fun setVerifiedAdFree(value: Boolean) {
-        verifiedAdFree = value
-        ownershipKnown = true
+        ownership.setVerifiedAdFree(value)
         activity?.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
             ?.edit()
             ?.putBoolean(VERIFIED_AD_FREE, value)
             ?.apply()
-        bannerAds?.setOwnership(ownershipKnown, verifiedAdFree)
+        syncOwnership()
     }
 
     @UsedByGodot
@@ -140,21 +146,20 @@ class MonetizationPlugin(godot: Godot) : GodotPlugin(godot) {
     }
 
     private fun handlePurchaseState(generation: Long, status: String, token: String, error: String) {
-        if (billing?.isCurrentPurchaseGeneration(generation) == true && !verifiedAdFree) {
-            when (status) {
-                "not_owned" -> ownershipKnown = true
-                "purchased", "pending" -> ownershipKnown = false
-            }
-            bannerAds?.setOwnership(ownershipKnown, verifiedAdFree)
+        if (billing?.isCurrentPurchaseGeneration(generation) == true) {
+            ownership.applyPurchaseState(status)
+            syncOwnership()
         }
         emitSignal(purchaseStateSignal.name, generation, status, token, error)
     }
 
     private fun markOwnershipUnknown() {
-        if (!verifiedAdFree) {
-            ownershipKnown = false
-            bannerAds?.setOwnership(false, false)
-        }
+        ownership.markUnknown()
+        syncOwnership()
+    }
+
+    private fun syncOwnership() {
+        bannerAds?.setOwnership(ownership.canAdvertise(), ownership.verifiedAdFree)
     }
 
     private fun emitStoreState(generation: Long, available: Boolean, formattedPrice: String, error: String) {
