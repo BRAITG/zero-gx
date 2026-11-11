@@ -59,7 +59,7 @@ Selection is cleared after undo, delete, switching tool, save and test flight, s
 ### Gesture ownership
 
 - The context menu, property panel and colour strip take their own presses: a press on them never selects, places, moves or opens a menu on the canvas.
-- A second finger cancels the one-finger edit in progress (a move, knob drag, midpoint insertion, or a placement this press already made) back to the data before the gesture, with no history entry, then pans and zooms. Edits finished before the gesture stay.
+- A second finger cancels the one-finger edit in progress (a move, knob drag, midpoint insertion, or a placement this press already made) back to the data before the gesture, with no history entry, then pans and zooms. Edits finished before the gesture stay. It also cancels a pending long-press, so no menu opens, and swallows the first finger's release: a Wall-tool tap that has not added its point does not add one.
 - Mouse left never starts the long-press timer; right-click is the only mouse route to the menu. A left-hold without a drag does nothing extra.
 
 ### Keyboard
@@ -72,7 +72,7 @@ Selection is cleared after undo, delete, switching tool, save and test flight, s
 | `Ctrl/Cmd+Z` | Close the menu and panel, then undo one step. |
 | `Ctrl/Cmd+S`, `T` | Unchanged: save, test flight. |
 
-While a text or number field has focus, `Delete`, `Backspace`, `T` and undo go to the field and never to the level; `Esc` still closes the panel. The Level settings overlay stays modal and blocks canvas editing and shortcuts, as today.
+While a text or number field has focus, `Delete`, `Backspace`, `T` and undo go to the field and never to the level; `Esc` still closes the panel. While a context menu is open, `Delete`, `Backspace` and `T` do not change the level, `Esc` closes the menu, and `Ctrl/Cmd+Z` closes it and undoes one step; a menu action runs only from the menu. The Level settings overlay stays modal and blocks canvas editing and shortcuts, as today.
 
 ### Android Back
 
@@ -116,7 +116,7 @@ Ring radii follow the body's real radius and reach at the current zoom. Values a
 
 A knob drag keeps the press offset, so the value never jumps on press or on the first move: `value = value_at_press + (pointer distance from centre − pointer distance at press)`, then clamped.
 
-Each knob's **hit target** sits at least one `slop` clear of the body's centre and of the other knob. When the real ring point is closer than that, the target moves out along a short leader line from the ring point, and the centre stays the body's move target. When a ring is off-screen, the Radius and Reach entries of the context menu still edit it.
+Each knob's **hit target** sits strictly more than one `slop` from the body's centre and from the other knob's hit target, so a press on the exact centre always moves the body. When the real ring point is closer than that, the target moves out along a leader line from the ring point until it is. When a ring is off-screen, the Radius and Reach entries of the context menu still edit it.
 
 ## Context menu and property panel
 
@@ -142,6 +142,7 @@ Colour, Kind, Destructible and the deletions act at once. A numeric item opens t
 - The slider and number box share bounds, step and units, as `_number_box` does today. Text that is not a finite number in range is not written to the level.
 - Ranges and units stay as today: Mass is the pull at 100 m (`LevelFormat.total_pull`), Orbit speed is signed rad/s, Health 1–1000.
 - Opening a panel does not change an old out-of-range draft; an actual edit clamps and stores the affected values within that edit's undo step.
+- Every numeric property, including an asteroid's orbit speed, writes through the panel session (one snapshot, then in-place writes); none writes without history or snapshots per slider tick.
 
 The full-screen per-thing sheet (`_open_sheet`, `_choice`, `_slider`) is removed. The reclose question becomes a two-item context menu. The Level settings overlay stays as it is.
 
@@ -170,6 +171,7 @@ The hint line above the palette is updated in the same slice as each gesture cha
 - Select tool, mouse: "Click to select · drag to move · right-click for properties".
 - Select tool, touch: "Tap to select · drag to move · hold for properties".
 - A wall selected: "+ adds a point". A body selected: "Drag Radius or Reach to resize".
+- Wall tool: "Click to add points · click the first point to close · Enter, Done or Esc finishes" (touch: "Tap", "Done").
 
 The hint gets a subtle dark backing where the level competes with it, and may take two lines on a narrow screen instead of clipping.
 
@@ -177,7 +179,7 @@ The hint gets a subtle dark backing where the level competes with it, and may ta
 
 Each level card starts with a 16:9 slot, about 128 × 72 UI units, holding `Thumbnail.of_sketch(LevelFormat.sketch(data))`, the picture the community list uses. It ignores the mouse. It is computed from the saved level when the list is built, so new, edited, imported and even invalid levels show their current shape. No image is stored.
 
-The title and status sit beside the thumbnail; a long title ends in an ellipsis. When the actions do not fit beside them, they wrap to a second row in the same card. No action is hidden and there is no horizontal scrolling. Warnings and publishing status stay below, in the card.
+The title and status sit beside the thumbnail; a long title ends in an ellipsis. When the actions do not fit beside them, they wrap to a second row in the same card. No action is hidden and there is no horizontal scrolling. Warnings and publishing status stay below, in the card. Play stays disabled for a level that cannot be played, as today.
 
 ## Testing
 
