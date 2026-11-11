@@ -46,75 +46,113 @@ func test_tapping_a_stars_glow_grabs_it() -> void:
 	check(e.doc.data.bodies.size() == 1, "no second star beside the first: %s" % [e.doc.data.bodies])
 
 
-func test_long_press_opens_the_sheet_for_touch() -> void:
+func _button_named(e: LevelEditor, text: String) -> Button:
+	for node: Node in e.find_children("*", "Button", true, false):
+		var button: Button = node as Button
+		if button != null and button.text == text and button.is_visible_in_tree():
+			return button
+	return null
+
+
+func _context_menu_open(e: LevelEditor) -> bool:
+	if not e.find_children("*", "Overlay", true, false).is_empty():
+		return false
+	for text: String in ["Blue", "Orange", "Red", "Delete wall", "Remove point", "Delete", "Radius", "Mass", "Reach", "Destructible", "Health", "Orbit speed", "Kind", "Thrust up", "Start motion", "Keep closed", "Open here"]:
+		if _button_named(e, text) != null:
+			return true
+	return false
+
+
+func _open_context_menu(e: LevelEditor, screen: Vector2) -> void:
+	_route(_mouse(MOUSE_BUTTON_RIGHT, true, screen))
+	_route(_mouse(MOUSE_BUTTON_RIGHT, false, screen))
+	await frames(1)
+
+
+func _panel_spinboxes(e: LevelEditor) -> Array[SpinBox]:
+	var boxes: Array[SpinBox] = []
+	for node: Node in e.find_children("*", "SpinBox", true, false):
+		var box: SpinBox = node as SpinBox
+		if box != null and box.is_visible_in_tree():
+			boxes.append(box)
+	return boxes
+
+
+func test_long_press_with_wall_erase_and_placing_tools_opens_menu_without_changes() -> void:
 	var e: LevelEditor = editor()
 	await frames(1)
 	e._camera.zoom = Vector2.ONE * 0.5
-	var screen: Vector2 = Vector2(500, 300)
+	await frames(2)
+	var screen := Vector2(800, 400)
 	e.doc.place("planet", e._to_world(screen))
-	e.select_tool("wall")
-	_route(_touch(0, true, screen))
-	await tree.create_timer(LevelEditor.LONG_PRESS + 0.1).timeout
-	check(e.find_children("*", "Overlay", true, false).size() == 1, "touch hold on the planet opens its sheet")
-	if not e.find_children("*", "Overlay", true, false).is_empty():
-		await _close_sheet(e)
-	_route(_touch(0, false, screen))
-	check(e.doc.data.get("walls", []).is_empty(), "the release after a long press adds no wall point")
+	var before: Dictionary = e.doc.data.duplicate(true)
+	for name: String in ["wall", "erase", "planet"]:
+		e.select_tool(name)
+		_route(_touch(0, true, screen))
+		await tree.create_timer(LevelEditor.LONG_PRESS + 0.1).timeout
+		check(_context_menu_open(e), "%s long-press opens the context menu" % name)
+		check(e.doc.data == before, "%s long-press changes nothing" % name)
+		check(e.find_children("*", "Overlay", true, false).is_empty(), "%s long-press opens no full-screen sheet" % name)
+		_route(_touch(0, false, screen))
+		_route(_key(KEY_ESCAPE))
+		await frames(1)
+	check(e.doc.data == before, "releasing and closing the menus leaves the level unchanged")
 
 
-
-
-func _sheet_sliders(e: LevelEditor) -> Array:
-	return e.find_children("*", "Overlay", true, false)[0].find_children("*", "HSlider", true, false)
-
-
-func _close_sheet(e: LevelEditor) -> void:  # before the editor goes, whose camera a closing sheet refreshes
-	e.find_children("*", "Overlay", true, false)[0].close()
+func test_right_click_opens_wall_menu_with_spec_items() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
 	await frames(2)
+	var first: Vector2 = e._to_world(Vector2(500, 400))
+	_store_wall(e, [first, first + Vector2(400, 0)])
+	e.select_tool("select")
+	await _open_context_menu(e, Vector2(600, 400))
+	check(_button_named(e, "Delete wall") != null, "wall menu offers Delete wall")
+	var colour := _button_named(e, "Colour")
+	if colour != null:
+		colour.pressed.emit()
+		await frames(1)
+	check(_button_named(e, "Blue") != null and _button_named(e, "Orange") != null and _button_named(e, "Red") != null, "wall menu offers all three colours")
 
 
-func test_radius_and_mass_change_independently() -> void:
-	var e := editor()
+func test_goal_and_empty_space_open_no_context_menu() -> void:
+	var e: LevelEditor = editor()
 	await frames(1)
-	e.doc.place("star", Vector2(8000, 4000))
-	e._open_sheet({"type": "body", "index": 0})
-	var sliders := _sheet_sliders(e)  # radius, mass, reach
-	var star: Dictionary = e.doc.data.bodies[0]
-	for corner: Array in [[0, 0], [0, 1], [1, 0], [1, 1]]:  # every pairing of smallest and largest
-		sliders[0].value = sliders[0].max_value if corner[0] else sliders[0].min_value
-		sliders[1].value = sliders[1].max_value if corner[1] else sliders[1].min_value
-		check(is_equal_approx(LevelFormat.body_value(star, "radius"), sliders[0].value) and is_equal_approx(LevelFormat.total_pull(star), sliders[1].value), "radius and mass as set: %s" % [star])
-		check(e.doc.errors().is_empty(), "%s: %s" % [star, e.doc.errors()])
-	await _close_sheet(e)
-
-
-func test_opening_an_old_out_of_range_star_brings_it_in_range() -> void:
-	var e := editor()
-	await frames(1)
-	e.doc.place("star", Vector2(8000, 4000))
-	e.doc.set_property({"type": "body", "index": 0}, "radius", 300)  # valid under the old limits
-	e.doc.set_property({"type": "body", "index": 0}, "strength", 60000)
-	check(not e.doc.errors().is_empty(), "the old star breaks the new limits")
-	e._open_sheet({"type": "body", "index": 0})
-	check(e.doc.errors().is_empty(), "opening its sheet stores the in-range values it shows: %s %s" % [e.doc.data.bodies[0], e.doc.errors()])
-	await _close_sheet(e)
-
-
-func test_ship_starting_velocity_is_saved() -> void:
-	var e := editor()
-	await frames(1)
-	e._open_sheet({"type": "ship", "index": 0})
-	var sliders := _sheet_sliders(e)
-	sliders[0].value = 90  # down
-	sliders[1].value = 250
-	e.save()
+	e._camera.zoom = Vector2.ONE * 0.5
 	await frames(2)
-	var ship: Dictionary = MyLevels.load_level(e.level_id).ship
-	check(LevelDoc._v(ship.get("velocity", [0, 0])) == Vector2(0, 250), "velocity saved and loaded back: %s" % [ship])
-	check(e.find_children("*", "Overlay", true, false).is_empty(), "save closes the per-thing sheet")
-	check(not e.doc.editing(), "save ends the sheet edit session")
+	var goal_screen := Vector2(800, 400)
+	e.doc.data.goal.position = LevelDoc._p(e._to_world(goal_screen))
+	await _open_context_menu(e, goal_screen)
+	check(not _context_menu_open(e), "right-clicking the goal opens no menu")
+	var empty_screen := Vector2(1050, 650)
+	await _open_context_menu(e, empty_screen)
+	check(not _context_menu_open(e), "right-clicking empty space opens no menu")
 
 
+func test_numeric_menu_item_opens_panel_and_open_close_records_nothing() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	e.select_tool("select")
+	var before: Dictionary = e.doc.data.duplicate(true)
+	var can_undo_before: bool = e.doc.can_undo()
+	await _open_context_menu(e, screen)
+	var radius := _button_named(e, "Radius")
+	check(radius != null, "body menu offers Radius")
+	if radius != null:
+		radius.pressed.emit()
+		await frames(1)
+	check(_panel_spinboxes(e).size() == 1, "Radius opens the numeric property panel")
+	check(e.doc.data == before, "opening a property panel does not change the level")
+	check(e.doc.can_undo() == can_undo_before, "opening a property panel records no undo step")
+	_route(_key(KEY_ESCAPE))
+	await frames(1)
+	check(_panel_spinboxes(e).is_empty(), "Escape closes the property panel")
+	check(e.doc.data == before and e.doc.can_undo() == can_undo_before, "closing the panel without edits records nothing")
 
 func test_things_go_where_they_are_put_and_walls_snap() -> void:
 	var e := editor()
@@ -224,16 +262,23 @@ func _selection(e: LevelEditor) -> Dictionary:
 
 
 
-func test_right_drag_pans() -> void:
+func test_right_drag_pans_and_opens_no_context_menu() -> void:
 	var e := editor()
 	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
 	var before: Vector2 = e._camera.position
-	e._unhandled_input(_mouse(MOUSE_BUTTON_RIGHT, true, Vector2(600, 300)))
+	var start := Vector2(600, 300)
+	var finish := Vector2(700, 300)
+	_route(_mouse(MOUSE_BUTTON_RIGHT, true, start))
 	var move := InputEventMouseMotion.new()
-	move.position = Vector2(700, 300)
+	move.device = 0
+	move.position = finish
 	move.button_mask = MOUSE_BUTTON_MASK_RIGHT
-	e._unhandled_input(move)
+	_route(move)
+	_route(_mouse(MOUSE_BUTTON_RIGHT, false, finish))
 	check(e._camera.position.x < before.x, "dragging right moves the view left: %s -> %s" % [before, e._camera.position])
+	check(not _context_menu_open(e), "right-drag opens no context menu")
 	check(e.doc.data.get("bodies", []).is_empty() and e.doc.data.get("walls", []).is_empty(), "panning places nothing")
 
 
@@ -296,12 +341,12 @@ func test_shortcuts_do_nothing_while_an_overlay_is_open() -> void:
 	e._open_settings()
 	e._unhandled_input(_key(KEY_Z, true))
 	e._unhandled_input(_key(KEY_S, true))
-	check(e.doc.data.get("bodies", []).size() == 1, "Ctrl+Z must not undo under an open sheet")
-	check(MyLevels.load_level(e.level_id).is_empty(), "Ctrl+S must not save under an open sheet")
+	check(e.doc.data.get("bodies", []).size() == 1, "Ctrl+Z must not undo under the level settings overlay")
+	check(MyLevels.load_level(e.level_id).is_empty(), "Ctrl+S must not save under the level settings overlay")
 	e.find_children("*", "Overlay", true, false)[0].close()
 	await frames(2)
 	e._unhandled_input(_key(KEY_Z, true))
-	check(e.doc.data.get("bodies", []).is_empty(), "Ctrl+Z works again once the sheet is closed")
+	check(e.doc.data.get("bodies", []).is_empty(), "Ctrl+Z works again once the settings overlay is closed")
 
 
 func test_shift_z_does_not_undo() -> void:
@@ -357,12 +402,6 @@ func test_the_editors_test_flight_is_a_plain_test_that_returns_to_the_editor() -
 		tree.current_scene = null
 
 
-func _button_named(e: LevelEditor, text: String) -> Button:
-	for b: Button in e.find_children("*", "Button", true, false):
-		if b.text == text:
-			return b
-	return null
-
 
 func closed_square_in(e: LevelEditor) -> void:
 	for p in [Vector2(0, 0), Vector2(1000, 0), Vector2(1000, 1000), Vector2(0, 1000)]:
@@ -370,35 +409,43 @@ func closed_square_in(e: LevelEditor) -> void:
 	e.doc.add_wall_point(Vector2(10, 10))  # closes the square
 
 
-func test_erasing_a_point_of_a_closed_wall_asks_first() -> void:
+func test_erasing_a_point_of_a_closed_wall_opens_two_choice_menu() -> void:
 	var e := editor()
 	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
 	closed_square_in(e)
 	e.select_tool("erase")
-	e.press(Vector2(1000, 0))
-	e.release(Vector2(1000, 0), false)
-	check(e.find_children("*", "Overlay", true, false).size() == 1, "erasing a point of a closed 4-point wall opens one sheet")
-	check(e.doc.data.walls[0].get("closed", false) and e.doc.data.walls[0].points.size() == 4, "the wall is untouched until a button is pressed: %s" % [e.doc.data.walls])
+	var point_screen: Vector2 = _screen_at(e, Vector2(1000, 0))
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, point_screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, point_screen))
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "point removal uses a context menu, not a full-screen overlay")
+	check(_button_named(e, "Keep closed") != null and _button_named(e, "Open here") != null, "the menu offers exactly Keep closed and Open here")
+	check(_button_named(e, "Delete wall") == null and _button_named(e, "Remove point") == null, "the reclose menu contains only Keep closed and Open here")
+	check(e.doc.data.walls[0].get("closed", false) and e.doc.data.walls[0].points.size() == 4, "the wall is untouched until a choice: %s" % [e.doc.data.walls])
 	var open_here := _button_named(e, "Open here")
-	check(open_here != null, "the sheet has an 'Open here' button")
-	if open_here:
+	if open_here != null:
 		open_here.pressed.emit()
 	await frames(2)
 	var wall: Dictionary = e.doc.data.walls[0]
 	check(not wall.has("closed") and wall.points == [[1000, 1000], [0, 1000], [0, 0]], "Open here opens the wall at the gap: %s" % [wall])
-	check(e.find_children("*", "Overlay", true, false).is_empty(), "the sheet closes after a choice")
 
 
 func test_keep_closed_removes_the_point_and_stays_closed() -> void:
 	var e := editor()
 	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
 	closed_square_in(e)
 	e.select_tool("erase")
-	e.press(Vector2(1000, 0))
-	e.release(Vector2(1000, 0), false)
+	var point_screen: Vector2 = _screen_at(e, Vector2(1000, 0))
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, point_screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, point_screen))
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "closed-point removal is not a full-screen sheet")
+	check(_button_named(e, "Open here") != null and _button_named(e, "Delete wall") == null and _button_named(e, "Remove point") == null, "the reclose menu contains only Keep closed and Open here")
 	var keep := _button_named(e, "Keep closed")
-	check(keep != null, "the sheet has a 'Keep closed' button")
-	if keep:
+	check(keep != null, "the point-removal menu has Keep closed")
+	if keep != null:
 		keep.pressed.emit()
 	await frames(2)
 	var wall: Dictionary = e.doc.data.walls[0]
@@ -408,13 +455,16 @@ func test_keep_closed_removes_the_point_and_stays_closed() -> void:
 func test_erasing_a_point_of_a_closed_triangle_acts_at_once() -> void:
 	var e := editor()
 	await frames(1)
-	for p in [Vector2(0, 0), Vector2(1000, 0), Vector2(1000, 1000)]:
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	for p: Vector2 in [Vector2(0, 0), Vector2(1000, 0), Vector2(1000, 1000)]:
 		e.doc.add_wall_point(p)
-	e.doc.add_wall_point(Vector2(10, 10))  # closes the triangle
+	e.doc.add_wall_point(Vector2(10, 10))
 	e.select_tool("erase")
-	e.press(Vector2(1000, 0))
-	e.release(Vector2(1000, 0), false)
-	check(e.find_children("*", "Overlay", true, false).is_empty(), "a closed triangle opens no sheet")
+	var point_screen: Vector2 = _screen_at(e, Vector2(1000, 0))
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, point_screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, point_screen))
+	check(not _context_menu_open(e), "a closed triangle opens no point-removal menu")
 	var wall: Dictionary = e.doc.data.walls[0]
 	check(not wall.has("closed") and wall.points == [[1000, 1000], [0, 0]], "the triangle opens at once: %s" % [wall])
 
@@ -506,7 +556,7 @@ func test_mouse_and_touch_use_device_pick_slop_at_zoom_half() -> void:
 	check(_selection(e) == {"type": "wall_point", "index": 0, "point": 0}, "touch 20 viewport units from a point picks it")
 
 
-func test_select_tool_tap_selects_without_opening_sheet() -> void:
+func test_select_tool_tap_selects_without_opening_menu() -> void:
 	var e: LevelEditor = editor()
 	await frames(1)
 	e._camera.zoom = Vector2.ONE * 0.5
@@ -517,7 +567,7 @@ func test_select_tool_tap_selects_without_opening_sheet() -> void:
 	_route(_mouse(MOUSE_BUTTON_LEFT, false, screen))
 	await frames(1)
 	check(_selection(e) == {"type": "body", "index": 0}, "tap selects the body")
-	check(e.find_children("*", "Overlay", true, false).is_empty(), "select tap opens no sheet")
+	check(not _context_menu_open(e), "select tap opens no context menu")
 
 
 func test_dragging_wall_from_its_middle_preserves_press_offset() -> void:
@@ -864,7 +914,7 @@ func test_focused_text_field_keeps_delete_backspace_and_undo_from_changing_level
 	field.free()
 
 
-func test_mouse_left_hold_does_not_open_sheet() -> void:
+func test_mouse_left_hold_does_not_open_context_menu() -> void:
 	var e: LevelEditor = editor()
 	await frames(1)
 	e._camera.zoom = Vector2.ONE * 0.5
@@ -872,7 +922,7 @@ func test_mouse_left_hold_does_not_open_sheet() -> void:
 	e.doc.place("planet", e._to_world(screen))
 	_route(_mouse(MOUSE_BUTTON_LEFT, true, screen))
 	await tree.create_timer(LevelEditor.LONG_PRESS + 0.1).timeout
-	check(e.find_children("*", "Overlay", true, false).is_empty(), "mouse left-hold opens no sheet")
+	check(not _context_menu_open(e), "mouse left-hold opens no context menu")
 	_route(_mouse(MOUSE_BUTTON_LEFT, false, screen))
 
 
@@ -960,7 +1010,7 @@ func test_second_finger_cancels_pending_long_press() -> void:
 	_route(_touch(0, true, screen))
 	_route(_touch(1, true, screen + Vector2(100, 100)))
 	await tree.create_timer(LevelEditor.LONG_PRESS + 0.1).timeout
-	check(e.find_children("*", "Overlay", true, false).is_empty(), "pinch cancels pending long-press sheet")
+	check(not _context_menu_open(e), "pinch cancels a pending context-menu long-press")
 	_route(_touch(0, false, screen))
 	_route(_touch(1, false, screen + Vector2(100, 100)))
 
@@ -1138,38 +1188,39 @@ func test_delete_of_closed_wall_point_asks_keep_closed_or_open_here() -> void:
 	var e: LevelEditor = editor()
 	await frames(1)
 	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
 	_closed_square_at_screen(e, Vector2(800, 400))
 	var before: Dictionary = e.doc.data.duplicate(true)
 	e.select_tool("select")
 	_select_wall_point(e, 1)
 	_route(_key(KEY_DELETE))
-	check(e.find_children("*", "Overlay", true, false).size() == 1, "Delete opens the closed-wall point choice")
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "Delete uses the point-removal menu, not a full-screen overlay")
 	check(_button_named(e, "Keep closed") != null and _button_named(e, "Open here") != null, "Delete offers both closed-wall choices")
+	check(_button_named(e, "Delete wall") == null and _button_named(e, "Remove point") == null, "Delete opens only the two reclose choices")
 	check(e.doc.data == before, "Delete leaves the wall unchanged until a choice")
-	if not e.find_children("*", "Overlay", true, false).is_empty():
-		await _close_sheet(e)
 
 
 func test_backspace_of_closed_wall_point_asks_keep_closed_or_open_here() -> void:
 	var e: LevelEditor = editor()
 	await frames(1)
 	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
 	_closed_square_at_screen(e, Vector2(800, 400))
 	var before: Dictionary = e.doc.data.duplicate(true)
 	e.select_tool("select")
 	_select_wall_point(e, 2)
 	_route(_key(KEY_BACKSPACE))
-	check(e.find_children("*", "Overlay", true, false).size() == 1, "Backspace opens the closed-wall point choice")
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "Backspace uses the point-removal menu, not a full-screen overlay")
 	check(_button_named(e, "Keep closed") != null and _button_named(e, "Open here") != null, "Backspace offers both closed-wall choices")
+	check(_button_named(e, "Delete wall") == null and _button_named(e, "Remove point") == null, "Backspace opens only the two reclose choices")
 	check(e.doc.data == before, "Backspace leaves the wall unchanged until a choice")
-	if not e.find_children("*", "Overlay", true, false).is_empty():
-		await _close_sheet(e)
 
 
 func test_erase_tool_on_closed_wall_point_asks_keep_closed_or_open_here() -> void:
 	var e: LevelEditor = editor()
 	await frames(1)
 	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
 	_closed_square_at_screen(e, Vector2(800, 400))
 	var before: Dictionary = e.doc.data.duplicate(true)
 	var point: Vector2 = LevelDoc._v(e.doc.data.walls[0].points[1])
@@ -1177,11 +1228,10 @@ func test_erase_tool_on_closed_wall_point_asks_keep_closed_or_open_here() -> voi
 	e.select_tool("erase")
 	_route(_mouse(MOUSE_BUTTON_LEFT, true, screen))
 	_route(_mouse(MOUSE_BUTTON_LEFT, false, screen))
-	check(e.find_children("*", "Overlay", true, false).size() == 1, "Erase opens the closed-wall point choice")
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "Erase uses the point-removal menu, not a full-screen overlay")
 	check(_button_named(e, "Keep closed") != null and _button_named(e, "Open here") != null, "Erase offers both closed-wall choices")
+	check(_button_named(e, "Delete wall") == null and _button_named(e, "Remove point") == null, "Erase opens only the two reclose choices")
 	check(e.doc.data == before, "Erase leaves the wall unchanged until a choice")
-	if not e.find_children("*", "Overlay", true, false).is_empty():
-		await _close_sheet(e)
 
 
 func test_erase_tool_on_a_segment_removes_the_wall_without_asking() -> void:
@@ -1285,20 +1335,554 @@ func test_delete_invalidates_a_pressed_body_before_a_later_drag() -> void:
 	check(e.selection.is_empty() and not e.doc.editing(), "Delete invalidates the pressed reference and its edit session")
 
 
-func test_tool_and_selection_changes_close_per_thing_sheets() -> void:
+func test_selecting_another_thing_ends_the_property_panel_session() -> void:
 	var e: LevelEditor = editor()
 	await frames(1)
-	var ref: Dictionary = e.doc.place("planet", Vector2(5000, 3000))
-	e._open_sheet(ref)
-	var sliders := _sheet_sliders(e)
-	sliders[0].value += 1
-	check(e.doc.editing(), "the body sheet owns an edit session")
-	e.select_tool("erase")
+	e._camera.zoom = Vector2.ONE * 0.5
 	await frames(2)
-	check(e.find_children("*", "Overlay", true, false).is_empty(), "tool switch closes the per-thing sheet")
-	check(not e.doc.editing(), "tool switch ends the sheet session")
-	e._open_sheet(ref)
-	e.select({"type": "ship", "index": 0})
+	var first_screen := Vector2(350, 400)
+	var second_screen := Vector2(1050, 400)
+	var first: Dictionary = e.doc.place("planet", e._to_world(first_screen))
+	var second: Dictionary = e.doc.place("planet", e._to_world(second_screen))
+	e.select_tool("select")
+	var initial_radius: float = LevelFormat.body_value(e.doc.data.bodies[first.index], "radius")
+	await _open_context_menu(e, first_screen)
+	var radius := _button_named(e, "Radius")
+	if radius != null:
+		radius.pressed.emit()
+		await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(boxes.size() == 1, "the first body's Radius panel opens")
+	if not boxes.is_empty():
+		boxes[0].value = initial_radius + 10
+	check(e.doc.editing(), "the property panel owns an edit session")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, second_screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, second_screen))
+	await frames(1)
+	check(e.selection == second, "the other body becomes selected")
+	check(_panel_spinboxes(e).is_empty(), "selecting another thing closes the old panel")
+	check(not e.doc.editing(), "selecting another thing ends the panel edit session")
+	check(LevelFormat.body_value(e.doc.data.bodies[first.index], "radius") == initial_radius + 10, "the old panel's edit remains on its original target")
+func _choose_menu_option(e: LevelEditor, group: String, option: String) -> bool:
+	var choice: Button = _button_named(e, option)
+	if choice == null:
+		var category: Button = _button_named(e, group)
+		if category == null:
+			return false
+		category.pressed.emit()
+		await frames(1)
+		choice = _button_named(e, option)
+	if choice == null:
+		return false
+	choice.pressed.emit()
+	await frames(1)
+	return true
+
+
+func _click_control(control: Control) -> void:
+	var viewport_point: Vector2 = control.get_global_transform_with_canvas() * (control.size / 2.0)
+	var at: Vector2 = control.get_viewport().get_screen_transform() * viewport_point
+	tree.root.push_input(_mouse(MOUSE_BUTTON_LEFT, true, at))
+	tree.root.push_input(_mouse(MOUSE_BUTTON_LEFT, false, at))
+	await frames(1)
+
+
+func test_body_context_menus_match_the_body_kind() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
 	await frames(2)
-	check(e.find_children("*", "Overlay", true, false).is_empty(), "selection change closes the per-thing sheet")
-	check(not e.doc.editing(), "selection change ends the sheet session")
+	var index := 0
+	for kind: String in ["planet", "star", "black_hole"]:
+		var screen := Vector2(260 + index * 360, 200)
+		e.doc.place(kind, e._to_world(screen))
+		await _open_context_menu(e, screen)
+		for item: String in ["Radius", "Mass", "Reach", "Delete"]:
+			check(_button_named(e, item) != null, "%s menu includes %s" % [kind, item])
+		if kind == "planet":
+			check(_button_named(e, "Destructible") != null and _button_named(e, "Health") != null, "planet menu includes Destructible and Health")
+		else:
+			check(_button_named(e, "Destructible") == null and _button_named(e, "Health") == null, "%s menu omits planet-only properties" % kind)
+		_route(_key(KEY_ESCAPE))
+		await frames(1)
+		index += 1
+
+
+func test_pickup_asteroid_and_start_context_menu_items() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var pickup_screen := Vector2(250, 200)
+	e.doc.place("thrust_up", e._to_world(pickup_screen))
+	await _open_context_menu(e, pickup_screen)
+	check(_button_named(e, "Kind") != null, "pickup menu includes Kind")
+	var kind := _button_named(e, "Kind")
+	if kind != null:
+		kind.pressed.emit()
+		await frames(1)
+	check(_button_named(e, "Thrust up") != null and _button_named(e, "Thrust down") != null and _button_named(e, "Boost") != null, "pickup kind choices include all pickup kinds")
+	_route(_key(KEY_ESCAPE))
+	await frames(1)
+	var body_screen := Vector2(600, 200)
+	var body_ref: Dictionary = e.doc.place("planet", e._to_world(body_screen))
+	var body: Dictionary = e.doc.data.bodies[body_ref.index]
+	body["radius"] = 100.0
+	body["reach"] = 3000.0
+	var orbit_screen := Vector2(900, 200)
+	var rock_ref: Dictionary = e.doc.place("asteroid", e._to_world(orbit_screen))
+	if not e.doc.data.asteroids[rock_ref.index].has("orbit"):
+		e.doc.data.asteroids[rock_ref.index]["orbit"] = {"body": body_ref.index, "radius": 600, "speed": 0.8, "angle": 0.0}
+	await _open_context_menu(e, orbit_screen)
+	check(_button_named(e, "Orbit speed") != null and _button_named(e, "Delete") != null, "orbiting asteroid menu includes Orbit speed and Delete")
+	_route(_key(KEY_ESCAPE))
+	await frames(1)
+	var plain_screen := Vector2(1050, 500)
+	var plain_ref: Dictionary = e.doc.place("asteroid", e._to_world(plain_screen))
+	e.doc.data.asteroids[plain_ref.index].erase("orbit")
+	await _open_context_menu(e, plain_screen)
+	check(_button_named(e, "Orbit speed") == null and _button_named(e, "Delete") != null, "non-orbiting asteroid menu omits Orbit speed")
+	_route(_key(KEY_ESCAPE))
+	await frames(1)
+	var ship_screen := Vector2(1050, 200)
+	e.doc.data.ship.position = LevelDoc._p(e._to_world(ship_screen))
+	await _open_context_menu(e, ship_screen)
+	check(_button_named(e, "Start motion") != null, "ship menu includes Start motion")
+
+
+func test_colour_menu_action_recolours_wall_immediately() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var first: Vector2 = e._to_world(Vector2(400, 400))
+	_store_wall(e, [first, first + Vector2(500, 0)])
+	var midpoint: Vector2 = _screen_at(e, first + Vector2(250, 0))
+	await _open_context_menu(e, midpoint)
+	var chosen: bool = await _choose_menu_option(e, "Colour", "Orange")
+	check(chosen, "Orange is available from the wall Colour menu")
+	check(e.doc.data.walls[0].kind == "orange", "choosing Orange recolours the wall immediately")
+
+
+func test_pickup_kind_menu_action_changes_kind_immediately() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("thrust_up", e._to_world(screen))
+	await _open_context_menu(e, screen)
+	var chosen: bool = await _choose_menu_option(e, "Kind", "Boost")
+	check(chosen, "Boost is available from the pickup Kind menu")
+	check(e.doc.data.pickups[0].kind == "boost", "choosing Boost changes the pickup immediately")
+
+
+func test_destructible_menu_toggle_acts_immediately() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	await _open_context_menu(e, screen)
+	var item := _button_named(e, "Destructible")
+	check(item != null, "planet menu offers Destructible")
+	if item is CheckButton:
+		var toggle: CheckButton = item as CheckButton
+		toggle.button_pressed = true
+	elif item != null:
+		item.pressed.emit()
+	check(e.doc.data.bodies[0].get("destructible", false), "enabling Destructible updates the planet immediately")
+
+
+func test_delete_menu_action_deletes_body_immediately() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	await _open_context_menu(e, screen)
+	var delete := _button_named(e, "Delete")
+	check(delete != null, "body menu offers Delete")
+	if delete != null:
+		delete.pressed.emit()
+	check(e.doc.data.bodies.is_empty(), "Delete removes the body immediately")
+
+
+func test_delete_wall_menu_action_removes_wall_without_reclose_question() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var first: Vector2 = e._to_world(Vector2(400, 400))
+	_store_wall(e, [first, first + Vector2(400, 0)], true)
+	await _open_context_menu(e, Vector2(600, 400))
+	var delete_wall := _button_named(e, "Delete wall")
+	check(delete_wall != null, "wall menu offers Delete wall")
+	if delete_wall != null:
+		delete_wall.pressed.emit()
+	check(e.doc.data.walls.is_empty(), "Delete wall removes the whole wall immediately")
+	check(not _context_menu_open(e), "Delete wall does not open point-removal choices")
+
+
+func test_radius_panel_session_is_one_undo_step_and_preserves_total_pull() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	var before: Dictionary = e.doc.data.duplicate(true)
+	var pull_before: float = LevelFormat.total_pull(e.doc.data.bodies[0])
+	await _open_context_menu(e, screen)
+	var radius := _button_named(e, "Radius")
+	if radius != null:
+		radius.pressed.emit()
+		await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(boxes.size() == 1, "Radius opens one numeric control")
+	if not boxes.is_empty():
+		var initial: float = boxes[0].value
+		boxes[0].value = initial + 10.0
+		boxes[0].value = initial + 20.0
+	check(LevelFormat.body_value(e.doc.data.bodies[0], "radius") > LevelFormat.body_value(before.bodies[0], "radius"), "Radius edits are written")
+	check(is_equal_approx(LevelFormat.total_pull(e.doc.data.bodies[0]), pull_before), "Radius edits preserve total pull")
+	check(e.doc.editing(), "the panel keeps one edit session open")
+	_route(_key(KEY_ESCAPE))
+	check(not e.doc.editing(), "closing the panel ends its edit session")
+	_route(_key(KEY_Z, true))
+	check(e.doc.data == before, "one undo restores the body before the whole panel session")
+
+
+func test_orbit_speed_panel_session_is_one_undo_step() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var body_screen := Vector2(350, 400)
+	var body_ref: Dictionary = e.doc.place("planet", e._to_world(body_screen))
+	var body: Dictionary = e.doc.data.bodies[body_ref.index]
+	body["radius"] = 100.0
+	body["reach"] = 3000.0
+	var rock_screen := Vector2(850, 400)
+	var rock_ref: Dictionary = e.doc.place("asteroid", e._to_world(rock_screen))
+	if not e.doc.data.asteroids[rock_ref.index].has("orbit"):
+		e.doc.data.asteroids[rock_ref.index]["orbit"] = {"body": body_ref.index, "radius": 1000, "speed": 0.8, "angle": 0.0}
+	var before: Dictionary = e.doc.data.duplicate(true)
+	await _open_context_menu(e, rock_screen)
+	var speed := _button_named(e, "Orbit speed")
+	if speed != null:
+		speed.pressed.emit()
+		await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(boxes.size() == 1, "Orbit speed opens one numeric control")
+	if not boxes.is_empty():
+		boxes[0].value = 1.4
+	check(is_equal_approx(e.doc.data.asteroids[rock_ref.index].orbit.speed, 1.4), "the Orbit speed panel writes the edited speed")
+	_route(_key(KEY_ESCAPE))
+	_route(_key(KEY_Z, true))
+	check(e.doc.data == before, "one undo restores all Orbit speed panel writes")
+
+
+func test_start_motion_keeps_direction_at_zero_and_zero_speed_removes_velocity() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := _screen_at(e, e.doc.position_of({"type": "ship", "index": 0}))
+	var before: Dictionary = e.doc.data.duplicate(true)
+	await _open_context_menu(e, screen)
+	var start_motion := _button_named(e, "Start motion")
+	if start_motion != null:
+		start_motion.pressed.emit()
+		await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(boxes.size() == 2, "Start motion opens Direction and Speed controls")
+	if boxes.size() == 2:
+		boxes[0].value = 90.0
+		check(not e.doc.data.ship.has("velocity"), "changing direction at speed zero keeps the zero velocity absent")
+		boxes[1].value = 250.0
+		check(LevelDoc._v(e.doc.data.ship.get("velocity", [0, 0])).distance_to(Vector2(0, 250)) < 1.0, "the saved direction is applied when speed becomes positive")
+		boxes[1].value = 0.0
+		check(not e.doc.data.ship.has("velocity"), "setting speed to zero removes velocity")
+	_route(_key(KEY_ESCAPE))
+	_route(_key(KEY_Z, true))
+	check(e.doc.data == before, "one undo restores all Start motion panel writes")
+
+
+func test_invalid_number_text_is_not_written_by_the_property_panel() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	var before: Dictionary = e.doc.data.duplicate(true)
+	await _open_context_menu(e, screen)
+	var radius := _button_named(e, "Radius")
+	if radius != null:
+		radius.pressed.emit()
+		await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(boxes.size() == 1, "Radius opens a number box")
+	if not boxes.is_empty():
+		var fields: Array[Node] = boxes[0].find_children("*", "LineEdit", true, false)
+		check(not fields.is_empty(), "the numeric control contains an editable number field")
+		if not fields.is_empty():
+			var field: LineEdit = fields[0] as LineEdit
+			field.text = "not a number"
+			field.text_submitted.emit(field.text)
+	check(e.doc.data == before, "invalid number text is not written to the level")
+
+
+func test_opening_old_out_of_range_body_does_not_change_its_data() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("star", e._to_world(screen))
+	var ref := {"type": "body", "index": 0}
+	e.doc.set_property(ref, "radius", 300.0)
+	e.doc.set_property(ref, "strength", 60000.0)
+	check(not e.doc.errors().is_empty(), "the old star violates the current limits before opening")
+	var before: Dictionary = e.doc.data.duplicate(true)
+	await _open_context_menu(e, screen)
+	var radius := _button_named(e, "Radius")
+	if radius != null:
+		radius.pressed.emit()
+		await frames(1)
+	check(_panel_spinboxes(e).size() == 1, "opening Radius displays a numeric editor")
+	check(e.doc.data == before, "opening the Radius panel does not clamp the old star")
+	check(not e.doc.errors().is_empty(), "opening the panel does not make the old star valid by writing values")
+
+
+func test_delete_is_ignored_and_escape_closes_context_menu_before_selection() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	var ref: Dictionary = e.doc.place("planet", e._to_world(screen))
+	e.select(ref)
+	var before: Dictionary = e.doc.data.duplicate(true)
+	await _open_context_menu(e, screen)
+	check(_context_menu_open(e), "the context menu opens before Delete is pressed")
+	_route(_key(KEY_DELETE))
+	check(e.doc.data == before, "Delete does not affect the level while the context menu is open")
+	_route(_key(KEY_BACKSPACE))
+	_route(_key(KEY_T))
+	check(e.doc.data == before, "Backspace and T do not change the level while the menu is open")
+	_route(_key(KEY_ESCAPE))
+	check(not _context_menu_open(e), "Escape closes the context menu")
+	check(e.selection == ref, "Escape closes the menu before clearing the selection")
+
+
+func test_ctrl_z_closes_context_menu_then_undoes_one_step() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	var ref: Dictionary = e.doc.place("planet", e._to_world(screen))
+	var before: Dictionary = e.doc.data.duplicate(true)
+	var radius: float = LevelFormat.body_value(e.doc.data.bodies[ref.index], "radius")
+	e.doc.set_property(ref, "radius", radius + 20.0)
+	e.select(ref)
+	await _open_context_menu(e, screen)
+	check(_context_menu_open(e), "the context menu opens before Ctrl+Z is pressed")
+	_route(_key(KEY_Z, true))
+	check(not _context_menu_open(e), "Ctrl+Z closes the context menu")
+	check(e.doc.data == before, "Ctrl+Z closes the menu and undoes the previous edit")
+
+
+func test_menu_and_panel_presses_do_not_reach_the_canvas() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	e.select_tool("planet")
+	await _open_context_menu(e, screen)
+	var radius := _button_named(e, "Radius")
+	check(radius != null, "the menu exposes a Radius control")
+	if radius != null:
+		await _click_control(radius)
+	check(e.doc.data.bodies.size() == 1, "pressing the menu does not place a second body")
+	var close := _button_named(e, "Close")
+	check(close != null, "the property panel exposes Close")
+	if close != null:
+		await _click_control(close)
+	check(e.doc.data.bodies.size() == 1, "pressing the panel does not reach the canvas")
+
+
+func test_android_back_closes_property_panel_before_leaving_editor() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	await _open_context_menu(e, screen)
+	var radius := _button_named(e, "Radius")
+	if radius != null:
+		radius.pressed.emit()
+		await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(not boxes.is_empty(), "the property panel opens before Android Back")
+	if not boxes.is_empty():
+		e._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+		check(_panel_spinboxes(e).is_empty(), "Android Back closes the property panel")
+		check(not e.doc.editing(), "Android Back ends the panel session")
+		check(MyLevels.load_level(e.level_id).is_empty(), "Android Back closes the panel without saving or leaving")
+
+
+func test_remove_point_menu_opens_keep_closed_or_open_here_choices() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	_closed_square_at_screen(e, Vector2(800, 400))
+	var before: Dictionary = e.doc.data.duplicate(true)
+	var point_screen: Vector2 = _screen_at(e, LevelDoc._v(e.doc.data.walls[0].points[1]))
+	await _open_context_menu(e, point_screen)
+	check(_button_named(e, "Colour") != null and _button_named(e, "Delete wall") != null, "wall-point menu includes its wall Colour and Delete wall")
+	var remove := _button_named(e, "Remove point")
+	check(remove != null, "wall-point menu offers Remove point")
+	if remove != null:
+		remove.pressed.emit()
+		await frames(1)
+	check(_button_named(e, "Keep closed") != null and _button_named(e, "Open here") != null, "Remove point opens the two-item reclose menu")
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "Remove point uses a menu rather than a full-screen overlay")
+	check(_button_named(e, "Delete wall") == null and _button_named(e, "Remove point") == null, "the reclose menu contains only Keep closed and Open here")
+	check(e.doc.data == before, "the closed wall stays unchanged until choosing how to reclose")
+
+func test_focused_number_field_keeps_delete_and_undo_off_level_but_escape_closes_panel() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	var before: Dictionary = e.doc.data.duplicate(true)
+	await _open_context_menu(e, screen)
+	var radius := _button_named(e, "Radius")
+	if radius != null:
+		radius.pressed.emit()
+		await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(boxes.size() == 1, "the property panel has a focused number field")
+	if boxes.is_empty():
+		return
+	var fields: Array[Node] = boxes[0].find_children("*", "LineEdit", true, false)
+	check(not fields.is_empty(), "the property number box contains a text field")
+	if fields.is_empty():
+		return
+	var field: LineEdit = fields[0] as LineEdit
+	field.grab_focus()
+	await frames(1)
+	_route(_key(KEY_DELETE))
+	_route(_key(KEY_BACKSPACE))
+	_route(_key(KEY_Z, true))
+	_route(_key(KEY_T))
+	check(e.doc.data == before, "Delete, Backspace, Ctrl+Z and T in the number field do not edit the level")
+	check(not _panel_spinboxes(e).is_empty(), "keyboard editing keeps the property panel open")
+	_route(_key(KEY_ESCAPE))
+	check(_panel_spinboxes(e).is_empty(), "Escape still closes the panel while its number field has focus")
+
+
+func test_mass_panel_changes_pull_without_changing_radius() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	var before: Dictionary = e.doc.data.duplicate(true)
+	var radius_before: float = LevelFormat.body_value(e.doc.data.bodies[0], "radius")
+	await _open_context_menu(e, screen)
+	var mass := _button_named(e, "Mass")
+	if mass != null:
+		mass.pressed.emit()
+		await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(boxes.size() == 1, "Mass opens one numeric control")
+	if not boxes.is_empty():
+		var wanted: float = boxes[0].max_value
+		if is_equal_approx(wanted, boxes[0].value):
+			wanted = boxes[0].min_value
+		boxes[0].value = wanted
+		check(is_equal_approx(LevelFormat.total_pull(e.doc.data.bodies[0]), wanted), "Mass writes the selected pull")
+	check(is_equal_approx(LevelFormat.body_value(e.doc.data.bodies[0], "radius"), radius_before), "Mass editing leaves Radius unchanged")
+	_route(_key(KEY_ESCAPE))
+	_route(_key(KEY_Z, true))
+	check(e.doc.data == before, "one undo restores the body before the Mass panel session")
+
+
+func test_radius_knob_drag_at_constant_distance_records_nothing() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var center_screen := Vector2(800, 400)
+	var center: Vector2 = e._to_world(center_screen)
+	e.doc.place("planet", center)
+	var before: Dictionary = e.doc.data.duplicate(true)
+	e.select_tool("select")
+	_select_body_at(e, center_screen)
+	var direction: Vector2 = Vector2(1, -1).normalized()
+	var knob: Vector2 = _screen_at(e, center + direction * 64.0)
+	var tangent: Vector2 = _screen_at(e, center + direction.rotated(PI / 4.0) * 64.0)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, knob))
+	_route(_mouse_motion(tangent))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, tangent))
+	check(e.doc.data == before, "a constant-radius knob drag leaves the draft unchanged")
+	_route(_key(KEY_Z, true))
+	check(e.doc.data.get("bodies", []).is_empty(), "a no-op knob drag adds no undo step")
+
+
+func test_plus_drag_onto_next_neighbor_cancels_without_history() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	e.fine_snap = true
+	var first: Vector2 = e._to_world(Vector2(800, 400))
+	var second: Vector2 = first + Vector2(400, 0)
+	_store_wall(e, [first, second, second + Vector2(400, 0)])
+	var before: Dictionary = e.doc.data.duplicate(true)
+	e.select_tool("select")
+	_select_wall_point(e)
+	var previous_selection: Dictionary = e.selection.duplicate()
+	var midpoint_screen: Vector2 = _screen_at(e, (first + second) / 2.0)
+	var next_screen: Vector2 = _screen_at(e, second)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, midpoint_screen))
+	_route(_mouse_motion(next_screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, next_screen))
+	check(e.doc.data == before, "dragging an inserted point onto its next endpoint restores the wall")
+	check(e.selection == previous_selection, "cancelling next-endpoint insertion restores selection")
+	check(not e.doc.can_undo(), "cancelling next-endpoint insertion records no history")
+
+
+func test_plus_drag_onto_first_point_of_closed_closing_edge_wraps_as_next_neighbor() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	e.fine_snap = true
+	_closed_square_at_screen(e, Vector2(800, 400))
+	var before: Dictionary = e.doc.data.duplicate(true)
+	e.select_tool("select")
+	_select_wall_point(e, 0)
+	var previous_selection: Dictionary = e.selection.duplicate()
+	var points: Array = e.doc.data.walls[0].points
+	var first: Vector2 = LevelDoc._v(points[0])
+	var last: Vector2 = LevelDoc._v(points[-1])
+	var midpoint_screen: Vector2 = _screen_at(e, (first + last) / 2.0)
+	var first_screen: Vector2 = _screen_at(e, first)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, midpoint_screen))
+	_route(_mouse_motion(first_screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, first_screen))
+	check(e.doc.data == before, "closing-edge insertion onto the first point restores the closed wall")
+	check(e.selection == previous_selection, "closing-edge cancellation restores the original point selection")
+	check(not e.doc.can_undo(), "closing-edge wraparound cancellation records no history")
