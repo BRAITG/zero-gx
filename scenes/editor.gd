@@ -77,6 +77,8 @@ var _press_position: Vector2 = Vector2.ZERO
 var _press_offset: Vector2 = Vector2.ZERO
 var _gesture_cancelled: bool = false
 
+var _active_body_handle: Dictionary = {}
+
 
 ## The editor for the player's level `id` (a new blank level if there is none yet).
 ## After a test flight, the editor comes back with the same undo history and view.
@@ -166,12 +168,35 @@ func _pick_world(world: Vector2, mouse: bool) -> Dictionary:
 	var picked: Dictionary = doc.hit(world, slop)
 	var handle: Dictionary = _pick_wall_handle(world, slop)
 	if handle.is_empty():
+		handle = _pick_body_handle(world, slop)
+	if handle.is_empty():
 		return picked
 	if picked.get("type", "") in ["wall_point", "ship", "asteroid", "pickup"]:
-		if doc.position_of(picked).distance_to(world) <= _wall_segment_midpoint(handle.index, handle.after).distance_to(world):
+		var handle_at: Vector2 = _wall_segment_midpoint(handle.index, handle.after) if handle.type == "wall_handle" else handle.at
+		if doc.position_of(picked).distance_to(world) <= handle_at.distance_to(world):
 			return picked
 	return handle
 
+
+func _pick_body_handle(world: Vector2, slop: float) -> Dictionary:
+	if selection.get("type", "") != "body":
+		return {}
+	var body_index: int = selection.index
+	var nearest: float = INF
+	var picked: Dictionary = {}
+	for role: String in ["radius", "reach"]:
+		var at: Vector2 = _body_handle_position(body_index, role, slop)
+		var distance: float = at.distance_to(world)
+		if distance <= slop and distance < nearest:
+			nearest = distance
+			picked = {"type": "body_handle", "index": body_index, "role": role, "at": at}
+	return picked
+
+func _body_handle_position(body_index: int, role: String, slop: float) -> Vector2:
+	var body: Dictionary = doc.data.bodies[body_index]
+	var direction: Vector2 = Vector2(1, -1).normalized() if role == "radius" else Vector2(1, 1).normalized()
+	var distance: float = maxf(LevelFormat.body_value(body, role), slop + 1.0 / _camera.zoom.x)
+	return doc.position_of({"type": "body", "index": body_index}) + direction * distance
 
 func _pick_wall_handle(world: Vector2, slop: float) -> Dictionary:
 	if selection.get("type", "") not in ["wall", "wall_point"]:
@@ -231,11 +256,20 @@ func press(world: Vector2, mouse: bool = false) -> void:
 	if mouse:
 		_hover = _press_ref
 	_held = {}
+	_active_body_handle = {}
 	_moving = false
 	_press_offset = Vector2.ZERO
 	_press_position = world
 	if tool == "select":
-		if _press_ref.get("type", "") == "wall_handle":
+		if _press_ref.get("type", "") == "body_handle":
+			var body_ref: Dictionary = {"type": "body", "index": _press_ref.index}
+			var body: Dictionary = doc.data.bodies[_press_ref.index]
+			_active_body_handle = _press_ref.duplicate()
+			_active_body_handle["value"] = LevelFormat.body_value(body, _press_ref.role)
+			_active_body_handle["distance"] = doc.position_of(body_ref).distance_to(world)
+			_active_body_handle["total_pull"] = LevelFormat.total_pull(body)
+			doc.begin_edit()
+		elif _press_ref.get("type", "") == "wall_handle":
 			_insert_wall_point(_press_ref.index, _press_ref.after, _wall_segment_midpoint(_press_ref.index, _press_ref.after))
 		else:
 			select(_press_ref)
@@ -291,6 +325,10 @@ func _insert_wall_point(wall_index: int, after: int, at: Vector2) -> bool:
 	return true
 
 func drag(world: Vector2) -> void:
+	if not _active_body_handle.is_empty():
+		_drag_body_handle(world)
+		_refresh()
+		return
 	if _held.is_empty():
 		return
 	if tool == "select" or _moving or tool in ["start", "goal"]:
@@ -310,8 +348,28 @@ func drag(world: Vector2) -> void:
 	_refresh()
 
 
+func _drag_body_handle(world: Vector2) -> void:
+	var body_index: int = _active_body_handle.index
+	var ref: Dictionary = {"type": "body", "index": body_index}
+	var body: Dictionary = doc.data.bodies[body_index]
+	var role: String = _active_body_handle.role
+	var limits: Dictionary = LevelFormat.KIND_LIMITS[body.kind]
+	var value_range: Vector2 = limits[role]
+	var center: Vector2 = doc.position_of(ref)
+	var value_at_press: float = _active_body_handle.value
+	var press_distance: float = _active_body_handle.distance
+	var value: float = clampf(roundf(value_at_press + world.distance_to(center) - press_distance), value_range.x, value_range.y)
+	if role == "radius":
+		var total_pull: float = _active_body_handle.total_pull
+		doc.set_property(ref, "radius", value)
+		doc.set_property(ref, "strength", total_pull / pow(value / 1000.0, 2))
+	else:
+		doc.set_property(ref, role, value)
+
+
 func release(world: Vector2, was_drag: bool, mouse: bool = false) -> void:
 	if not _gesture_cancelled and not _long_pressed:
+		_cancel_duplicate_insert()
 		match tool:
 			"wall":
 				if not was_drag:
@@ -324,11 +382,30 @@ func release(world: Vector2, was_drag: bool, mouse: bool = false) -> void:
 	if doc.editing():
 		doc.end_edit()
 	_held = {}
+	_active_body_handle = {}
 	_press_ref = {}
 	_moving = false
 	_inserted_wall_point = false
 	_selection_before_insert = {}
 	_refresh()
+
+
+func _cancel_duplicate_insert() -> void:
+	if not _inserted_wall_point or _held.is_empty():
+		return
+	var wall: Dictionary = doc.data.walls[_held.index]
+	var points: Array = wall.points
+	var point_index: int = _held.point
+	var previous_index: int = point_index - 1
+	var next_index: int = point_index + 1
+	if wall.get("closed", false):
+		if previous_index < 0:
+			previous_index = points.size() - 1
+		if next_index >= points.size():
+			next_index = 0
+	if (previous_index >= 0 and points[previous_index] == points[point_index]) or (next_index < points.size() and points[next_index] == points[point_index]):
+		doc.cancel_edit()
+		selection = _selection_before_insert.duplicate()
 
 
 func _erase_ref(ref: Dictionary) -> void:
@@ -361,6 +438,7 @@ func _invalidate_gesture() -> void:
 	if doc.editing():
 		doc.end_edit()
 	_held = {}
+	_active_body_handle = {}
 	_press_ref = {}
 	_moving = false
 	_dragging = false
@@ -526,6 +604,7 @@ func _cancel_one_finger() -> void:
 	if _inserted_wall_point:
 		selection = _selection_before_insert
 	_held = {}
+	_active_body_handle = {}
 	_press_ref = {}
 	_moving = false
 	_dragging = false
@@ -539,6 +618,8 @@ func _long_press(press_number: int) -> void:
 	if press_number != _presses or _dragging or _gesture_cancelled or not _pinch_start.is_empty() or not find_children("*", "Overlay", true, false).is_empty():
 		return
 	var ref: Dictionary = _press_ref
+	if ref.get("type", "") == "body_handle":
+		ref = {"type": "body", "index": ref.index}
 	if ref.is_empty() or ref.type in NO_SHEET:
 		return
 	_long_pressed = true
@@ -546,6 +627,7 @@ func _long_press(press_number: int) -> void:
 	if doc.editing():
 		doc.cancel_edit()
 	_held = {}
+	_active_body_handle = {}
 	_moving = false
 	_open_sheet(ref)
 	_refresh()
@@ -577,6 +659,8 @@ func _refresh() -> void:
 
 
 func _hint_text() -> String:
+	if tool == "select" and selection.get("type", "") == "body":
+		return "Drag Radius or Reach to resize"
 	if tool == "select" and selection.get("type", "") in ["wall", "wall_point"]:
 		return "+ adds a point"
 	if tool == "select":
@@ -617,6 +701,8 @@ func _draw_marks() -> void:
 		_draw_outline(selection, Style.ACCENT, true)
 		if selection.type in ["wall", "wall_point"]:
 			_draw_wall_handles(selection.index)
+		elif selection.type == "body":
+			_draw_body_handles(selection.index)
 	if not _held.is_empty() and _moving:
 		_marks.draw_arc(doc.position_of(_held), 60.0, 0.0, TAU, 32, Style.ACCENT, width)
 
@@ -648,7 +734,99 @@ func _draw_plus_handle(at: Vector2, radius: float, width: float) -> void:
 	_marks.draw_line(at - Vector2(arm, 0), at + Vector2(arm, 0), Color.WHITE, width)
 	_marks.draw_line(at - Vector2(0, arm), at + Vector2(0, arm), Color.WHITE, width)
 
+
+func _draw_body_handles(body_index: int) -> void:
+	var body: Dictionary = doc.data.bodies[body_index]
+	var center: Vector2 = doc.position_of({"type": "body", "index": body_index})
+	var zoom: float = _camera.zoom.x
+	var slop: float = (LevelDoc.HIT_SLOP if _touch_input else LevelDoc.HIT_SLOP_MOUSE) / zoom
+	var radius: float = LevelFormat.body_value(body, "radius")
+	var reach: float = LevelFormat.body_value(body, "reach")
+	var active_role: String = ""
+	if not _active_body_handle.is_empty() and _active_body_handle.index == body_index:
+		active_role = _active_body_handle.role
+	var radius_color: Color = Style.ACCENT if active_role == "radius" else Style.INK
+	var reach_color: Color = Style.ACCENT if active_role == "reach" else Color(Style.ACCENT, 0.75)
+	_draw_body_ring(center, radius, radius_color, zoom)
+	_draw_body_ring(center, reach, reach_color, zoom)
+	_draw_body_knob(body_index, "radius", radius, _body_handle_position(body_index, "radius", slop), radius_color, active_role == "radius")
+	_draw_body_knob(body_index, "reach", reach, _body_handle_position(body_index, "reach", slop), reach_color, active_role == "reach")
+
+
+func _draw_body_ring(center: Vector2, radius: float, color: Color, zoom: float) -> void:
+	if radius <= 0.0:
+		return
+	_draw_dashed_arc(center, radius, Style.PANEL, 4.0 / zoom)
+	_draw_dashed_arc(center, radius, color, 1.5 / zoom)
+
+
+func _draw_dashed_arc(center: Vector2, radius: float, color: Color, width: float) -> void:
+	var zoom: float = _camera.zoom.x
+	var half_view: Vector2 = get_viewport_rect().size / (2.0 * zoom)
+	if absf(center.distance_to(_camera.position) - radius) > half_view.length():
+		return
+	var dash_length: float = 8.0
+	var step_angle: float = 14.0 / (radius * zoom)
+	var dash_angle: float = dash_length / (radius * zoom)
+	for dash in ceili(TAU / step_angle):
+		var start: float = dash * step_angle
+		if start >= TAU:
+			break
+		var finish: float = minf(start + dash_angle, TAU)
+		var segments: int = maxi(2, ceili((finish - start) * radius * zoom / 3.0))
+		_marks.draw_arc(center, radius, start, finish, segments, color, width, true)
+
+
+func _draw_body_knob(body_index: int, role: String, radius: float, target: Vector2, color: Color, active: bool) -> void:
+	var zoom: float = _camera.zoom.x
+	var direction: Vector2 = Vector2(1, -1).normalized() if role == "radius" else Vector2(1, 1).normalized()
+	var ring_point: Vector2 = doc.position_of({"type": "body", "index": body_index}) + direction * radius
+	var marker: float = (9.0 if _touch_input else 6.0) / zoom
+	var width: float = 2.0 / zoom
+	if not ring_point.is_equal_approx(target):
+		_marks.draw_line(ring_point, target, Style.PANEL, width + 1.0 / zoom)
+		_marks.draw_line(ring_point, target, color, 1.0 / zoom)
+	_marks.draw_circle(target, marker + 2.0 / zoom, Style.PANEL)
+	_marks.draw_circle(target, marker, Color(Style.PANEL, 1.0))
+	_marks.draw_arc(target, marker, 0.0, TAU, 24, color, width, true)
+	var body: Dictionary = doc.data.bodies[body_index]
+	var value: float = LevelFormat.body_value(body, role)
+	var label: String = role.capitalize()
+	if active:
+		label += "  %d px" % roundi(value)
+	_draw_body_handle_label(target, label, active)
+
+
+func _draw_body_handle_label(at: Vector2, text: String, active: bool) -> void:
+	var zoom: float = _camera.zoom.x
+	var font_size: int = roundi(14.0 / zoom)
+	var font: Font = ThemeDB.get_default_theme().default_font
+	var text_size: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var target_screen: Vector2 = get_viewport().canvas_transform * at
+	var viewport_size: Vector2 = get_viewport_rect().size
+	var gap: float = (9.0 if _touch_input else 7.0) + 8.0
+	var text_width: float = text_size.x * zoom
+	var label_left: bool = target_screen.x + gap + text_width > viewport_size.x
+	var baseline_screen: Vector2 = target_screen + Vector2(-gap - text_width if label_left else gap, font_size * zoom * 0.35)
+	if target_screen.y < font_size * zoom + 6.0:
+		baseline_screen.y = target_screen.y + font_size * zoom + 6.0
+	elif target_screen.y > viewport_size.y - 6.0:
+		baseline_screen.y = target_screen.y - font_size * zoom - 6.0
+	var baseline: Vector2 = _to_world(baseline_screen)
+	var padding: float = 4.0 / zoom
+	if active:
+		var backing := Rect2(baseline + Vector2(-padding, -text_size.y - padding), text_size + Vector2.ONE * padding * 2.0)
+		_marks.draw_rect(backing, Style.PANEL, true)
+		_marks.draw_rect(backing, Style.BORDER, false, 1.0 / zoom)
+	else:
+		_marks.draw_string(font, baseline + Vector2(1.0 / zoom, 0), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Style.PANEL)
+	_marks.draw_string(font, baseline, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Style.INK if active else Style.INK_DIM)
+
+
+
 func _draw_outline(ref: Dictionary, color: Color, selected: bool) -> void:
+	if ref.get("type", "") == "body_handle":
+		ref = {"type": "body", "index": ref.index}
 	var zoom: float = _camera.zoom.x
 	var under_width: float = (4.0 if selected else 2.5) / zoom
 	var stroke_width: float = (1.5 if selected else 0.8) / zoom

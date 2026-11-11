@@ -562,6 +562,224 @@ func test_dragging_body_from_its_edge_preserves_press_offset() -> void:
 	_route(_mouse(MOUSE_BUTTON_LEFT, false, motion.position))
 	check(e.doc.position_of(ref) == center + Vector2(50, 0), "body follows pointer displacement from edge press: %s" % e.doc.position_of(ref))
 
+func _planet_at(e: LevelEditor, screen: Vector2, radius: float, reach: float) -> Vector2:
+	var center: Vector2 = e._to_world(screen)
+	e.doc.place("planet", center)
+	var body: Dictionary = e.doc.data.bodies[0]
+	body["radius"] = radius
+	body["strength"] = 3200.0
+	body["reach"] = reach
+	return LevelDoc._v(body.position)
+
+
+func _select_body_at(e: LevelEditor, screen: Vector2) -> void:
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, screen))
+
+
+func _mouse_motion(at: Vector2) -> InputEventMouseMotion:
+	var motion := InputEventMouseMotion.new()
+	motion.device = 0
+	motion.position = at
+	motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+	return motion
+
+
+func test_radius_knob_drag_preserves_total_pull_without_jumping_and_clamps() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(1)
+	var center_screen := Vector2(800, 400)
+	var center: Vector2 = e._to_world(center_screen)
+	e.doc.place("black_hole", center)
+	var body: Dictionary = e.doc.data.bodies[0]
+	body["radius"] = 40.0
+	body["strength"] = 40000.0
+	body["reach"] = 400.0
+	center = LevelDoc._v(body.position)
+	var total_pull: float = LevelFormat.total_pull(body)
+	e.select_tool("select")
+	_select_body_at(e, center_screen)
+	var direction: Vector2 = Vector2(1, -1).normalized()
+	var knob: Vector2 = _screen_at(e, center + direction * 40)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, knob))
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), 40) and e.doc.position_of({"type": "body", "index": 0}) == center, "pressing Radius changes neither its value nor the body position")
+	var first_move: Vector2 = knob + direction.rotated(PI / 2.0) * 13
+	_route(_mouse_motion(first_move))
+	var expected_radius: float = roundf((direction * 40 + direction.rotated(PI / 2.0) * 26).length())
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), expected_radius), "the first move changes Radius by the radial distance, without jumping: %s" % LevelFormat.body_value(body, "radius"))
+	check(is_equal_approx(LevelFormat.total_pull(body), total_pull), "resizing Radius keeps total pull constant")
+	_route(_mouse_motion(knob + direction * 100))
+	var radius_limits: Vector2 = LevelFormat.KIND_LIMITS["black_hole"]["radius"]
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), radius_limits.y), "Radius clamps to the black hole maximum: %s" % LevelFormat.body_value(body, "radius"))
+	_route(_mouse_motion(center_screen))
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), radius_limits.x), "Radius clamps to the black hole minimum: %s" % LevelFormat.body_value(body, "radius"))
+	check(is_equal_approx(LevelFormat.total_pull(body), total_pull), "the clamped Radius still preserves total pull")
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, center_screen))
+
+
+func test_reach_knob_drag_keeps_radius_without_jumping_and_clamps() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(1)
+	var center_screen := Vector2(800, 400)
+	var center: Vector2 = e._to_world(center_screen)
+	e.doc.place("star", center)
+	var body: Dictionary = e.doc.data.bodies[0]
+	body["radius"] = 600.0
+	body["strength"] = 3000.0
+	body["reach"] = 1000.0
+	center = LevelDoc._v(body.position)
+	e.select_tool("select")
+	_select_body_at(e, center_screen)
+	var direction: Vector2 = Vector2(1, 1).normalized()
+	var knob: Vector2 = _screen_at(e, center + direction * 1000)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, knob))
+	check(is_equal_approx(LevelFormat.body_value(body, "reach"), 1000) and e.doc.position_of({"type": "body", "index": 0}) == center, "pressing Reach changes neither its value nor the body position")
+	_route(_mouse_motion(knob + direction * 20))
+	check(is_equal_approx(LevelFormat.body_value(body, "reach"), 1040), "the first move changes Reach only by the pointer displacement: %s" % LevelFormat.body_value(body, "reach"))
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), 600), "resizing Reach leaves Radius unchanged")
+	_route(_mouse_motion(knob + direction * 4000))
+	var reach_limits: Vector2 = LevelFormat.KIND_LIMITS["star"]["reach"]
+	check(is_equal_approx(LevelFormat.body_value(body, "reach"), reach_limits.y), "Reach clamps to the star maximum: %s" % LevelFormat.body_value(body, "reach"))
+	_route(_mouse_motion(center_screen))
+	check(is_equal_approx(LevelFormat.body_value(body, "reach"), reach_limits.x), "Reach clamps to the star minimum: %s" % LevelFormat.body_value(body, "reach"))
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), 600), "clamping Reach leaves Radius unchanged")
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, center_screen))
+
+
+func test_equal_body_rings_keep_radius_and_reach_targets_distinct() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(1)
+	var center_screen := Vector2(800, 400)
+	var center: Vector2 = _planet_at(e, center_screen, 64, 64)
+	var body: Dictionary = e.doc.data.bodies[0]
+	e.select_tool("select")
+	_select_body_at(e, center_screen)
+	var radius_direction: Vector2 = Vector2(1, -1).normalized()
+	var radius_knob: Vector2 = _screen_at(e, center + radius_direction * 64)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, radius_knob))
+	_route(_mouse_motion(radius_knob + radius_direction * 20))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, radius_knob + radius_direction * 20))
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), 104) and is_equal_approx(LevelFormat.body_value(body, "reach"), 64), "the Radius target changes only Radius when both rings have the same value: %s" % body)
+	var reach_direction: Vector2 = Vector2(1, 1).normalized()
+	var reach_knob: Vector2 = _screen_at(e, center + reach_direction * 64)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, reach_knob))
+	_route(_mouse_motion(reach_knob + reach_direction * 20))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, reach_knob + reach_direction * 20))
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), 104) and is_equal_approx(LevelFormat.body_value(body, "reach"), 104), "the Reach target changes only Reach when both rings started at the same value: %s" % body)
+
+
+func test_minimum_planet_at_zoom_point_one_keeps_knobs_clear_of_center() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.1
+	await frames(3)
+	var center_screen := Vector2(800, 400)
+	var center: Vector2 = _planet_at(e, center_screen, 32, 0)
+	var body: Dictionary = e.doc.data.bodies[0]
+	e.select_tool("select")
+	_select_body_at(e, center_screen)
+	check(e.selection == {"type": "body", "index": 0}, "the minimum planet is selected before the centre drag")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, center_screen))
+	var moved_screen: Vector2 = center_screen + Vector2(20, 0)
+	_route(_mouse_motion(moved_screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, moved_screen))
+	var moved_center: Vector2 = center + Vector2(200, 0)
+	check(e.doc.position_of({"type": "body", "index": 0}) == moved_center, "a press on the exact centre moves the minimum planet to %s, got %s" % [moved_center, e.doc.position_of({"type": "body", "index": 0})])
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), 32) and is_equal_approx(LevelFormat.body_value(body, "reach"), 0), "moving from the centre changes neither knob value")
+	var radius_direction: Vector2 = Vector2(1, -1).normalized()
+	var radius_knob: Vector2 = _screen_at(e, moved_center + radius_direction * 220)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, radius_knob))
+	var radius_move: Vector2 = radius_knob + radius_direction * 13
+	_route(_mouse_motion(radius_move))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, radius_move))
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), 162) and is_equal_approx(LevelFormat.body_value(body, "reach"), 0), "the leader-line Radius target remains distinct from the zero Reach target: %s" % body)
+	var reach_direction: Vector2 = Vector2(1, 1).normalized()
+	var reach_knob: Vector2 = _screen_at(e, moved_center + reach_direction * 220)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, reach_knob))
+	var reach_move: Vector2 = reach_knob + reach_direction * 13
+	_route(_mouse_motion(reach_move))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, reach_move))
+	check(is_equal_approx(LevelFormat.body_value(body, "radius"), 162) and is_equal_approx(LevelFormat.body_value(body, "reach"), 130), "the zero Reach leader target remains distinct from Radius and the centre: %s" % body)
+
+
+func test_each_body_knob_drag_is_one_undo_step() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(1)
+	var center_screen := Vector2(800, 400)
+	var center: Vector2 = _planet_at(e, center_screen, 100, 300)
+	var before: Dictionary = e.doc.data.duplicate(true)
+	e.select_tool("select")
+	_select_body_at(e, center_screen)
+	var radius_direction: Vector2 = Vector2(1, -1).normalized()
+	var radius_knob: Vector2 = _screen_at(e, center + radius_direction * 100)
+	var radius_move: Vector2 = radius_knob + radius_direction * 20
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, radius_knob))
+	_route(_mouse_motion(radius_move))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, radius_move))
+	check(is_equal_approx(LevelFormat.body_value(e.doc.data.bodies[0], "radius"), 140), "Radius drag changed the body before undo")
+	_route(_key(KEY_Z, true))
+	check(e.doc.data == before, "one undo restores all changes from the Radius drag")
+	_select_body_at(e, center_screen)
+	var reach_direction: Vector2 = Vector2(1, 1).normalized()
+	var reach_knob: Vector2 = _screen_at(e, center + reach_direction * 300)
+	var reach_move: Vector2 = reach_knob + reach_direction * 20
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, reach_knob))
+	_route(_mouse_motion(reach_move))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, reach_move))
+	check(is_equal_approx(LevelFormat.body_value(e.doc.data.bodies[0], "reach"), 340), "Reach drag changed the body before undo")
+	_route(_key(KEY_Z, true))
+	check(e.doc.data == before, "one undo restores all changes from the Reach drag")
+
+
+func test_second_finger_cancels_a_body_knob_drag_without_history() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(1)
+	var center_screen := Vector2(800, 400)
+	var center: Vector2 = _planet_at(e, center_screen, 100, 300)
+	var before: Dictionary = e.doc.data.duplicate(true)
+	e.select_tool("select")
+	_select_body_at(e, center_screen)
+	var direction: Vector2 = Vector2(1, -1).normalized()
+	var knob: Vector2 = _screen_at(e, center + direction * 100)
+	_route(_touch(0, true, knob))
+	var moved: Vector2 = knob + direction * 20
+	var drag := InputEventScreenDrag.new()
+	drag.index = 0
+	drag.position = moved
+	drag.relative = moved - knob
+	_route(drag)
+	check(is_equal_approx(LevelFormat.body_value(e.doc.data.bodies[0], "radius"), 140), "the first finger changes Radius before the second finger arrives")
+	_route(_touch(1, true, knob + Vector2(100, 100)))
+	check(e.doc.data == before, "the second finger cancels and restores the knob edit")
+	_route(_touch(0, false, moved))
+	_route(_touch(1, false, knob + Vector2(100, 100)))
+	_route(_key(KEY_Z, true))
+	check(e.doc.data.get("bodies", []).is_empty(), "cancelling the knob drag adds no undo entry")
+
+
+func test_selected_body_shows_resize_hint() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(1)
+	var center_screen := Vector2(800, 400)
+	_planet_at(e, center_screen, 100, 300)
+	e.select_tool("select")
+	_select_body_at(e, center_screen)
+	check(e._hint_label.text.begins_with("Drag Radius or Reach to resize"), "selected body hint explains ring resizing: %s" % e._hint_label.text)
+
+
+
 
 func test_delete_and_backspace_delete_selection() -> void:
 	var e: LevelEditor = editor()
@@ -841,6 +1059,29 @@ func test_plus_drag_inserts_a_snapped_point_in_one_undo_step() -> void:
 	check(e.selection == {"type": "wall_point", "index": 0, "point": 1}, "the dragged insertion remains selected: %s" % [e.selection])
 	_route(_key(KEY_Z, true))
 	check(e.doc.data == before, "one undo restores the wall before the insertion drag")
+
+func test_plus_drag_onto_neighbor_cancels_insertion_and_restores_selection() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	e.fine_snap = true
+	var first: Vector2 = e._to_world(Vector2(800, 400))
+	var neighbor: Vector2 = first + Vector2(400, 0)
+	_store_wall(e, [first, neighbor, neighbor + Vector2(400, 0)])
+	var before: Dictionary = e.doc.data.duplicate(true)
+	e.select_tool("select")
+	_select_wall_point(e)
+	var previous_selection: Dictionary = e.selection.duplicate()
+	var press_screen: Vector2 = _screen_at(e, (first + neighbor) / 2.0)
+	var first_screen: Vector2 = _screen_at(e, first)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, press_screen))
+	_route(_mouse_motion(first_screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, first_screen))
+	check(e.doc.data == before, "dragging the inserted point onto its neighbour restores the wall")
+	check(e.selection == previous_selection, "cancelling insertion restores the previous selection: %s" % e.selection)
+	check(not e.doc.can_undo(), "cancelling insertion records no undo history")
+
+
 
 
 func test_plus_handle_on_closed_wall_closing_edge_inserts_after_last_point() -> void:
