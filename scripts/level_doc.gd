@@ -7,14 +7,21 @@ extends RefCounted
 const FINE_SNAP := 10.0  # px: 1 m
 const COARSE_SNAP := 100.0  # px: 10 m
 const CLOSE_DISTANCE := 20.0  # screen px: the editor divides it by the zoom; tapping this near a wall's first point closes it
-const HIT_SLOP := 40.0  # screen px of finger tolerance when picking things; the editor scales it by zoom
+const HIT_SLOP := 40.0  # viewport units of finger tolerance when picking things; the editor scales it by zoom
+
+const HIT_SLOP_MOUSE := 14.0  # viewport units, mouse
 const ORBIT_SPEED := 0.8  # rad/s for a new orbiting asteroid
 const UNDO_LIMIT := 50
 
 var data: Dictionary
 ## Index of the wall being drawn, or -1.
-var drawing := -1
+var drawing: int = -1
 var _history: Array[Dictionary] = []
+var _editing: bool = false
+var _edit_recorded: bool = false
+var _edit_snapshot: Dictionary = {}
+var _edit_pruned_snapshot: Dictionary = {}
+var _edit_pruned: bool = false
 
 
 func _init(level: Dictionary = {}) -> void:
@@ -33,7 +40,7 @@ static func snap(at: Vector2, fine := false) -> Vector2:
 ## Place a body ("planet", "black_hole", "star"), an asteroid, or a pickup ("thrust_up", ...).
 ## An asteroid dropped on a planet's orbit ring orbits it.
 func place(kind: String, at: Vector2) -> Dictionary:
-	_remember()
+	_record()
 	if kind in LevelFormat.BODY_KINDS:
 		data.get_or_add("bodies", []).append({"kind": kind, "position": _p(at)})
 		return {"type": "body", "index": data.bodies.size() - 1}
@@ -55,8 +62,8 @@ func place(kind: String, at: Vector2) -> Dictionary:
 
 ## Add a point to the wall being drawn, starting a new wall of `kind` if none is. Tapping near
 ## the first point of a wall with three or more points closes it and ends the wall.
-func add_wall_point(at: Vector2, kind := "blue", close := CLOSE_DISTANCE) -> void:
-	_remember()
+func add_wall_point(at: Vector2, kind: String = "blue", close: float = CLOSE_DISTANCE) -> void:
+	_record()
 	if drawing < 0:
 		data.get_or_add("walls", []).append({"kind": kind, "points": [_p(at)]})
 		drawing = data.walls.size() - 1
@@ -69,6 +76,25 @@ func add_wall_point(at: Vector2, kind := "blue", close := CLOSE_DISTANCE) -> voi
 	wall.points.append(_p(at))
 
 
+## Insert after a wall point; on an open wall, after its last point appends.
+func insert_wall_point(wall_index: int, after: int, at: Vector2) -> Dictionary:
+	var walls: Array = data.get("walls", [])
+	if wall_index < 0 or wall_index >= walls.size():
+		return {}
+	var wall: Dictionary = walls[wall_index]
+	var points: Array = wall.points
+	if after < 0 or after >= points.size():
+		return {}
+	var inserted: Array = _p(at)
+	if points[after] == inserted:
+		return {}
+	var next: int = after + 1 if after + 1 < points.size() else (0 if wall.get("closed", false) else -1)
+	if next >= 0 and points[next] == inserted:
+		return {}
+	_record()
+	points.insert(after + 1, inserted)
+	return {"type": "wall_point", "index": wall_index, "point": after + 1}
+
 ## End the wall being drawn; a wall with a single point is dropped.
 func finish_wall() -> void:
 	if drawing >= 0 and data.walls[drawing].points.size() < 2:
@@ -76,34 +102,68 @@ func finish_wall() -> void:
 	drawing = -1
 
 
-## The thing under `at`, nearest first in this order: wall points, start, goal, asteroids, pickups,
-## bodies, wall segments. Empty when nothing is there. `slop` is the pick tolerance in world
-## px; wall points get 1.5 x slop so they win near misses.
-func hit(at: Vector2, slop := HIT_SLOP) -> Dictionary:
+## Geometry pick in four groups: points, bodies, wall segments, then goal. First group with a
+## candidate in reach wins; nearest within a group wins and ties keep list order. `slop` is world px.
+func hit(at: Vector2, slop: float = HIT_SLOP) -> Dictionary:
 	var walls: Array = data.get("walls", [])
-	for i in walls.size():
-		for k in walls[i].points.size():
-			if _v(walls[i].points[k]).distance_to(at) <= slop * 1.5:
-				return {"type": "wall_point", "index": i, "point": k}
-	if _v(data.ship.position).distance_to(at) <= slop:
-		return {"type": "ship", "index": 0}
+	var picked: Dictionary = {}
+	var nearest: float = INF
+	var distance: float = INF
+	for point_wall_index: int in walls.size():
+		var wall_points: Array = walls[point_wall_index].points
+		for point_index: int in wall_points.size():
+			distance = _v(wall_points[point_index]).distance_to(at)
+			if distance <= slop and distance < nearest:
+				nearest = distance
+				picked = {"type": "wall_point", "index": point_wall_index, "point": point_index}
+	distance = _v(data.ship.position).distance_to(at)
+	if distance <= slop and distance < nearest:
+		nearest = distance
+		picked = {"type": "ship", "index": 0}
+	var asteroids: Array = data.get("asteroids", [])
+	for asteroid_index: int in asteroids.size():
+		distance = _v(asteroids[asteroid_index].position).distance_to(at)
+		if distance <= slop and distance < nearest:
+			nearest = distance
+			picked = {"type": "asteroid", "index": asteroid_index}
+	var pickups: Array = data.get("pickups", [])
+	for pickup_index: int in pickups.size():
+		distance = _v(pickups[pickup_index].position).distance_to(at)
+		if distance <= slop and distance < nearest:
+			nearest = distance
+			picked = {"type": "pickup", "index": pickup_index}
+	if not picked.is_empty():
+		return picked
+	var bodies: Array = data.get("bodies", [])
+	nearest = INF
+	for body_index: int in bodies.size():
+		var body: Dictionary = bodies[body_index]
+		distance = _v(body.position).distance_to(at)
+		if distance <= drawn_radius(body) + slop and distance < nearest:
+			nearest = distance
+			picked = {"type": "body", "index": body_index}
+	if not picked.is_empty():
+		return picked
+	nearest = INF
+	for segment_wall_index: int in walls.size():
+		var wall: Dictionary = walls[segment_wall_index]
+		var segment_points: Array = wall.points
+		for segment_index: int in range(maxi(segment_points.size() - 1, 0)):
+			distance = Geometry2D.get_closest_point_to_segment(at, _v(segment_points[segment_index]), _v(segment_points[segment_index + 1])).distance_to(at)
+			if distance <= slop and distance < nearest:
+				nearest = distance
+				picked = {"type": "wall", "index": segment_wall_index}
+		if wall.get("closed", false) and segment_points.size() > 1:
+			distance = Geometry2D.get_closest_point_to_segment(at, _v(segment_points[-1]), _v(segment_points[0])).distance_to(at)
+			if distance <= slop and distance < nearest:
+				nearest = distance
+				picked = {"type": "wall", "index": segment_wall_index}
+	if not picked.is_empty():
+		return picked
 	if _v(data.goal.position).distance_to(at) <= Goal.RADIUS:
 		return {"type": "goal", "index": 0}
-	for type: String in ["asteroid", "pickup"]:
-		var list: Array = data.get(type + "s", [])
-		for i in list.size():
-			if _v(list[i].position).distance_to(at) <= slop:
-				return {"type": type, "index": i}
-	var bodies: Array = data.get("bodies", [])
-	for i in bodies.size():
-		if _v(bodies[i].position).distance_to(at) <= drawn_radius(bodies[i]) + slop:
-			return {"type": "body", "index": i}
-	for i in walls.size():
-		var points: Array = walls[i].points
-		for k in points.size() - 1:
-			if Geometry2D.get_closest_point_to_segment(at, _v(points[k]), _v(points[k + 1])).distance_to(at) <= slop:
-				return {"type": "wall", "index": i}
 	return {}
+
 
 
 ## How far a body's drawing reaches from its centre: a star's corona and prominences, a black
@@ -126,29 +186,82 @@ func position_of(ref: Dictionary) -> Vector2:
 	return _v(_entry(ref).position)
 
 
-## Move `ref` to `at`; a whole wall moves by its first point. Call `begin_move` once per drag.
+## Move `ref` to `at`; actual changes record through `_record()`.
 func move(ref: Dictionary, at: Vector2) -> void:
-	match ref.type:
-		"ship": data.ship.position = _p(at)
-		"goal": data.goal.position = _p(at)
-		"wall_point": data.walls[ref.index].points[ref.point] = _p(at)
-		"wall":
-			var shift := at - _v(data.walls[ref.index].points[0])
-			data.walls[ref.index].points = data.walls[ref.index].points.map(func(p: Array) -> Array: return _p(_v(p) + shift))
-		_:
-			_entry(ref).position = _p(at)
+	if ref.type == "wall_point":
+		var point_wall_points: Array = data.walls[ref.index].points
+		var point_position: Array = _p(at)
+		if point_wall_points[ref.point] == point_position:
+			return
+		_record()
+		point_wall_points[ref.point] = point_position
+	elif ref.type == "wall":
+		var whole_wall_points: Array = data.walls[ref.index].points
+		var shift: Vector2 = at - _v(whole_wall_points[0])
+		var changed: bool = false
+		for check_index: int in whole_wall_points.size():
+			if _p(_v(whole_wall_points[check_index]) + shift) != whole_wall_points[check_index]:
+				changed = true
+				break
+		if not changed:
+			return
+		_record()
+		for move_index: int in whole_wall_points.size():
+			whole_wall_points[move_index] = _p(_v(whole_wall_points[move_index]) + shift)
+	else:
+		var entry: Dictionary = _entry(ref)
+		var entry_position: Array = _p(at)
+		if entry.position == entry_position:
+			return
+		_record()
+		entry.position = entry_position
 
 
-## Start a drag: remembered once, so one drag is one undo step.
-func begin_move() -> void:
-	_remember()
+func begin_edit() -> void:
+	if _editing:
+		return
+	_editing = true
+	_edit_recorded = false
+	_edit_snapshot = {}
+	_edit_pruned_snapshot = {}
+	_edit_pruned = false
+
+
+func end_edit() -> void:
+	if _editing and _edit_recorded and data == _edit_snapshot:
+		_history.pop_back()
+		if _edit_pruned:
+			_history.push_front(_edit_pruned_snapshot)
+	_editing = false
+	_edit_recorded = false
+	_edit_snapshot = {}
+	_edit_pruned_snapshot = {}
+	_edit_pruned = false
+
+
+func cancel_edit() -> void:
+	if _edit_recorded:
+		data = _edit_snapshot
+		_history.pop_back()
+		if _edit_pruned:
+			_history.push_front(_edit_pruned_snapshot)
+		_edit_recorded = false
+	end_edit()
+
+
+
+
+func editing() -> bool:
+	return _editing
+
+
 
 
 ## Removes `ref`. A point taken from a closed wall keeps it closed when `reclose` and three or more points remain; otherwise the wall opens at the gap, starting from the removed point's next neighbour.
 func erase(ref: Dictionary, reclose := true) -> void:
 	if ref.type in ["ship", "goal"]:
 		return  # every level needs both
-	_remember()
+	_record()
 	match ref.type:
 		"wall_point":
 			var wall: Dictionary = data.walls[ref.index]
@@ -175,19 +288,33 @@ func erase(ref: Dictionary, reclose := true) -> void:
 
 
 func set_property(ref: Dictionary, key: String, value: Variant) -> void:
-	_remember()
-	_entry(ref)[key] = value
+	var entry: Dictionary = _entry(ref)
+	if entry.has(key) and typeof(entry[key]) == typeof(value) and entry[key] == value:
+		return
+	_record()
+	entry[key] = value
 
 
 ## Title, hint, show_velocity, or the ship's fuel and hull (a number or LevelFormat.UNLIMITED) and
 ## velocity ([x, y] px/s; [0, 0] removes it).
 func set_setting(key: String, value: Variant) -> void:
-	_remember()
-	if key == "velocity" and value == [0, 0]:
+	if key == "velocity" and typeof(value) == TYPE_ARRAY and value == [0, 0]:
+		if not data.ship.has("velocity"):
+			return
+	elif key in ["fuel", "hull", "velocity"]:
+		if data.ship.has(key) and typeof(data.ship[key]) == typeof(value) and data.ship[key] == value:
+			return
+	elif key == "hint" and typeof(value) == TYPE_STRING and value == "":
+		if not data.has("hint"):
+			return
+	elif data.has(key) and typeof(data[key]) == typeof(value) and data[key] == value:
+		return
+	_record()
+	if key == "velocity" and typeof(value) == TYPE_ARRAY and value == [0, 0]:
 		data.ship.erase("velocity")
 	elif key in ["fuel", "hull", "velocity"]:
 		data.ship[key] = value
-	elif key == "hint" and value == "":
+	elif key == "hint" and typeof(value) == TYPE_STRING and value == "":
 		data.erase("hint")
 	else:
 		data[key] = value
@@ -198,6 +325,7 @@ func can_undo() -> bool:
 
 
 func undo() -> void:
+	end_edit()
 	if _history.is_empty():
 		return
 	data = _history.pop_back()
@@ -218,11 +346,21 @@ func _entry(ref: Dictionary) -> Dictionary:
 	return data.goal
 
 
-func _remember() -> void:
-	_history.append(data.duplicate(true))
+func _record() -> void:
+	if _editing:
+		if _edit_recorded:
+			return
+		_edit_snapshot = data.duplicate(true)
+		_history.append(_edit_snapshot)
+		_edit_recorded = true
+	else:
+		_history.append(data.duplicate(true))
 	if _history.size() > UNDO_LIMIT:
-		_history.pop_front()
-
+		if _editing and _edit_recorded:
+			_edit_pruned_snapshot = _history.pop_front()
+			_edit_pruned = true
+		else:
+			_history.pop_front()
 
 static func _p(at: Vector2) -> Array:
 	return [roundi(at.x), roundi(at.y)]

@@ -68,21 +68,30 @@ func _fill() -> void:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 12)
 		card.add_child(row)
+		var thumbnail := Thumbnail.of_sketch(LevelFormat.sketch(data))
+		thumbnail.custom_minimum_size = Vector2(128, 72)
+		thumbnail.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(thumbnail)
 		var label := Label.new()
 		var best := Progress.best_points(id)
 		label.text = "%s%s · %s" % ["✓ " if MyLevels.is_completed(id) else "", data.get("title", "?"), "—" if best < 0 else str(best)]
 		label.add_theme_font_size_override("font_size", 24)
-		label.custom_minimum_size.x = 300  # room for Watch, Edit, Play, Export and Delete
+		label.custom_minimum_size.x = 200
 		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		row.add_child(label)
-		_button(row, "Edit", _edit.bind(id))
+		var actions := HFlowContainer.new()
+		actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_theme_constant_override("h_separation", 12)
+		actions.add_theme_constant_override("v_separation", 12)
+		row.add_child(actions)
+		_button(actions, "Edit", _edit.bind(id))
 		if MyLevels.has_demo(id):
-			_button(row, "Watch", _watch.bind(id, data))
+			_button(actions, "Watch", _watch.bind(id, data))
 		var problems := LevelFormat.validate(data)
-		var play := _button(row, "Play", func() -> void: Progress.open(id))
+		var play := _button(actions, "Play", func() -> void: Progress.open(id))
 		play.disabled = not problems.is_empty()
-		_button(row, "Export", _export.bind(id, str(data.get("title", "level"))))
-		_button(row, "Delete", _confirm_delete.bind(id, str(data.get("title", "?"))))
+		_button(actions, "Export", _export.bind(id, str(data.get("title", "level"))))
+		_button(actions, "Delete", _confirm_delete.bind(id, str(data.get("title", "?"))))
 		if not problems.is_empty():  # says what to fix, so a draft that cannot be played is not a mystery
 			var reason := Label.new()
 			reason.text = "⚠ Cannot play: " + problems[0] + ("  (+%d more)" % (problems.size() - 1) if problems.size() > 1 else "")
