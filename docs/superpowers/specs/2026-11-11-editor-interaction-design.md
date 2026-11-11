@@ -1,6 +1,6 @@
 # Level editor interaction redesign
 
-Revision 3: incorporates design review rounds 1 and 2 (S1–S20, G1–G10).
+Revision 4: incorporates design review rounds 1–3 (S1–S20, G1–G13).
 
 ## Goal
 
@@ -200,6 +200,10 @@ Behavioural tests in `tests/test_level_doc.gd` and `tests/test_editor.gd`, using
 - A press on the menu, the panel or the colour strip does not reach the canvas.
 - The Erase tool on a segment removes the wall without asking.
 - With a number field focused, `Delete` and undo do not change the level; `Esc` closes the panel.
+- With a context menu open, `Delete` does not change the level.
+- Wall-tool press, a second finger, first finger up: no new point and no history entry; a pending long-press opens no menu.
+- A press on the exact centre of a minimum-size body at minimum zoom moves the body.
+- An orbit-speed panel drag is one undo step.
 - A swatch recolours the selected wall.
 - A My levels card shows a thumbnail for an imported invalid level, and all its actions on a narrow screen.
 
