@@ -1,6 +1,6 @@
 # Google Play Release Preparation
 
-Status: the existing bundle path is in place; monetization remains opt-in and is not release-ready until the Play product, AdMob IDs, required account permissions and policy copies are verified. The first release goes to **internal testing**, then **closed testing**; production comes later.
+Status: monetization is enabled on the `Android Play` preset with the real AdMob app and banner IDs, so internal-testing bundles carry banners and the purchase screen. It is not production-ready until the Play product, required account permissions, policy answers and a license-test purchase are verified. The first release goes to **internal testing**, then **closed testing**; production comes later.
 
 ## Already in place
 
@@ -151,7 +151,7 @@ Before enabling a release, create or verify an AdMob account, add the Android ap
 
 At **AdMob → Apps → Zero-GX → Blocking controls**, review General categories, Sensitive categories, App install ads, Advertiser URLs and Ad content rating. The account-level **Ad review center** blocks individual creatives account-wide. Blocking is best-effort, reduces auction competition and can lower revenue; it is not a creative-quality guarantee. Regulatory choices belong in the UMP/CMP, not the deprecated “Other settings / additional ad technology vendors” control.
 
-AdMob requires the publisher's actual seller ID in `https://braitg.dev/app-ads.txt`; that URL currently returns 404. Do not publish a placeholder. After AdMob supplies the publisher ID, publish its exact authorized seller row at that root URL and ensure the Play developer website points to `braitg.dev`. Then use **AdMob → Apps → Zero-GX → App settings → Verify app → Check for updates** and complete app-readiness review. No AdMob app, banner or publisher IDs are configured in this repository; none are invented here.
+AdMob requires the publisher's seller row in `https://braitg.dev/app-ads.txt`; it is published there for `pub-4827482077058290` and mirrored in `ads.txt`. Ensure the Play developer website points to `braitg.dev`, then use **AdMob → Apps → Zero-GX → App settings → Verify app → Check for updates** and complete app-readiness review. The AdMob app was added manually because Zero-GX is not yet published on Google Play; link it to the store listing once the app is live. The real app ID and banner unit ID are set on the `Android Play` preset.
 
 ### Trader declaration
 
@@ -159,7 +159,7 @@ Use **Manage account → Account details → About you** for account-level trade
 
 ### Activation prerequisites
 
-- Product activation for license testing is safe while `zero_gx_monetization/enabled` remains false in the app presets. Keep the monetization export disabled until real AdMob IDs, policy/Data safety answers, publisher age settings, service-account permissions and the authorized test purchase lifecycle are verified.
+- Monetization is enabled on `Android Play` for internal testing only. Do not promote a build beyond internal testing until policy/Data safety answers, publisher age settings, service-account permissions and the authorized test purchase lifecycle are verified. Register every test phone under **AdMob → Settings → Test devices** first: real ad units then serve test ads and tester taps are not counted as invalid clicks. To switch monetization off again, remove `zero_gx_monetization/enabled=true` from the preset.
 - Verify Google Play Developer API enablement and the service account's **View financial data, orders, and cancellation survey responses** and **Manage orders and subscriptions** permissions for this app. The secret name alone does not prove permissions.
 - Complete an actual Play license-test transaction with a listed license tester and displayed test payment method (no real charge): pending/cancellation, acknowledgement, restore after reinstall, offline entitlement and refund/revocation refresh on an authorized HTTPS staging Worker.
 - Verify publisher target-audience and privacy settings, final merged APK/AAB permissions and data declarations, and the app-ads.txt/ad-readiness state before activation.
