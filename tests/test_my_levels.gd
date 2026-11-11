@@ -173,3 +173,75 @@ func test_an_invalid_draft_says_why_play_is_off() -> void:
 	var reasons: Array = screen.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.contains(problems[0]))
 	check(not reasons.is_empty(), "the first problem is shown beside Play: %s" % [problems[0]])
 	screen.queue_free()
+
+
+func test_imported_invalid_level_shows_its_thumbnail_and_keeps_play_disabled() -> void:
+	var draft := LevelFormat.read("res://levels/level_05.json")
+	draft.title = ""
+	var source := "user://invalid_thumbnail.json"
+	LevelFormat.write(source, draft)
+	var errors := MyLevels.import_file(source)
+	DirAccess.remove_absolute(source)
+	check(errors.is_empty(), "the invalid draft must import: %s" % [errors])
+	if not errors.is_empty():
+		return
+	var id: String = MyLevels.ids()[0]
+	var saved: Dictionary = MyLevels.load_level(id)
+	var screen := MyLevelsScreen.new()
+	world.add_child(screen)
+	await frames(2)
+	var thumbnails: Array = screen.find_children("*", "Thumbnail", true, false)
+	check(thumbnails.size() == 1, "the imported level has a thumbnail: %d" % thumbnails.size())
+	if thumbnails.size() == 1:
+		var thumbnail: Thumbnail = thumbnails[0]
+		check(thumbnail.sketch == LevelFormat.sketch(saved), "the thumbnail uses the imported level's saved sketch")
+		check(thumbnail.custom_minimum_size.is_equal_approx(Vector2(128, 72)), "thumbnail slot is 128 × 72: %s" % thumbnail.custom_minimum_size)
+		check(is_equal_approx(thumbnail.size.x / thumbnail.size.y, 16.0 / 9.0), "thumbnail stays 16:9: %s" % thumbnail.size)
+		check(thumbnail.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the thumbnail ignores the mouse")
+	var plays: Array = screen.find_children("*", "Button", true, false).filter(func(button: Button) -> bool: return button.text == "Play")
+	check(plays.size() == 1 and plays[0].disabled, "Play stays off for the invalid imported level")
+	var warnings: Array = screen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.begins_with("⚠ Cannot play:"))
+	check(warnings.size() == 1, "the invalid-level warning stays in the card")
+	if thumbnails.size() == 1 and warnings.size() == 1:
+		check(warnings[0].get_global_rect().position.y >= thumbnails[0].get_parent().get_global_rect().end.y, "the warning stays below the card's thumbnail and actions")
+	screen.queue_free()
+	MyLevels.delete(id)
+
+
+func test_my_level_actions_wrap_inside_a_narrow_window_and_title_ellipsises() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(960, 720)
+	world.add_child(viewport)
+	var data: Dictionary = LevelFormat.read("res://levels/level_05.json")
+	var long_title := "A very long level title ".repeat(20)
+	data.title = long_title
+	var id := MyLevels.new_id()
+	MyLevels.save(id, data)
+	var demo := Demo.new()
+	demo.add_frame({"position": Vector2(100, 100), "rotation": 0.0, "firing": false, "fuel": 10.0, "hull": 10.0}, {})
+	demo.level_sha256 = LevelFormat.sha256(data)
+	MyLevels.save_demo(id, demo)
+	var screen := MyLevelsScreen.new()
+	viewport.add_child(screen)
+	await frames(2)
+	var expected_actions := ["Edit", "Watch", "Play", "Export", "Delete"]
+	var buttons: Array = screen.find_children("*", "Button", true, false).filter(func(button: Button) -> bool: return button.text in expected_actions)
+	var bounds := Rect2(Vector2.ZERO, viewport.size)
+	check(buttons.size() == expected_actions.size(), "all level actions are shown: %s" % [buttons.map(func(button: Button) -> String: return button.text)])
+	var first_y := -1.0
+	var wraps := false
+	for button: Button in buttons:
+		var rect := button.get_global_rect()
+		check(button.is_visible_in_tree() and bounds.encloses(rect), "%s stays visible inside the narrow screen: %s" % [button.text, rect])
+		if first_y < 0.0:
+			first_y = rect.position.y
+		elif rect.position.y > first_y + 1.0:
+			wraps = true
+	check(wraps, "actions wrap to another row in the same card")
+	var scrolls: Array = screen.find_children("*", "ScrollContainer", true, false)
+	check(scrolls.size() == 1 and scrolls[0].horizontal_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED, "the level list has no horizontal scrolling")
+	var titles: Array = screen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.contains(long_title))
+	check(titles.size() == 1 and titles[0].text_overrun_behavior == TextServer.OVERRUN_TRIM_ELLIPSIS, "the long level title ellipsises")
+	screen.queue_free()
+	viewport.queue_free()
+	MyLevels.delete(id)
