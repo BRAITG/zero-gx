@@ -513,6 +513,12 @@ func _text_field_focused() -> bool:
 
 
 
+func _input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE and _property_panel != null:
+		_close_property_panel()
+		get_viewport().set_input_as_handled()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
@@ -692,19 +698,26 @@ func _cancel_one_finger() -> void:
 func _long_press(press_number: int) -> void:
 	if press_number != _presses or _dragging or _gesture_cancelled or not _pinch_start.is_empty() or _menu_panel != null:
 		return
-	var ref: Dictionary = _menu_target(_press_ref)
-	if ref.is_empty():
+	if _press_ref.is_empty():
+		return
+	var target: Dictionary = {"type": "wall", "index": _press_ref.index} if _inserted_wall_point else _menu_target(_press_ref)
+	if target.is_empty():
 		return
 	_long_pressed = true
 	_touches.clear()
 	if doc.editing():
 		doc.cancel_edit()
-		_refresh()
+	if _inserted_wall_point:
+		selection = _selection_before_insert.duplicate()
+	_inserted_wall_point = false
+	_selection_before_insert = {}
+	_refresh()
 	_held = {}
 	_active_body_handle = {}
 	_moving = false
 	_press_ref = {}
-	_show_context_menu(ref, _pressed_at, true)
+	_show_context_menu(target, _pressed_at, true)
+
 
 
 ## Walls, the start and the goal snap to the grid; everything else goes exactly where it is put.
@@ -1307,7 +1320,8 @@ func _show_context_menu(ref: Dictionary, screen: Vector2, touch := false, reclos
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	menu.add_child(scroll)
 	var rows := VBoxContainer.new()
-	rows.add_theme_constant_override("separation", 4)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rows.add_theme_constant_override("separation", 0)
 	scroll.add_child(rows)
 	_menu_panel = menu
 	if reclose:
@@ -1347,7 +1361,10 @@ func _build_context_rows(rows: VBoxContainer, ref: Dictionary) -> void:
 				var destructible := CheckButton.new()
 				destructible.text = "Destructible"
 				destructible.button_pressed = body.get("destructible", false)
-				destructible.custom_minimum_size.y = _menu_row_height()
+				destructible.flat = true
+				destructible.alignment = HORIZONTAL_ALIGNMENT_LEFT
+				destructible.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				destructible.custom_minimum_size = Vector2(0, _menu_row_height())
 				destructible.add_theme_font_size_override("font_size", _menu_font_size())
 				destructible.toggled.connect(_set_destructible.bind(ref))
 				rows.add_child(destructible)
@@ -1379,16 +1396,30 @@ func _menu_add_heading(rows: VBoxContainer, text: String) -> void:
 	heading.add_theme_font_size_override("font_size", _menu_font_size())
 	heading.custom_minimum_size.y = _dp_scale(20.0)
 	rows.add_child(heading)
-	_menu_content_height += heading.custom_minimum_size.y + 4.0
+	_menu_content_height += heading.custom_minimum_size.y
 
 
 func _menu_add_button(rows: VBoxContainer, text: String, action: Callable) -> Button:
+	if text in ["Delete", "Delete wall"]:
+		var separator := ColorRect.new()
+		separator.color = Style.BORDER
+		separator.custom_minimum_size.y = 1
+		separator.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		separator.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rows.add_child(separator)
+		_menu_content_height += 1.0
 	var button := _button(rows, text, action)
+	button.flat = true
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.custom_minimum_size = Vector2(0, _menu_row_height())
 	button.add_theme_font_size_override("font_size", _menu_font_size())
-	_menu_content_height += _menu_row_height() + 4.0
+	if text in ["Delete", "Delete wall"]:
+		button.add_theme_color_override("font_color", Color("#ff8a6a"))
+	_menu_content_height += _menu_row_height()
 	return button
+
+
 
 
 func _menu_row_height() -> float:
@@ -1493,6 +1524,17 @@ func _finish_reclose(keep_closed: bool) -> void:
 	_refresh()
 
 
+func _panel_thing_name(ref: Dictionary) -> String:
+	match ref.type:
+		"body":
+			return str(doc.data.bodies[ref.index].kind).replace("_", " ").capitalize()
+		"asteroid":
+			return "Asteroid"
+		"ship":
+			return "Start"
+	return "Thing"
+
+
 func _open_property_panel(ref: Dictionary, property: String) -> void:
 	_close_context_menu()
 	_close_property_panel()
@@ -1552,6 +1594,15 @@ func _open_property_panel(ref: Dictionary, property: String) -> void:
 		_:
 			return
 	var free: Rect2 = _free_canvas_rect()
+	var window_height: int = DisplayServer.window_get_size().y
+	var compact: bool = DisplayServer.is_touchscreen_available() or (window_height > 0 and window_height <= 600)
+	if property == "start_motion":
+		title = "Start motion"
+	else:
+		title = "%s %s" % [_panel_thing_name(ref), title.to_lower()]
+		if not help.is_empty() and not compact:
+			title += " (%s)" % help
+			help = ""
 	var width: float = minf(400.0, free.size.x)
 	var row_height: float = _menu_row_height()
 	var font_size: int = _menu_font_size()
@@ -1574,17 +1625,44 @@ func _open_property_panel(ref: Dictionary, property: String) -> void:
 	Style.focus_first(panel)
 
 
+func _panel_extent(ref: Dictionary, center: Vector2) -> float:
+	var extent: float
+	match ref.type:
+		"body":
+			var body: Dictionary = doc.data.bodies[ref.index]
+			extent = LevelDoc.drawn_radius(body) * _camera.zoom.x
+			for role: String in ["radius", "reach"]:
+				var knob: Vector2 = _to_screen(_body_handle_position(ref.index, role, LevelDoc.HIT_SLOP / _camera.zoom.x))
+				extent = maxf(extent, center.distance_to(knob) + 12.0)
+		"asteroid":
+			extent = Asteroid.RADIUS * 1.2 * _camera.zoom.x
+		"ship":
+			extent = Ship.RADIUS * 1.4 * _camera.zoom.x
+		_:
+			extent = 0.0
+	return extent
+
+
 func _position_property_panel(ref: Dictionary, free: Rect2) -> void:
-	var size := _property_panel.get_combined_minimum_size()
+	var size: Vector2 = _property_panel.get_combined_minimum_size()
 	size.x = minf(400.0, free.size.x)
-	size.y = minf(size.y, free.size.y)
+	size.y = minf(_property_panel.preferred_height(), free.size.y)
 	_property_panel.size = size
 	var target: Vector2 = _to_screen(doc.position_of(ref))
 	var position: Vector2
 	if free.has_point(target):
-		position = Vector2(target.x + 16.0, target.y - size.y / 2.0)
-		if position.x + size.x > free.end.x:
-			position.x = target.x - size.x - 16.0
+		var extent: float = _panel_extent(ref, target)
+		var gap := 16.0
+		var right: Vector2 = Vector2(target.x + extent + gap, target.y - size.y / 2.0)
+		var left: Vector2 = Vector2(target.x - extent - gap - size.x, target.y - size.y / 2.0)
+		if right.x + size.x <= free.end.x:
+			position = right
+		elif left.x >= free.position.x:
+			position = left
+		else:
+			var right_room: float = free.end.x - right.x
+			var left_room: float = target.x - extent - gap - free.position.x
+			position = right if right_room >= left_room else left
 	else:
 		var corners: Array[Vector2] = [
 			free.position,
@@ -1602,6 +1680,8 @@ func _position_property_panel(ref: Dictionary, free: Rect2) -> void:
 	position.x = clampf(position.x, free.position.x, maxf(free.position.x, free.end.x - size.x))
 	position.y = clampf(position.y, free.position.y, maxf(free.position.y, free.end.y - size.y))
 	_property_panel.position = position
+
+
 
 
 func _apply_panel_value(field: String, value: float) -> void:
@@ -1648,7 +1728,7 @@ func _apply_panel_value(field: String, value: float) -> void:
 					return
 				_panel_speed = value
 			doc.set_setting("velocity", LevelDoc._p(Vector2.from_angle(deg_to_rad(_panel_direction)) * _panel_speed))
-	_refresh(false)
+	_refresh()
 
 
 func _close_property_panel() -> void:
@@ -1669,8 +1749,11 @@ func _close_property_panel() -> void:
 func _number_box(slider: Range, height: float = 48.0, font_size: int = 24, width: float = 200.0) -> SpinBox:
 	var box := SpinBox.new()
 	box.custom_minimum_size = Vector2(width, height)
-	box.select_all_on_focus = true
+	box.allow_greater = true
+	box.allow_lesser = true
 	box.add_theme_font_size_override("font_size", font_size)
+	slider.allow_greater = true
+	slider.allow_lesser = true
 	slider.share(box)
 	return box
 

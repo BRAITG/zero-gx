@@ -1533,6 +1533,7 @@ func test_radius_panel_session_is_one_undo_step_and_preserves_total_pull() -> vo
 	await frames(2)
 	var screen := Vector2(800, 400)
 	e.doc.place("planet", e._to_world(screen))
+	e._refresh()
 	var before: Dictionary = e.doc.data.duplicate(true)
 	var pull_before: float = LevelFormat.total_pull(e.doc.data.bodies[0])
 	await _open_context_menu(e, screen)
@@ -1546,6 +1547,11 @@ func test_radius_panel_session_is_one_undo_step_and_preserves_total_pull() -> vo
 		var initial: float = boxes[0].value
 		boxes[0].value = initial + 10.0
 		boxes[0].value = initial + 20.0
+		var preview_bodies: Array[Node] = e._preview.find_children("*", "GravityBody", true, false)
+		check(preview_bodies.size() == 1, "the preview contains the edited body")
+		if not preview_bodies.is_empty():
+			var preview_body: GravityBody = preview_bodies[0] as GravityBody
+			check(is_equal_approx(preview_body.radius, LevelFormat.body_value(e.doc.data.bodies[0], "radius")), "the visible body updates during the panel edit")
 	check(LevelFormat.body_value(e.doc.data.bodies[0], "radius") > LevelFormat.body_value(before.bodies[0], "radius"), "Radius edits are written")
 	check(is_equal_approx(LevelFormat.total_pull(e.doc.data.bodies[0]), pull_before), "Radius edits preserve total pull")
 	check(e.doc.editing(), "the panel keeps one edit session open")
@@ -1578,6 +1584,8 @@ func test_orbit_speed_panel_session_is_one_undo_step() -> void:
 	var boxes := _panel_spinboxes(e)
 	check(boxes.size() == 1, "Orbit speed opens one numeric control")
 	if not boxes.is_empty():
+		boxes[0].value = 1.1
+		boxes[0].value = 0.9
 		boxes[0].value = 1.4
 	check(is_equal_approx(e.doc.data.asteroids[rock_ref.index].orbit.speed, 1.4), "the Orbit speed panel writes the edited speed")
 	_route(_key(KEY_ESCAPE))
@@ -1627,12 +1635,9 @@ func test_invalid_number_text_is_not_written_by_the_property_panel() -> void:
 	var boxes := _panel_spinboxes(e)
 	check(boxes.size() == 1, "Radius opens a number box")
 	if not boxes.is_empty():
-		var fields: Array[Node] = boxes[0].find_children("*", "LineEdit", true, false)
-		check(not fields.is_empty(), "the numeric control contains an editable number field")
-		if not fields.is_empty():
-			var field: LineEdit = fields[0] as LineEdit
-			field.text = "not a number"
-			field.text_submitted.emit(field.text)
+		var field: LineEdit = boxes[0].get_line_edit()
+		field.text = "not a number"
+		boxes[0].apply()
 	check(e.doc.data == before, "invalid number text is not written to the level")
 
 
@@ -1789,7 +1794,8 @@ func test_focused_number_field_keeps_delete_and_undo_off_level_but_escape_closes
 	_route(_key(KEY_T))
 	check(e.doc.data == before, "Delete, Backspace, Ctrl+Z and T in the number field do not edit the level")
 	check(not _panel_spinboxes(e).is_empty(), "keyboard editing keeps the property panel open")
-	_route(_key(KEY_ESCAPE))
+	tree.root.push_input(_key(KEY_ESCAPE))
+	await frames(1)
 	check(_panel_spinboxes(e).is_empty(), "Escape still closes the panel while its number field has focus")
 
 
@@ -1980,3 +1986,131 @@ func test_wall_colour_strip_sets_next_wall_and_owns_its_press() -> void:
 	e.release(Vector2(3000, 0), false)
 	walls = e.doc.data.get("walls", [])
 	check(walls.size() == 1 and walls[0].kind == "orange", "the next wall uses the chosen colour")
+
+
+func test_out_of_range_radius_text_is_rejected_at_both_bounds() -> void:
+	for text: String in ["999999", "-1"]:
+		var e: LevelEditor = editor()
+		await frames(1)
+		var ref: Dictionary = e.doc.place("planet", e._to_world(Vector2(800, 400)))
+		e._refresh()
+		var before: Dictionary = e.doc.data.duplicate(true)
+		e._open_property_panel(ref, "radius")
+		await frames(1)
+		var boxes := _panel_spinboxes(e)
+		check(boxes.size() == 1, "Radius opens a number box for %s" % text)
+		if not boxes.is_empty():
+			boxes[0].get_line_edit().text = text
+			boxes[0].apply()
+		check(e.doc.data == before, "raw radius %s is rejected without SpinBox clamping" % text)
+
+
+func test_keyboard_reflow_keeps_a_scroll_row_for_the_number_box() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	var ref: Dictionary = e.doc.place("planet", e._to_world(Vector2(700, 300)))
+	e._refresh()
+	e._open_property_panel(ref, "radius")
+	await frames(2)
+	var boxes := _panel_spinboxes(e)
+	var scrolls: Array[Node] = e._property_panel.find_children("*", "ScrollContainer", true, false)
+	check(boxes.size() == 1 and scrolls.size() == 1, "the panel has a numeric row inside a scroll view")
+	if boxes.is_empty() or scrolls.is_empty():
+		return
+	var available := Rect2(0, 68, 1280, 400)
+	e._position_property_panel(ref, available)
+	await frames(2)
+	var scroll: ScrollContainer = scrolls[0] as ScrollContainer
+	check(scroll.size.y >= boxes[0].size.y, "keyboard reflow reserves a usable numeric-row height")
+	check(not scroll.get_v_scroll_bar().is_visible_in_tree(), "the number box has no stray vertical scrollbar")
+
+
+func test_cancelled_closing_edge_long_press_restores_selection_and_targets_wall() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	e.fine_snap = true
+	_closed_square_at_screen(e, Vector2(800, 350))
+	var wall_ref := {"type": "wall", "index": 0}
+	e.select(wall_ref)
+	var before: Dictionary = e.doc.data.duplicate(true)
+	var points: Array = e.doc.data.walls[0].points
+	var closing_midpoint: Vector2 = (LevelDoc._v(points[-1]) + LevelDoc._v(points[0])) / 2.0
+	var at: Vector2 = _screen_at(e, closing_midpoint)
+	_route(_touch(0, true, at))
+	await tree.create_timer(LevelEditor.LONG_PRESS + 0.1).timeout
+	check(e.doc.data == before, "long-press cancels the provisional closing-edge point")
+	check(e.selection == wall_ref, "long-press restores the pre-insertion wall selection")
+	check(e._menu_ref == wall_ref, "long-press targets the surviving wall, not the cancelled point")
+	_route(_touch(0, false, at))
+	_route(_key(KEY_ESCAPE))
+
+
+func test_property_panel_sits_outside_body_bounds_and_knob_targets() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var ref: Dictionary = e.doc.place("planet", e._to_world(Vector2(700, 300)))
+	e.doc.data.bodies[ref.index].radius = 240.0
+	e.doc.data.bodies[ref.index].reach = 300.0
+	e._refresh()
+	e.select(ref)
+	e._open_property_panel(ref, "radius")
+	await frames(2)
+	var panel_rect: Rect2 = e._property_panel.get_global_rect()
+	var center: Vector2 = _screen_at(e, e.doc.position_of(ref))
+	var nearest: Vector2 = center.clamp(panel_rect.position, panel_rect.end)
+	var body_radius: float = LevelDoc.drawn_radius(e.doc.data.bodies[ref.index]) * e._camera.zoom.x
+	check(center.distance_to(nearest) > body_radius + 8.0, "the panel stays outside the body's drawn bounds")
+	var free: Rect2 = e._free_canvas_rect()
+	for role: String in ["radius", "reach"]:
+		var knob: Vector2 = _screen_at(e, e._body_handle_position(ref.index, role, LevelDoc.HIT_SLOP / e._camera.zoom.x))
+		if free.has_point(knob):
+			check(not panel_rect.grow(8.0).has_point(knob), "the panel stays clear of the %s knob target" % role)
+
+
+func test_context_menu_rows_form_one_left_aligned_list() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var screen := Vector2(800, 400)
+	var ref: Dictionary = e.doc.place("planet", e._to_world(screen))
+	e.doc.set_property(ref, "destructible", true)
+	await _open_context_menu(e, screen)
+	await frames(2)
+	var scrolls: Array[Node] = e._menu_panel.find_children("*", "ScrollContainer", true, false)
+	check(scrolls.size() == 1, "the menu has one scrollable list")
+	if scrolls.is_empty():
+		return
+	var scroll: ScrollContainer = scrolls[0] as ScrollContainer
+	var rows: VBoxContainer = scroll.get_child(0) as VBoxContainer
+	var delete := _button_named(e, "Delete")
+	check(delete != null, "the body menu has Delete")
+	if delete != null:
+		check(delete.alignment == HORIZONTAL_ALIGNMENT_LEFT, "Delete text is left aligned")
+		check(delete.size.x >= scroll.size.x - 1.0, "Delete fills the menu row (%s/%s)" % [delete.size.x, scroll.size.x])
+		check(delete.get_theme_color("font_color").is_equal_approx(Color("#ff8a6a")), "Delete uses the destructive colour")
+		var index: int = rows.get_children().find(delete)
+		check(index > 0 and rows.get_child(index - 1) is ColorRect, "a separator precedes Delete")
+	var destructible := _button_named(e, "Destructible")
+	check(destructible is CheckButton and (destructible as CheckButton).button_pressed, "Destructible is a checked toggle row")
+	if destructible != null:
+		check(destructible.alignment == HORIZONTAL_ALIGNMENT_LEFT, "Destructible is left aligned")
+		check(destructible.size.x >= scroll.size.x - 1.0, "Destructible fills the menu row (%s/%s)" % [destructible.size.x, scroll.size.x])
+
+
+func test_property_panel_title_names_thing_and_inlines_desktop_units() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	var ref: Dictionary = e.doc.place("planet", e._to_world(Vector2(700, 300)))
+	e._refresh()
+	e._open_property_panel(ref, "radius")
+	await frames(1)
+	var titled := false
+	for node: Node in e._property_panel.find_children("*", "Label", true, false):
+		var label: Label = node as Label
+		if label.text == "Planet radius (px)":
+			titled = true
+	check(titled, "the desktop panel title names the thing, property and units")

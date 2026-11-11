@@ -4,6 +4,7 @@ extends PanelContainer
 signal value_changed(field: String, value: float)
 signal close_requested
 
+var _scroll: ScrollContainer
 var _rows: VBoxContainer
 
 
@@ -32,22 +33,32 @@ func build(title: String, help: String, width: float, row_height: float, font_si
 	close.pressed.connect(Sfx.play.bind("tap"))
 	close.pressed.connect(func() -> void: close_requested.emit())
 	heading.add_child(close)
-	var description := Label.new()
-	description.text = help
-	description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	description.add_theme_color_override("font_color", Style.INK_DIM)
-	description.add_theme_font_size_override("font_size", small_font_size)
-	column.add_child(description)
+	if not help.is_empty():
+		var description := Label.new()
+		description.text = help
+		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		description.add_theme_color_override("font_color", Style.INK_DIM)
+		description.add_theme_font_size_override("font_size", small_font_size)
+		column.add_child(description)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_NEVER
+	scroll.custom_minimum_size.y = row_height
 	scroll.follow_focus = true
 	column.add_child(scroll)
+	_scroll = scroll
 	_rows = VBoxContainer.new()
 	_rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_rows.add_theme_constant_override("separation", 8)
 	scroll.add_child(_rows)
+
+
+func preferred_height() -> float:
+	return get_combined_minimum_size().y + _rows.get_combined_minimum_size().y - _scroll.custom_minimum_size.y
+
+
 
 
 func add_numeric(field: String, label: String, bounds: Vector2, step: float, value: float, row_height: float, font_size: int, number_box_factory: Callable) -> void:
