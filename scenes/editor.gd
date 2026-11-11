@@ -491,6 +491,10 @@ func _invalidate_gesture() -> void:
 		_gesture_cancelled = true
 	if doc.editing():
 		doc.end_edit()
+	_pan_from = {}
+	_right_press_ref = {}
+	_right_dragged = false
+	_right_press_at = Vector2.ZERO
 	_held = {}
 	_active_body_handle = {}
 	_press_ref = {}
@@ -1608,7 +1612,7 @@ func _open_property_panel(ref: Dictionary, property: String) -> void:
 	var font_size: int = _menu_font_size()
 	var small_font_size: int = roundi(maxf(14.0, _dp_scale(14.0)))
 	var panel := EditorPropertyPanel.new()
-	var number_box_factory: Callable = _number_box.bind(row_height, font_size, maxf(100.0, row_height * 1.5))
+	var number_box_factory: Callable = _number_box.bind(row_height, font_size, maxf(100.0, row_height * 1.5), true)
 	panel.name = "EditorPropertyPanel"
 	panel.build(title, help, width, row_height, font_size, small_font_size)
 	panel.value_changed.connect(_apply_panel_value)
@@ -1680,6 +1684,7 @@ func _position_property_panel(ref: Dictionary, free: Rect2) -> void:
 	position.x = clampf(position.x, free.position.x, maxf(free.position.x, free.end.x - size.x))
 	position.y = clampf(position.y, free.position.y, maxf(free.position.y, free.end.y - size.y))
 	_property_panel.position = position
+	_property_panel.reveal_focused_control()
 
 
 
@@ -1746,14 +1751,15 @@ func _close_property_panel() -> void:
 
 
 ## A box for typing `slider`'s value exactly; it shares the slider's value, bounds and step.
-func _number_box(slider: Range, height: float = 48.0, font_size: int = 24, width: float = 200.0) -> SpinBox:
+func _number_box(slider: Range, height: float = 48.0, font_size: int = 24, width: float = 200.0, allow_out_of_range: bool = false) -> SpinBox:
 	var box := SpinBox.new()
 	box.custom_minimum_size = Vector2(width, height)
-	box.allow_greater = true
-	box.allow_lesser = true
+	if allow_out_of_range:
+		box.allow_greater = true
+		box.allow_lesser = true
+		slider.allow_greater = true
+		slider.allow_lesser = true
 	box.add_theme_font_size_override("font_size", font_size)
-	slider.allow_greater = true
-	slider.allow_lesser = true
 	slider.share(box)
 	return box
 

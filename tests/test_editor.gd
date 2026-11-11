@@ -2005,24 +2005,100 @@ func test_out_of_range_radius_text_is_rejected_at_both_bounds() -> void:
 		check(e.doc.data == before, "raw radius %s is rejected without SpinBox clamping" % text)
 
 
-func test_keyboard_reflow_keeps_a_scroll_row_for_the_number_box() -> void:
+func test_tight_keyboard_reflow_keeps_close_and_focused_field_reachable() -> void:
 	var e: LevelEditor = editor()
 	await frames(1)
-	var ref: Dictionary = e.doc.place("planet", e._to_world(Vector2(700, 300)))
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	e._ui_scale = 1.75
+	var ref: Dictionary = e.doc.place("planet", e._to_world(Vector2(700, 170)))
 	e._refresh()
 	e._open_property_panel(ref, "radius")
 	await frames(2)
 	var boxes := _panel_spinboxes(e)
 	var scrolls: Array[Node] = e._property_panel.find_children("*", "ScrollContainer", true, false)
-	check(boxes.size() == 1 and scrolls.size() == 1, "the panel has a numeric row inside a scroll view")
+	check(boxes.size() == 1 and scrolls.size() == 1, "the panel has a numeric field in a scroll view")
 	if boxes.is_empty() or scrolls.is_empty():
 		return
-	var available := Rect2(0, 68, 1280, 400)
+	var field: LineEdit = boxes[0].get_line_edit()
+	field.grab_focus()
+	await frames(1)
+	var available := Rect2(0, 68, 1280, 210)
 	e._position_property_panel(ref, available)
 	await frames(2)
+	var close: Button
+	for node: Node in e._property_panel.find_children("*", "Button", true, false):
+		var button: Button = node as Button
+		if button.text == "Close":
+			close = button
+	check(close != null, "Close remains available during keyboard reflow")
+	check(available.encloses(e._property_panel.get_global_rect()), "the panel fits the keyboard-free area")
+	check(available.encloses(field.get_global_rect()), "the focused number field fits the keyboard-free area")
+	if close != null:
+		check(available.encloses(close.get_global_rect()), "Close fits the keyboard-free area")
 	var scroll: ScrollContainer = scrolls[0] as ScrollContainer
-	check(scroll.size.y >= boxes[0].size.y, "keyboard reflow reserves a usable numeric-row height")
 	check(not scroll.get_v_scroll_bar().is_visible_in_tree(), "the number box has no stray vertical scrollbar")
+
+
+func test_settings_fuel_and_hull_submissions_stay_in_range() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._open_settings()
+	await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(boxes.size() == 2, "Settings exposes Fuel and Hull number boxes")
+	var tanks: Array[String] = ["fuel", "hull"]
+	for index: int in range(mini(boxes.size(), tanks.size())):
+		var box: SpinBox = boxes[index]
+		for raw: String in ["-1", "999999", "1e309"]:
+			box.get_line_edit().text = raw
+			box.apply()
+			var value: Variant = e.doc.data.ship.get(tanks[index], LevelFormat.UNLIMITED)
+			check(not LevelFormat.is_unlimited(value) and float(value) >= LevelFormat.TANK_RANGE.x and float(value) <= LevelFormat.TANK_RANGE.y, "%s submission %s stays bounded: %s" % [tanks[index], raw, value])
+	var overlays: Array[Node] = e.find_children("*", "Overlay", true, false)
+	if not overlays.is_empty():
+		(overlays[0] as Overlay).close()
+	await frames(1)
+
+
+func test_emulated_mouse_press_and_release_do_not_edit_the_level() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	e.select_tool("planet")
+	var before: Dictionary = e.doc.data.duplicate(true)
+	var history_before: int = e.doc._history.size()
+	var viewport_point := Vector2(800, 400)
+	var at: Vector2 = tree.root.get_screen_transform() * viewport_point
+	var down: InputEventMouseButton = _mouse(MOUSE_BUTTON_LEFT, true, at)
+	down.device = InputEvent.DEVICE_ID_EMULATION
+	var up: InputEventMouseButton = _mouse(MOUSE_BUTTON_LEFT, false, at)
+	up.device = InputEvent.DEVICE_ID_EMULATION
+	tree.root.push_input(down)
+	tree.root.push_input(up)
+	await frames(1)
+	check(e.doc.data == before, "emulated mouse events do not place a body")
+	check(e.doc._history.size() == history_before, "emulated mouse events do not record history")
+
+
+func test_undo_clears_right_click_reference_before_release() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	await frames(2)
+	var ref: Dictionary = e.doc.place("planet", e._to_world(Vector2(800, 400)))
+	e._refresh()
+	var point: Vector2 = tree.root.get_screen_transform() * _screen_at(e, e.doc.position_of(ref))
+	tree.root.push_input(_mouse(MOUSE_BUTTON_RIGHT, true, point))
+	check(not e._right_press_ref.is_empty(), "right press records its menu candidate")
+	tree.root.push_input(_key(KEY_Z, true))
+	await frames(1)
+	check(e.doc.data.get("bodies", []).is_empty(), "undo removes the pressed body")
+	check(e._right_press_ref.is_empty() and e._pan_from.is_empty() and not e._right_dragged, "undo clears pending right-click state")
+	tree.root.push_input(_mouse(MOUSE_BUTTON_RIGHT, false, point))
+	await frames(1)
+	check(e._menu_panel == null, "the stale right release opens no menu")
 
 
 func test_cancelled_closing_edge_long_press_restores_selection_and_targets_wall() -> void:

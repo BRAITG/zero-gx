@@ -228,6 +228,10 @@ func begin_edit() -> void:
 
 
 func end_edit() -> void:
+	if _editing and _edit_recorded and data == _edit_snapshot:
+		_history.pop_back()
+		if _edit_pruned:
+			_history.push_front(_edit_pruned_snapshot)
 	_editing = false
 	_edit_recorded = false
 	_edit_snapshot = {}
@@ -241,7 +245,10 @@ func cancel_edit() -> void:
 		_history.pop_back()
 		if _edit_pruned:
 			_history.push_front(_edit_pruned_snapshot)
+		_edit_recorded = false
 	end_edit()
+
+
 
 
 func editing() -> bool:

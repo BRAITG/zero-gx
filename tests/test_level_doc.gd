@@ -278,3 +278,23 @@ func test_undo_restores_the_wall_before_point_insertion() -> void:
 	check(doc.data.walls[0].points == [[0, 0], [500, 0], [1000, 0]], "point insertion changed the wall before undo")
 	doc.undo()
 	check(doc.data == before, "one undo restores the wall before insertion: %s" % [doc.data])
+
+
+func test_net_zero_edit_discards_history_snapshot_and_preserves_pruned_history() -> void:
+	var doc := LevelDoc.new()
+	var ref: Dictionary = doc.place("planet", Vector2(5000, 3000))
+	for i: int in range(LevelDoc.UNDO_LIMIT):
+		doc.set_setting("title", "history-%d" % i)
+	var data_before: Dictionary = doc.data.duplicate(true)
+	var history_before: Array = doc._history.duplicate(true)
+	check(history_before.size() == LevelDoc.UNDO_LIMIT, "the history is full before the round-trip edit")
+	var position: Vector2 = doc.position_of(ref)
+	doc.begin_edit()
+	doc.move(ref, position + Vector2(400, 300))
+	doc.move(ref, position)
+	doc.end_edit()
+	check(doc.data == data_before, "the round-trip drag returns the document to its original data")
+	check(doc._history == history_before, "a net-zero drag adds no undo step or pruned-history loss")
+	var previous: Dictionary = history_before[history_before.size() - 1]
+	doc.undo()
+	check(doc.data == previous, "undo still reaches the previous retained state")

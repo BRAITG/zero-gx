@@ -70,6 +70,7 @@ func _fill() -> void:
 		card.add_child(row)
 		var thumbnail := Thumbnail.of_sketch(LevelFormat.sketch(data))
 		thumbnail.custom_minimum_size = Vector2(128, 72)
+		thumbnail.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(thumbnail)
 		var label := Label.new()
 		var best := Progress.best_points(id)

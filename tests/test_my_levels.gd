@@ -242,6 +242,13 @@ func test_my_level_actions_wrap_inside_a_narrow_window_and_title_ellipsises() ->
 	check(scrolls.size() == 1 and scrolls[0].horizontal_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED, "the level list has no horizontal scrolling")
 	var titles: Array = screen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.contains(long_title))
 	check(titles.size() == 1 and titles[0].text_overrun_behavior == TextServer.OVERRUN_TRIM_ELLIPSIS, "the long level title ellipsises")
+	var thumbnails: Array[Node] = screen.find_children("*", "Thumbnail", true, false)
+	check(not thumbnails.is_empty(), "the wrapped card keeps its thumbnail")
+	for node: Node in thumbnails:
+		var thumbnail: Thumbnail = node as Thumbnail
+		check(thumbnail.size.y > 0.0, "wrapped thumbnail has a laid-out height")
+		if thumbnail.size.y > 0.0:
+			check(is_equal_approx(thumbnail.size.x / thumbnail.size.y, 16.0 / 9.0), "wrapped thumbnail stays 16:9: %s" % thumbnail.size)
 	screen.queue_free()
 	viewport.queue_free()
 	MyLevels.delete(id)
