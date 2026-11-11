@@ -44,9 +44,10 @@ func test_hit_move_and_undo() -> void:
 	doc.place("star", Vector2(5000, 2000))
 	var ref := doc.hit(Vector2(5300, 2000))  # inside the star's 600 px radius
 	check(ref == {"type": "body", "index": 0}, "hit the star: %s" % ref)
-	doc.begin_move()
+	doc.begin_edit()
 	doc.move(ref, Vector2(6000, 2000))
 	doc.move(ref, Vector2(7000, 2000))
+	doc.end_edit()
 	check(doc.position_of(ref) == Vector2(7000, 2000), "moved star at %s" % doc.position_of(ref))
 	doc.undo()
 	check(doc.position_of(ref) == Vector2(5000, 2000), "one undo must undo the whole drag")
@@ -92,14 +93,64 @@ func test_settings_and_validity() -> void:
 	check(doc.data.has("ship"), "the start cannot be erased")
 
 
-func test_wall_points_win_near_misses() -> void:
+func test_hit_picks_the_nearest_wall_point_within_slop() -> void:
+	var doc := LevelDoc.new()
+	doc.add_wall_point(Vector2(5000, 3000))
+	doc.add_wall_point(Vector2(5050, 3000))
+	doc.finish_wall()
+	check(doc.hit(Vector2(5035, 3000), 40.0) == {"type": "wall_point", "index": 0, "point": 1}, "the nearer point wins: %s" % doc.hit(Vector2(5035, 3000), 40.0))
+
+
+func test_wall_point_hit_does_not_extend_beyond_slop() -> void:
 	var doc := LevelDoc.new()
 	doc.add_wall_point(Vector2(5000, 3000))
 	doc.add_wall_point(Vector2(6000, 3000))
 	doc.finish_wall()
-	check(doc.hit(Vector2(5055, 3000), 40.0).type == "wall_point", "55 px from a point is within 1.5 x 40: %s" % doc.hit(Vector2(5055, 3000), 40.0))
-	check(doc.hit(Vector2(5500, 3030), 40.0).type == "wall", "mid-segment picks the wall: %s" % doc.hit(Vector2(5500, 3030), 40.0))
-	check(doc.hit(Vector2(5500, 3100), 40.0).is_empty(), "100 px off the wall picks nothing")
+	check(doc.hit(Vector2(5000, 3055), 40.0).is_empty(), "55 px from the point and segment is out of reach")
+
+
+func test_wall_point_within_slop_wins_inside_goal_ring() -> void:
+	var doc := LevelDoc.new()
+	var point_at := LevelDoc._v(doc.data.goal.position) + Vector2(Goal.RADIUS * 0.25, 0)
+	doc.add_wall_point(point_at)
+	doc.add_wall_point(point_at + Vector2(1000, 0))
+	doc.finish_wall()
+	var at := point_at + Vector2(20, 0)
+	check(doc.hit(at, 40.0) == {"type": "wall_point", "index": 0, "point": 0}, "the nearby wall point wins over the goal: %s" % doc.hit(at, 40.0))
+
+
+func test_wall_segment_within_slop_wins_inside_goal_ring() -> void:
+	var doc := LevelDoc.new()
+	doc.add_wall_point(Vector2(1000, 20))
+	doc.add_wall_point(Vector2(3000, 20))
+	doc.finish_wall()
+	var at := Vector2(2000, 20)
+	check(doc.hit(at, 40.0) == {"type": "wall", "index": 0}, "the segment stays grabbable across the goal ring: %s" % doc.hit(at, 40.0))
+
+
+func test_empty_goal_ring_picks_the_goal() -> void:
+	var doc := LevelDoc.new()
+	var at := LevelDoc._v(doc.data.goal.position) + Vector2(Goal.RADIUS * 0.5, 0)
+	check(doc.hit(at) == {"type": "goal", "index": 0}, "empty space inside the ring picks the goal: %s" % doc.hit(at))
+
+
+func test_segment_through_a_planet_picks_the_planet() -> void:
+	var doc := LevelDoc.new()
+	doc.place("planet", Vector2(5000, 3000))
+	doc.add_wall_point(Vector2(4000, 3000))
+	doc.add_wall_point(Vector2(6000, 3000))
+	doc.finish_wall()
+	check(doc.hit(Vector2(5000, 3000)) == {"type": "body", "index": 0}, "the body wins over its crossing segment: %s" % doc.hit(Vector2(5000, 3000)))
+
+
+func test_closed_wall_closing_edge_is_picked() -> void:
+	var doc := LevelDoc.new()
+	for point: Vector2 in [Vector2(5000, 5000), Vector2(6000, 5000), Vector2(6000, 6000)]:
+		doc.add_wall_point(point)
+	doc.add_wall_point(Vector2(5005, 5005))
+	check(doc.data.walls[0].get("closed", false), "the test wall is closed")
+	check(doc.hit(Vector2(5500, 5500), 40.0) == {"type": "wall", "index": 0}, "the closing edge is pickable")
+
 
 
 func closed_square() -> LevelDoc:
@@ -167,3 +218,29 @@ func test_undo_restores_the_closed_wall() -> void:
 		doc.undo()
 		var wall: Dictionary = doc.data.walls[0]
 		check(wall.get("closed", false) and wall.points == [[0, 0], [1000, 0], [1000, 1000], [0, 1000]], "undo restores the closed square (reclose %s): %s" % [reclose, wall])
+
+func test_edit_session_undoes_multiple_property_changes_once() -> void:
+	var doc := LevelDoc.new()
+	var ref: Dictionary = doc.place("star", Vector2(5000, 3000))
+	var before: Dictionary = doc.data.duplicate(true)
+	doc.begin_edit()
+	doc.set_property(ref, "radius", 250)
+	doc.set_property(ref, "strength", 40000)
+	doc.end_edit()
+	doc.undo()
+	check(doc.data == before, "one undo restores both properties: %s" % doc.data)
+
+
+func test_cancel_edit_restores_data_without_adding_history() -> void:
+	var doc := LevelDoc.new()
+	var ref: Dictionary = doc.place("planet", Vector2(5000, 3000))
+	var before: Dictionary = doc.data.duplicate(true)
+	var had_undo: bool = doc.can_undo()
+	doc.begin_edit()
+	doc.set_property(ref, "radius", 250)
+	doc.set_property(ref, "strength", 400)
+	doc.cancel_edit()
+	check(doc.data == before, "cancel restores the pre-edit data: %s" % doc.data)
+	check(doc.can_undo() == had_undo, "cancel preserves prior undo availability")
+	doc.undo()
+	check(doc.data.get("bodies", []).is_empty(), "cancel leaves no extra history entry")

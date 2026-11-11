@@ -46,18 +46,22 @@ func test_tapping_a_stars_glow_grabs_it() -> void:
 	check(e.doc.data.bodies.size() == 1, "no second star beside the first: %s" % [e.doc.data.bodies])
 
 
-func test_long_press_opens_the_sheet_whatever_the_tool() -> void:
-	var e := editor()
+func test_long_press_opens_the_sheet_for_touch() -> void:
+	var e: LevelEditor = editor()
 	await frames(1)
-	var screen := Vector2(500, 300)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(500, 300)
 	e.doc.place("planet", e._to_world(screen))
 	e.select_tool("wall")
-	e._one_finger(true, screen)
-	await frames(40)  # past LONG_PRESS at 60 FPS
-	check(e.find_children("*", "Overlay", true, false).size() == 1, "holding still on the planet opens its sheet")
-	e._one_finger(false, screen)
+	_route(_touch(0, true, screen))
+	await tree.create_timer(LevelEditor.LONG_PRESS + 0.1).timeout
+	check(e.find_children("*", "Overlay", true, false).size() == 1, "touch hold on the planet opens its sheet")
+	if not e.find_children("*", "Overlay", true, false).is_empty():
+		await _close_sheet(e)
+	_route(_touch(0, false, screen))
 	check(e.doc.data.get("walls", []).is_empty(), "the release after a long press adds no wall point")
-	await _close_sheet(e)
+
+
 
 
 func _sheet_sliders(e: LevelEditor) -> Array:
@@ -185,9 +189,9 @@ func _mouse(button: MouseButton, pressed: bool, at: Vector2) -> InputEventMouseB
 	var ev := InputEventMouseButton.new()
 	ev.button_index = button
 	ev.pressed = pressed
+	ev.device = 0
 	ev.position = at
 	return ev
-
 
 func _key(code: Key, command := false, shift := false) -> InputEventKey:
 	var ev := InputEventKey.new()
@@ -197,6 +201,26 @@ func _key(code: Key, command := false, shift := false) -> InputEventKey:
 	ev.meta_pressed = command
 	ev.shift_pressed = shift
 	return ev
+
+
+func _touch(index: int, pressed: bool, at: Vector2) -> InputEventScreenTouch:
+	var ev: InputEventScreenTouch = InputEventScreenTouch.new()
+	ev.index = index
+	ev.pressed = pressed
+	ev.position = at
+	return ev
+
+
+func _route(event: InputEvent) -> void:
+	for child: Node in world.get_children():
+		if child is LevelEditor:
+			var level_editor: LevelEditor = child as LevelEditor
+			level_editor._unhandled_input(event)
+
+func _selection(e: LevelEditor) -> Dictionary:
+	return e.selection
+
+
 
 
 func test_right_drag_pans() -> void:
@@ -458,3 +482,275 @@ func test_saved_state_follows_the_file_and_undo_returns_to_it() -> void:
 	world.add_child(reopened)
 	await frames(1)
 	check(not reopened._dirty and reopened._undo_button.disabled, "a saved draft reopens saved, with nothing to undo")
+
+
+func test_mouse_and_touch_use_device_pick_slop_at_zoom_half() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	var point: Vector2 = e._to_world(screen)
+	e.doc.add_wall_point(point)
+	e.doc.add_wall_point(point + Vector2(1000, 0))
+	e.doc.finish_wall()
+	e.select_tool("select")
+	var near_point: Vector2 = screen + Vector2(0, 20)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, near_point))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, near_point))
+	await frames(1)
+	check(_selection(e) == {}, "mouse 20 viewport units from a point does not pick it")
+	_route(_touch(0, true, near_point))
+	_route(_touch(0, false, near_point))
+	await frames(1)
+	check(_selection(e) == {"type": "wall_point", "index": 0, "point": 0}, "touch 20 viewport units from a point picks it")
+
+
+func test_select_tool_tap_selects_without_opening_sheet() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	e.select_tool("select")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, screen))
+	await frames(1)
+	check(_selection(e) == {"type": "body", "index": 0}, "tap selects the body")
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "select tap opens no sheet")
+
+
+func test_dragging_wall_from_its_middle_preserves_press_offset() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	e.fine_snap = true
+	var screen: Vector2 = Vector2(800, 400)
+	var middle: Vector2 = e._to_world(screen)
+	var first: Vector2 = middle - Vector2(500, 0)
+	e.doc.add_wall_point(first)
+	e.doc.add_wall_point(middle + Vector2(500, 0))
+	e.doc.finish_wall()
+	e.select_tool("select")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, screen))
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.device = 0
+	motion.position = screen + Vector2(25, 0)
+	motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+	_route(motion)
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, motion.position))
+	var moved_first: Vector2 = LevelDoc._v(e.doc.data.walls[0].points[0])
+	check(moved_first == first + Vector2(50, 0), "wall moves by pointer displacement, not to the grabbed midpoint: %s" % moved_first)
+
+
+func test_dragging_body_from_its_edge_preserves_press_offset() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	var center: Vector2 = e._to_world(screen)
+	var ref: Dictionary = e.doc.place("planet", center)
+	var body: Dictionary = e.doc.data.bodies[0]
+	var edge: Vector2 = screen + Vector2((LevelDoc.drawn_radius(body) - 20.0) * 0.5, 0)
+	e.select_tool("select")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, edge))
+	var motion: InputEventMouseMotion = InputEventMouseMotion.new()
+	motion.device = 0
+	motion.position = edge + Vector2(25, 0)
+	motion.button_mask = MOUSE_BUTTON_MASK_LEFT
+	_route(motion)
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, motion.position))
+	check(e.doc.position_of(ref) == center + Vector2(50, 0), "body follows pointer displacement from edge press: %s" % e.doc.position_of(ref))
+
+
+func test_delete_and_backspace_delete_selection() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var first: Vector2 = Vector2(800, 400)
+	var second: Vector2 = Vector2(1000, 400)
+	e.doc.place("planet", e._to_world(first))
+	e.doc.place("planet", e._to_world(second))
+	e.select_tool("select")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, first))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, first))
+	_route(_key(KEY_DELETE))
+	await frames(1)
+	check(e.doc.data.bodies.size() == 1, "Delete removes selected body")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, second))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, second))
+	_route(_key(KEY_BACKSPACE))
+	await frames(1)
+	check(e.doc.data.bodies.is_empty(), "Backspace removes selected body")
+
+
+func test_escape_ends_wall_then_clears_selection() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	e.select_tool("wall")
+	for at: Vector2 in [screen, screen + Vector2(100, 0)]:
+		_route(_mouse(MOUSE_BUTTON_LEFT, true, at))
+		_route(_mouse(MOUSE_BUTTON_LEFT, false, at))
+	_route(_key(KEY_ESCAPE))
+	await frames(1)
+	check(e.doc.drawing == -1, "Escape ends the wall")
+	var body_screen: Vector2 = screen + Vector2(200, 100)
+	e.doc.place("planet", e._to_world(body_screen))
+	e.select_tool("select")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, body_screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, body_screen))
+	check(_selection(e) == {"type": "body", "index": 0}, "body is selected before Escape clears it")
+	_route(_key(KEY_ESCAPE))
+	await frames(1)
+	check(_selection(e) == {}, "Escape clears selection when no wall is being drawn")
+
+
+func test_enter_ends_wall() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	e.select_tool("wall")
+	for at: Vector2 in [screen, screen + Vector2(100, 0)]:
+		_route(_mouse(MOUSE_BUTTON_LEFT, true, at))
+		_route(_mouse(MOUSE_BUTTON_LEFT, false, at))
+	_route(_key(KEY_ENTER))
+	await frames(1)
+	check(e.doc.drawing == -1, "Enter ends the wall")
+
+
+func test_focused_text_field_keeps_delete_and_undo_from_changing_level() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e.doc.place("planet", Vector2(3000, 0))
+	var before: Dictionary = e.doc.data.duplicate(true)
+	var field: LineEdit = LineEdit.new()
+	e.add_child(field)
+	field.grab_focus()
+	await frames(1)
+	_route(_key(KEY_DELETE))
+	_route(_key(KEY_Z, true))
+	await frames(1)
+	check(e.doc.data == before, "Delete and Ctrl+Z in focused field leave level unchanged")
+	field.free()
+
+
+func test_mouse_left_hold_does_not_open_sheet() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, screen))
+	await tree.create_timer(LevelEditor.LONG_PRESS + 0.1).timeout
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "mouse left-hold opens no sheet")
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, screen))
+
+
+func test_second_finger_cancels_move_without_history() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	var start: Vector2 = e._to_world(screen)
+	var ref: Dictionary = e.doc.place("planet", start)
+	e.select_tool("select")
+	_route(_touch(0, true, screen))
+	var drag: InputEventScreenDrag = InputEventScreenDrag.new()
+	drag.index = 0
+	drag.position = screen + Vector2(20, 0)
+	drag.relative = Vector2(20, 0)
+	_route(drag)
+	_route(_touch(1, true, screen + Vector2(100, 100)))
+	_route(_touch(0, false, drag.position))
+	check(e.doc.position_of(ref) == start, "second finger restores the body before the move")
+	_route(_key(KEY_Z, true))
+	check(e.doc.data.get("bodies", []).is_empty(), "cancelled move leaves no history entry")
+
+
+func test_second_finger_cancels_placement_without_history() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	e.select_tool("planet")
+	_route(_touch(0, true, screen))
+	_route(_touch(1, true, screen + Vector2(100, 100)))
+	check(e.doc.data.get("bodies", []).is_empty(), "second finger cancels placement from this press")
+	check(not e.doc.can_undo(), "cancelled placement leaves no history entry")
+
+
+func test_second_finger_swallows_wall_tap_release() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	e.select_tool("wall")
+	_route(_touch(0, true, screen))
+	_route(_touch(1, true, screen + Vector2(100, 100)))
+	_route(_touch(0, false, screen))
+	check(e.doc.data.get("walls", []).is_empty(), "first finger release after pinch adds no wall point")
+
+
+func test_selection_clears_after_undo() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	e.select_tool("select")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, screen))
+	check(_selection(e) == {"type": "body", "index": 0}, "body is selected before undo")
+	_route(_key(KEY_Z, true))
+	await frames(1)
+	check(e.doc.data.get("bodies", []).is_empty(), "undo removes placed body")
+	check(_selection(e) == {}, "undo clears selection")
+
+
+func test_selection_clears_after_tool_switch() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	e.select_tool("select")
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, screen))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, screen))
+	check(_selection(e) == {"type": "body", "index": 0}, "body is selected before tool switch")
+	e.select_tool("wall")
+	check(_selection(e) == {}, "tool switch clears selection")
+
+
+func test_second_finger_cancels_pending_long_press() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	e.doc.place("planet", e._to_world(screen))
+	_route(_touch(0, true, screen))
+	_route(_touch(1, true, screen + Vector2(100, 100)))
+	await tree.create_timer(LevelEditor.LONG_PRESS + 0.1).timeout
+	check(e.find_children("*", "Overlay", true, false).is_empty(), "pinch cancels pending long-press sheet")
+	_route(_touch(0, false, screen))
+	_route(_touch(1, false, screen + Vector2(100, 100)))
+
+
+func test_delete_removes_only_selected_wall_point() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e._camera.zoom = Vector2.ONE * 0.5
+	var screen: Vector2 = Vector2(800, 400)
+	var first: Vector2 = e._to_world(screen)
+	for point: Vector2 in [first, first + Vector2(200, 0), first + Vector2(400, 0)]:
+		e.doc.add_wall_point(point)
+	e.doc.finish_wall()
+	e.select_tool("select")
+	var selected_point: Vector2 = screen + Vector2(100, 0)
+	_route(_mouse(MOUSE_BUTTON_LEFT, true, selected_point))
+	_route(_mouse(MOUSE_BUTTON_LEFT, false, selected_point))
+	_route(_key(KEY_DELETE))
+	await frames(1)
+	var points: Array = e.doc.data.walls[0].points
+	check(points == [LevelDoc._p(first), LevelDoc._p(first + Vector2(400, 0))], "Delete removes only selected point: %s" % [points])

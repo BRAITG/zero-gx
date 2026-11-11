@@ -1,7 +1,7 @@
 class_name LevelEditor
 extends Node2D
 ## The in-app level editor: a tool palette over a snapping grid. One finger runs the tool; two
-## fingers pan and pinch-zoom. Spec: docs/superpowers/specs/2026-10-16-level-editor-design.md.
+## fingers pan and pinch-zoom. Spec: docs/superpowers/specs/2026-11-11-editor-interaction-design.md.
 ## A mouse pans with the right or middle button and zooms with the wheel; a Mac trackpad swipes to pan and pinches to zoom. Ctrl/Cmd+Z undoes, Ctrl/Cmd+S saves, T test-flies (none while a sheet is open).
 
 const PREVIEW := preload("res://scenes/level_preview.gd")
@@ -11,7 +11,7 @@ const PLACING := ["planet", "black_hole", "star", "asteroid", "pickup"]  # tools
 const ZOOM_RANGE := Vector2(0.1, 1.5)
 const DRIFT_PER_PX := 1.0  # px/s of asteroid drift per px dragged
 const MAX_DRIFT := 400.0  # px/s
-const DRAG_START := 12.0  # screen px a finger must move before a press becomes a drag
+const DRAG_START := 12.0  # viewport units a finger must move before a press becomes a drag
 const LONG_PRESS := 0.5  # s a finger rests on a thing, without dragging, to open its sheet
 const NO_SHEET := ["goal", "wall_point"]  # nothing to set beyond position
 const GRID_COLOR := Color(1, 1, 1, 0.06)
@@ -20,8 +20,8 @@ const FINE_GRID_MIN_PX := 3.0  # screen px between 1 m lines below which they wo
 const PICKUP_LABELS := {"thrust_up": "Thrust up", "thrust_down": "Thrust down", "boost": "Boost"}
 const WALL_LABELS := {"blue": "Blue", "orange": "Orange", "red": "Red"}
 const HINTS := {  # the gestures of each tool, one line above the palette
-	"select": "Tap or hold a thing to edit it · drag to move it",
-	"wall": "Tap to add corners · tap the first corner to close · Done ends the wall",
+	"select": "Click to select · drag to move · right-click for properties",
+	"wall": "Click to add points · click the first point to close · Enter, Done or Esc finishes",
 	"planet": "Tap to place · drag a thing to move it · hold it to edit it",
 	"black_hole": "Tap to place · drag a thing to move it · hold it to edit it",
 	"star": "Tap to place · drag a thing to move it · hold it to edit it",
@@ -61,10 +61,17 @@ var _pressed_at := Vector2.ZERO  # screen
 var _dragging := false
 var _presses := 0  # counts finger downs and ups, so a long-press timer can tell its press is still down
 var _long_pressed := false  # the press opened a sheet, so its release does nothing
-var _held: Dictionary = {}  # the ref a select drag is moving, or the asteroid being aimed
+var _held: Dictionary = {}  # the ref being edited by this gesture
 var _view := []  # [camera position, zoom] to restore, or empty for the start
 var _moving := false  # a placing tool pressed on an existing thing, which it now drags
 var _pan_from := {}  # {"screen", "camera"} while a right or middle drag pans the view
+var selection: Dictionary = {}
+var _hover: Dictionary = {}
+var _press_ref: Dictionary = {}
+var _press_world: Vector2 = Vector2.ZERO
+var _press_position: Vector2 = Vector2.ZERO
+var _press_offset: Vector2 = Vector2.ZERO
+var _gesture_cancelled: bool = false
 
 
 ## The editor for the player's level `id` (a new blank level if there is none yet).
@@ -97,11 +104,20 @@ func _ready() -> void:
 	_refresh()
 
 
+func _process(_delta: float) -> void:
+	var hint_visible: bool = not DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD) or DisplayServer.virtual_keyboard_get_height() == 0
+	if _hint_label.visible != hint_visible:
+		_hint_label.visible = hint_visible
+
+
 ## Save the level to the device. False, with a sheet saying so, when the file does not hold what was written.
 func save() -> bool:
+	_end_edit()
+	selection = {}
+	_hover = {}
 	doc.finish_wall()
 	MyLevels.save(level_id, doc.data)
-	var written := LevelFormat.sha256(MyLevels.load_level(level_id)) == LevelFormat.sha256(doc.data)
+	var written: bool = LevelFormat.sha256(MyLevels.load_level(level_id)) == LevelFormat.sha256(doc.data)
 	if written:
 		_saved = doc.data.duplicate(true)
 	else:
@@ -111,6 +127,10 @@ func save() -> bool:
 
 
 func select_tool(name: String) -> void:
+	_end_edit()
+	_hover = {}
+	if name != tool:
+		selection = {}
 	doc.finish_wall()
 	tool = name
 	for key: String in _tool_buttons:
@@ -120,89 +140,172 @@ func select_tool(name: String) -> void:
 	_refresh()
 
 
-## One-finger actions in world coordinates: what a press, a drag and a release do with the tool.
-func press(world: Vector2) -> void:
-	var at := _place_at(world, tool)
+func select(ref: Dictionary) -> void:
+	_end_edit()
+	if selection == ref:
+		return
+	selection = ref
+	_refresh()
+
+
+func pick(screen: Vector2, mouse: bool) -> Dictionary:
+	return _pick_world(_to_world(screen), mouse)
+
+
+func _pick_world(world: Vector2, mouse: bool) -> Dictionary:
+	var slop: float = (LevelDoc.HIT_SLOP_MOUSE if mouse else LevelDoc.HIT_SLOP) / _camera.zoom.x
+	return doc.hit(world, slop)
+
+
+## One-finger actions in world coordinates: what a press, drag and release do with the tool.
+func press(world: Vector2, mouse: bool = false) -> void:
+	var at: Vector2 = _place_at(world, tool)
+	_press_world = world
+	_press_ref = _pick_world(world, mouse)
+	if mouse:
+		_hover = _press_ref
 	_held = {}
 	_moving = false
-	var under := doc.hit(world, LevelDoc.HIT_SLOP / _camera.zoom.x)
-	if tool in PLACING and not under.is_empty() and not under.type in ["wall", "wall_point"]:
-		# Something is already here: grab it instead of stacking another on top. Walls are long
-		# and thin, so things may still be placed right beside them.
-		_held = under
+	_press_offset = Vector2.ZERO
+	_press_position = world
+	if tool == "select":
+		select(_press_ref)
+		if not _press_ref.is_empty():
+			_held = selection
+			_press_position = doc.position_of(_held)
+			if _held.type != "wall_point":
+				_press_offset = _press_position - world
+			doc.begin_edit()
+	elif tool in PLACING and not _press_ref.is_empty() and not _press_ref.type in ["wall", "wall_point"]:
+		_held = _press_ref
 		_moving = true
-		doc.begin_move()
-		_refresh()
-		return
-	match tool:
-		"select":
-			_held = doc.hit(world, LevelDoc.HIT_SLOP / _camera.zoom.x)
-			if not _held.is_empty():
-				doc.begin_move()
-		"planet", "black_hole", "star":
-			doc.place(tool, at)
-		"pickup":
-			doc.place(pickup_kind, at)
-		"asteroid":
+		_press_position = doc.position_of(_held)
+		_press_offset = _press_position - world
+		doc.begin_edit()
+	elif tool == "wall":
+		doc.begin_edit()
+	elif tool in ["planet", "black_hole", "star", "pickup", "asteroid"]:
+		doc.begin_edit()
+		if tool == "asteroid":
 			_held = doc.place("asteroid", at)
-		"start", "goal":
-			doc.begin_move()
-			doc.move({"type": "ship" if tool == "start" else "goal", "index": 0}, at)
+		elif tool == "pickup":
+			doc.place(pickup_kind, at)
+		else:
+			doc.place(tool, at)
+	elif tool == "start":
+		_held = {"type": "ship", "index": 0}
+		_press_position = doc.position_of(_held)
+		doc.begin_edit()
+	elif tool == "goal":
+		_held = {"type": "goal", "index": 0}
+		_press_position = doc.position_of(_held)
+		doc.begin_edit()
 	_refresh()
 
 
 func drag(world: Vector2) -> void:
 	if _held.is_empty():
 		return
-	if tool == "select" or _moving:
-		doc.move(_held, _place_at(world, _held.type))
-	elif tool == "asteroid" and not doc.data.asteroids[_held.index].has("orbit"):
+	if tool == "select" or _moving or tool in ["start", "goal"]:
+		var target: Vector2
+		if _held.type == "wall":
+			target = _press_position + LevelDoc.snap(world - _press_world, fine_snap)
+		elif _held.type == "wall_point":
+			target = _place_at(world, "wall_point")
+		else:
+			target = _place_at(world + _press_offset, _held.type)
+		doc.move(_held, target)
+	elif tool == "asteroid":
 		var rock: Dictionary = doc.data.asteroids[_held.index]
-		var velocity := ((world - LevelDoc._v(rock.position)) * DRIFT_PER_PX).limit_length(MAX_DRIFT)
-		rock.velocity = LevelDoc._p(velocity)
+		if not rock.has("orbit"):
+			var velocity: Vector2 = ((world - LevelDoc._v(rock.position)) * DRIFT_PER_PX).limit_length(MAX_DRIFT)
+			doc.set_property(_held, "velocity", LevelDoc._p(velocity))
 	_refresh()
 
 
-func release(world: Vector2, was_drag: bool) -> void:
-	match tool:
-		"wall":
-			if not was_drag:
-				doc.add_wall_point(LevelDoc.snap(world, fine_snap), wall_kind, LevelDoc.CLOSE_DISTANCE / _camera.zoom.x)
-		"erase":
-			var ref := doc.hit(world, LevelDoc.HIT_SLOP / _camera.zoom.x)
-			var wall: Dictionary = doc.data.walls[ref.index] if ref.get("type") == "wall_point" else {}
-			if wall.get("closed", false) and wall.points.size() >= 4:
-				_ask_reclose(ref)
-			elif not ref.is_empty():
-				doc.erase(ref)
-		"select":
-			if not was_drag and not _held.is_empty():
-				_open_sheet(_held)
+func release(world: Vector2, was_drag: bool, mouse: bool = false) -> void:
+	if not _gesture_cancelled and not _long_pressed:
+		match tool:
+			"wall":
+				if not was_drag:
+					doc.add_wall_point(LevelDoc.snap(world, fine_snap), wall_kind, LevelDoc.CLOSE_DISTANCE / _camera.zoom.x)
+			"erase":
+				_erase_ref(_pick_world(world, mouse))
+			"start", "goal":
+				if not was_drag:
+					doc.move(_held, _place_at(_press_world, tool))
+	if doc.editing():
+		doc.end_edit()
 	_held = {}
+	_press_ref = {}
+	_moving = false
 	_refresh()
+
+
+func _erase_ref(ref: Dictionary) -> void:
+	if ref.is_empty() or ref.type in ["ship", "goal"]:
+		return
+	var wall: Dictionary = doc.data.walls[ref.index] if ref.type == "wall_point" else {}
+	if wall.get("closed", false) and wall.points.size() >= 4:
+		_ask_reclose(ref)
+		return
+	doc.erase(ref)
+	if selection == ref:
+		selection = {}
+	_hover = {}
+	_refresh()
+
+
+func _undo() -> void:
+	_end_edit()
+	selection = {}
+	_hover = {}
+	doc.undo()
+	_refresh()
+
+
+func _end_edit() -> void:
+	if doc.editing():
+		doc.end_edit()
+
+func _text_field_focused() -> bool:
+	var focus: Control = get_viewport().gui_get_focus_owner()
+	return focus is LineEdit or focus is TextEdit
+
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenTouch:
 		if event.pressed:
 			_touches[event.index] = event.position
+			if _touches.size() == 1:
+				_one_finger(true, event.position)
+			elif _touches.size() == 2:
+				_cancel_one_finger()
+				var touch_positions: Array = _touches.values()
+				var touch_first: Vector2 = touch_positions[0]
+				var touch_second: Vector2 = touch_positions[1]
+				_pinch_start = {"distance": touch_first.distance_to(touch_second), "zoom": _camera.zoom.x, "mid": (touch_first + touch_second) / 2.0, "camera": _camera.position}
 		else:
 			_touches.erase(event.index)
-		if _touches.size() == 2:
-			_held = {}  # a second finger turns the gesture into pan and zoom
-			_pinch_start = {"distance": _touches.values()[0].distance_to(_touches.values()[1]), "zoom": _camera.zoom.x, "mid": (_touches.values()[0] + _touches.values()[1]) / 2.0, "camera": _camera.position}
-		elif event.index == 0 or _touches.size() <= 1:
-			_one_finger(event.pressed, event.position)
+			if _touches.is_empty():
+				if not _gesture_cancelled:
+					_one_finger(false, event.position)
+				_pinch_start = {}
+				_gesture_cancelled = false
+			elif _touches.size() == 1 and not _gesture_cancelled:
+				_one_finger(false, event.position)
 	elif event is InputEventScreenDrag:
 		_touches[event.index] = event.position
 		if _touches.size() >= 2 and not _pinch_start.is_empty():
-			var a: Vector2 = _touches.values()[0]
-			var b: Vector2 = _touches.values()[1]
-			var zoom := clampf(_pinch_start.zoom * a.distance_to(b) / maxf(_pinch_start.distance, 1.0), ZOOM_RANGE.x, ZOOM_RANGE.y)
+			var drag_positions: Array = _touches.values()
+			var drag_first: Vector2 = drag_positions[0]
+			var drag_second: Vector2 = drag_positions[1]
+			var zoom: float = clampf(_pinch_start.zoom * drag_first.distance_to(drag_second) / maxf(_pinch_start.distance, 1.0), ZOOM_RANGE.x, ZOOM_RANGE.y)
 			_camera.zoom = Vector2.ONE * zoom
-			_camera.position = _pinch_start.camera - ((a + b) / 2.0 - _pinch_start.mid) / zoom
+			_camera.position = _pinch_start.camera - ((drag_first + drag_second) / 2.0 - _pinch_start.mid) / zoom
 			_marks.queue_redraw()
-		elif _touches.size() == 1:
+		elif _touches.size() == 1 and not _gesture_cancelled:
 			if not _dragging and event.position.distance_to(_pressed_at) > DRAG_START:
 				_dragging = true
 			if _dragging:
@@ -214,7 +317,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index in [MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
 			_pan_from = {"screen": event.position, "camera": _camera.position} if event.pressed else {}
 		elif event.button_index == MOUSE_BUTTON_LEFT:
-			_one_finger(event.pressed, event.position)
+			_one_finger(event.pressed, event.position, true)
 	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION and event.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE) and not _pan_from.is_empty():
 		_camera.position = _pan_from.camera - (event.position - _pan_from.screen) / _camera.zoom.x
 		_marks.queue_redraw()
@@ -223,18 +326,41 @@ func _unhandled_input(event: InputEvent) -> void:
 			_dragging = true
 		if _dragging:
 			drag(_to_world(event.position))
+	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
+		var hovered: Dictionary = pick(event.position, true)
+		if hovered != _hover:
+			_hover = hovered
+			_marks.queue_redraw()
 	elif event is InputEventMagnifyGesture:
 		_zoom_at(event.factor, event.position)
 	elif event is InputEventPanGesture:
 		_camera.position += event.delta / _camera.zoom.x  # delta is in screen px (macOS), so the content follows the fingers 1:1
 		_marks.queue_redraw()
-	elif event is InputEventKey and event.pressed and not event.echo and find_children("*", "Overlay", true, false).is_empty():
+	elif event is InputEventKey and event.pressed and not event.echo:
+		if not find_children("*", "Overlay", true, false).is_empty():
+			return
+		if event.keycode != KEY_ESCAPE and _text_field_focused():
+			return
 		var command: bool = event.is_command_or_control_pressed()
 		if command and not event.shift_pressed and event.keycode == KEY_Z:
-			doc.undo()
-			_refresh()
+			_undo()
 		elif command and event.keycode == KEY_S:
 			save()
+		elif not command and event.keycode in [KEY_DELETE, KEY_BACKSPACE]:
+			_erase_ref(selection)
+		elif event.keycode == KEY_ESCAPE:
+			if doc.drawing >= 0:
+				doc.finish_wall()
+				_hover = {}
+				_refresh()
+			elif not selection.is_empty():
+				select({})
+			else:
+				return
+		elif event.keycode in [KEY_ENTER, KEY_KP_ENTER] and doc.drawing >= 0:
+			doc.finish_wall()
+			_hover = {}
+			_refresh()
 		elif not command and event.keycode == KEY_T:
 			_test()
 		else:
@@ -251,27 +377,44 @@ func _zoom_at(factor: float, cursor: Vector2) -> void:
 	_marks.queue_redraw()
 
 
-func _one_finger(down: bool, screen: Vector2) -> void:
+func _one_finger(down: bool, screen: Vector2, mouse: bool = false) -> void:
 	_presses += 1
 	if down:
 		_pressed_at = screen
 		_dragging = false
 		_long_pressed = false
+		_gesture_cancelled = false
 		_pinch_start = {}
-		get_tree().create_timer(LONG_PRESS).timeout.connect(_long_press.bind(_presses))
-		press(_to_world(screen))
-	elif _pinch_start.is_empty() and not _long_pressed:
-		release(_to_world(screen), _dragging)
+		if not mouse:
+			get_tree().create_timer(LONG_PRESS).timeout.connect(_long_press.bind(_presses))
+		press(_to_world(screen), mouse)
+	elif not _gesture_cancelled and _pinch_start.is_empty() and not _long_pressed:
+		release(_to_world(screen), _dragging, mouse)
+
+
+func _cancel_one_finger() -> void:
+	_presses += 1
+	_gesture_cancelled = true
+	if doc.editing():
+		doc.cancel_edit()
+	_held = {}
+	_press_ref = {}
+	_moving = false
+	_dragging = false
+	_refresh()
 
 
 ## A finger resting still on a thing opens its sheet, whatever the tool.
 func _long_press(press_number: int) -> void:
-	if press_number != _presses or _dragging or not _pinch_start.is_empty() or not find_children("*", "Overlay", true, false).is_empty():
+	if press_number != _presses or _dragging or _gesture_cancelled or not _pinch_start.is_empty() or not find_children("*", "Overlay", true, false).is_empty():
 		return
-	var ref := doc.hit(_to_world(_pressed_at), LevelDoc.HIT_SLOP / _camera.zoom.x)
+	var ref: Dictionary = _press_ref
 	if ref.is_empty() or ref.type in NO_SHEET:
 		return
 	_long_pressed = true
+	_touches.clear()
+	if doc.editing():
+		doc.cancel_edit()
 	_held = {}
 	_moving = false
 	_open_sheet(ref)
@@ -293,15 +436,22 @@ func _refresh() -> void:
 		old.free()
 	_preview.add_child(LevelFormat.build(doc.data, PREVIEW))
 	_camera.make_current()
-	var problems := doc.errors()
+	var problems: PackedStringArray = doc.errors()
 	_error_label.text = "" if problems.is_empty() else "⚠ " + problems[0] + ("  (+%d more)" % (problems.size() - 1) if problems.size() > 1 else "")
 	_marks.queue_redraw()
 	_undo_button.disabled = not doc.can_undo()
 	_dirty = doc.data != _saved
 	_title_label.text = str(doc.data.get("title", ""))
 	_state_label.text = "Unsaved" if _dirty else "Saved"
-	_hint_label.text = HINTS[tool] + "  ·  " + ("Two fingers pan and pinch to zoom" if DisplayServer.is_touchscreen_available() else "Right-drag pans · wheel zooms")
+	_hint_label.text = _hint_text() + "  ·  " + ("Two fingers pan and pinch to zoom" if DisplayServer.is_touchscreen_available() else "Right-drag pans · wheel zooms")
 
+
+func _hint_text() -> String:
+	if tool == "select":
+		return "Tap to select · drag to move · hold for properties" if DisplayServer.is_touchscreen_available() else str(HINTS[tool])
+	if tool == "wall":
+		return "Tap to add points · tap the first point to close · Done" if DisplayServer.is_touchscreen_available() else str(HINTS[tool])
+	return str(HINTS[tool])
 
 ## Grid lines `step` px apart, their corner snapped to `snap_size`, over the visible area.
 func _draw_grid(snap_size: float, step: float, color: Color) -> void:
@@ -321,22 +471,65 @@ func _draw_marks() -> void:
 		_draw_grid(LevelDoc.COARSE_SNAP, LevelDoc.COARSE_SNAP, MAJOR_GRID_COLOR)
 	else:
 		_draw_grid(LevelDoc.COARSE_SNAP, LevelDoc.COARSE_SNAP * (1 if _camera.zoom.x >= 0.3 else 10), GRID_COLOR)
-	var width := 2.0 / _camera.zoom.x
-	for rock in doc.data.get("asteroids", []) + [doc.data.ship]:  # drift arrows, and the ship's starting velocity
+	var width: float = 2.0 / _camera.zoom.x
+	for rock: Dictionary in doc.data.get("asteroids", []) + [doc.data.ship]:
 		if rock.has("velocity") and not rock.has("orbit"):
-			var from := LevelDoc._v(rock.position)
+			var from: Vector2 = LevelDoc._v(rock.position)
 			_marks.draw_line(from, from + LevelDoc._v(rock.velocity), Color(1, 1, 1, 0.6), width)
-	for wall in doc.data.get("walls", []):
-		for p in wall.points:
-			_marks.draw_circle(LevelDoc._v(p), 4.0 / _camera.zoom.x, Color(1, 1, 1, 0.8))
-			if tool in ["select", "wall", "erase"]:
-				_marks.draw_arc(LevelDoc._v(p), 8.0 / _camera.zoom.x, 0.0, TAU, 16, Style.ACCENT, width)
+	for wall: Dictionary in doc.data.get("walls", []):
+		for point: Array in wall.points:
+			if tool in ["wall", "erase"]:
+				var at: Vector2 = LevelDoc._v(point)
+				_marks.draw_circle(at, 4.0 / _camera.zoom.x, Color(1, 1, 1, 0.8))
+				_marks.draw_arc(at, 8.0 / _camera.zoom.x, 0.0, TAU, 16, Style.ACCENT, width)
 	if doc.drawing >= 0:
 		var points: Array = doc.data.walls[doc.drawing].points
 		_marks.draw_circle(LevelDoc._v(points[0]), LevelDoc.CLOSE_DISTANCE / _camera.zoom.x, Color(1, 1, 1, 0.15))
-	if not _held.is_empty() and (tool == "select" or _moving):
+	if not _hover.is_empty() and _hover != selection:
+		_draw_outline(_hover, Style.INK_DIM, false)
+	if not selection.is_empty():
+		_draw_outline(selection, Style.ACCENT, true)
+	if not _held.is_empty() and _moving:
 		_marks.draw_arc(doc.position_of(_held), 60.0, 0.0, TAU, 32, Style.ACCENT, width)
 
+
+func _draw_outline(ref: Dictionary, color: Color, selected: bool) -> void:
+	var zoom: float = _camera.zoom.x
+	var under_width: float = (4.0 if selected else 2.5) / zoom
+	var stroke_width: float = (1.5 if selected else 0.8) / zoom
+	if ref.type == "wall":
+		var wall: Dictionary = doc.data.walls[ref.index]
+		var points: Array = wall.points
+		for i in range(points.size() - 1):
+			var segment_start: Vector2 = LevelDoc._v(points[i])
+			var segment_end: Vector2 = LevelDoc._v(points[i + 1])
+			_marks.draw_line(segment_start, segment_end, Style.PANEL, under_width)
+			_marks.draw_line(segment_start, segment_end, color, stroke_width)
+		if wall.get("closed", false) and points.size() > 1:
+			var closing_start: Vector2 = LevelDoc._v(points[-1])
+			var closing_end: Vector2 = LevelDoc._v(points[0])
+			_marks.draw_line(closing_start, closing_end, Style.PANEL, under_width)
+			_marks.draw_line(closing_start, closing_end, color, stroke_width)
+		return
+	var center: Vector2 = doc.position_of(ref)
+	var radius: float
+	match ref.type:
+		"wall_point":
+			radius = 12.0 / zoom
+		"ship":
+			radius = Ship.RADIUS + 8.0
+		"goal":
+			radius = Goal.RADIUS + 8.0
+		"body":
+			radius = LevelFormat.body_value(doc.data.bodies[ref.index], "radius") + 8.0
+		"asteroid":
+			radius = Asteroid.RADIUS + 8.0
+		"pickup":
+			radius = Pickup.RADIUS + 8.0
+		_:
+			radius = 12.0 / zoom
+	_marks.draw_arc(center, radius, 0.0, TAU, 48, Style.PANEL, under_width)
+	_marks.draw_arc(center, radius, 0.0, TAU, 48, color, stroke_width)
 
 func _build_ui() -> void:
 	var ui := CanvasLayer.new()
@@ -348,9 +541,7 @@ func _build_ui() -> void:
 	_button(top, "Back", func() -> void:
 		if save():
 			get_tree().change_scene_to_node(MyLevelsScreen.new()))
-	_undo_button = _button(top, "Undo", func() -> void:
-		doc.undo()
-		_refresh())
+	_undo_button = _button(top, "Undo", _undo)
 	_button(top, "Settings", _open_settings)
 	var fine := CheckButton.new()
 	fine.text = "Fine grid"
@@ -395,6 +586,7 @@ func _build_ui() -> void:
 	_wall_bar.add_child(_kind_option(LevelFormat.WALL_KINDS, WALL_LABELS, wall_kind, func(kind: String) -> void: wall_kind = kind))
 	_button(_wall_bar, "Done", func() -> void:
 		doc.finish_wall()
+		_hover = {}
 		_refresh())
 	_pickup_bar = HBoxContainer.new()
 	_pickup_bar.add_theme_constant_override("separation", 10)
@@ -522,8 +714,9 @@ func _tank(o: Overlay, tank: String) -> void:
 func _open_sheet(ref: Dictionary) -> void:
 	if ref.type in NO_SHEET:
 		return
+	doc.begin_edit()
 	var o := Overlay.open(self, TOOL_LABELS.get(ref.type, ref.type.capitalize()) if ref.type != "body" else doc.data.bodies[ref.index].kind.replace("_", " ").capitalize())
-	o.tree_exited.connect(_refresh)
+	o.tree_exited.connect(_sheet_closed)
 	match ref.type:
 		"wall":
 			_choice(o, "Colour", LevelFormat.WALL_KINDS, doc.data.walls[ref.index].kind, func(kind: String) -> void: doc.set_property(ref, "kind", kind))
@@ -532,8 +725,11 @@ func _open_sheet(ref: Dictionary) -> void:
 		"asteroid":
 			var rock: Dictionary = doc.data.asteroids[ref.index]
 			if rock.has("orbit"):
-				_slider(o, "Orbit speed (rad/s, negative = clockwise)", Vector2(-3, 3), 0.1, rock.orbit.speed, func(v: float) -> void:
-					rock.orbit.speed = v)
+				var orbit: Dictionary = rock.orbit
+				_slider(o, "Orbit speed (rad/s, negative = clockwise)", Vector2(-3, 3), 0.1, orbit.speed, func(v: float) -> void:
+					var updated: Dictionary = orbit.duplicate(true)
+					updated.speed = v
+					doc.set_property(ref, "orbit", updated))
 			else:
 				o.paragraph("Drag outward from an asteroid with the Asteroid tool to set its drift.", 20, Style.INK_DIM)
 		"body":
@@ -572,17 +768,28 @@ func _open_sheet(ref: Dictionary) -> void:
 			speed.value_changed.connect(aim)
 
 
+func _sheet_closed() -> void:
+	_end_edit()
+	_refresh()
+
+
 ## A closed wall loses a point: ask whether it stays closed or opens where the point was.
 func _ask_reclose(ref: Dictionary) -> void:
 	var o := Overlay.open(self, "Remove point")
 	o.paragraph("This wall is closed. Keep it closed, or open it where the point was?", 22)
 	_button(o.body, "Keep closed", func() -> void:
 		doc.erase(ref, true)
+		if selection == ref:
+			selection = {}
+		_hover = {}
 		o.close()
 		_refresh())
 	_button(o.body, "Open here", func() -> void:
 		doc.erase(ref, false)
+		if selection == ref:
+			selection = {}
 		o.close()
+		_hover = {}
 		_refresh())
 
 
@@ -626,8 +833,13 @@ func _number_box(slider: Range) -> SpinBox:
 	return box
 
 
-## Android's back gesture leaves like Back: save, then the level list.
+## Android Back closes an open sheet first; otherwise it saves and leaves the editor.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		var overlays: Array[Node] = find_children("*", "Overlay", true, false)
+		if not overlays.is_empty():
+			var overlay: Overlay = overlays[0] as Overlay
+			overlay.close()
+			return
 		if save():
 			get_tree().change_scene_to_node(MyLevelsScreen.new())
