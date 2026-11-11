@@ -18,6 +18,7 @@ const MAJOR_GRID_COLOR := Color(1, 1, 1, 0.14)
 const FINE_GRID_MIN_PX := 3.0  # screen px between 1 m lines below which they would merge into a fill
 const PICKUP_LABELS := {"thrust_up": "Thrust up", "thrust_down": "Thrust down", "boost": "Boost"}
 const WALL_LABELS := {"blue": "Blue", "orange": "Orange", "red": "Red"}
+const WALL_COLORS := {"blue": Barrier.COLORS[Barrier.Kind.BLUE], "orange": Barrier.COLORS[Barrier.Kind.ORANGE], "red": Barrier.COLORS[Barrier.Kind.RED]}
 const HINTS := {  # the gestures of each tool, one line above the palette
 	"select": "Click to select · drag to move · right-click for properties",
 	"wall": "Click to add points · click the first point to close · Enter, Done or Esc finishes",
@@ -66,7 +67,10 @@ var _panel_mass := 0.0
 var _panel_direction := 0.0
 var _panel_speed := 0.0
 var _tool_buttons := {}
-var _wall_bar: HBoxContainer
+var _wall_bar: PanelContainer
+var _wall_buttons := {}
+var _wall_checks := {}
+var _wall_done_button: Button
 var _pickup_bar: HBoxContainer
 var _undo_button: Button
 var _title_label: Label
@@ -185,7 +189,6 @@ func select_tool(name: String) -> void:
 	tool = name
 	for key: String in _tool_buttons:
 		_tool_buttons[key].button_pressed = key == name
-	_wall_bar.visible = name == "wall"
 	_pickup_bar.visible = name == "pickup"
 	_refresh()
 
@@ -771,6 +774,7 @@ func _refresh(rebuild_preview := true) -> void:
 	_dirty = doc.data != _saved
 	_title_label.text = str(doc.data.get("title", ""))
 	_state_label.text = "Unsaved" if _dirty else "Saved"
+	_sync_wall_bar()
 	_hint_label.text = _hint_text() + "  ·  " + ("Two fingers pan and pinch to zoom" if DisplayServer.is_touchscreen_available() else "Right-drag pans · wheel zooms")
 	_layout_hint_backing()
 	_layout_canvas_clip()
@@ -786,6 +790,25 @@ func _hint_text() -> String:
 	if tool == "wall":
 		return "Tap to add points · tap the first point to close · Done" if DisplayServer.is_touchscreen_available() else str(HINTS[tool])
 	return str(HINTS[tool])
+
+
+func _sync_wall_bar() -> void:
+	var wall_selection: bool = selection.get("type", "") in ["wall", "wall_point"]
+	_wall_bar.visible = tool == "wall" or wall_selection
+	_wall_done_button.visible = doc.drawing >= 0
+	var selected_kind: String = doc.data.walls[selection.index].kind if wall_selection else wall_kind
+	for kind: String in _wall_buttons:
+		var selected: bool = kind == selected_kind
+		_wall_buttons[kind].button_pressed = selected
+		_wall_checks[kind].visible = selected
+
+
+func _set_wall_kind(kind: String) -> void:
+	if selection.get("type", "") in ["wall", "wall_point"]:
+		doc.set_property(_wall_ref(selection), "kind", kind)
+	else:
+		wall_kind = kind
+	_refresh()
 
 ## Grid lines `step` px apart, their corner snapped to `snap_size`, over the visible area.
 func _draw_grid(snap_size: float, step: float, color: Color) -> void:
@@ -1053,15 +1076,45 @@ func _build_ui() -> void:
 	_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hint_backing.add_child(_hint_label)
-	_wall_bar = HBoxContainer.new()
-	_wall_bar.add_theme_constant_override("separation", 10)
+	_wall_bar = PanelContainer.new()
+	_wall_bar.add_theme_stylebox_override("panel", _opaque_panel())
 	_wall_bar.hide()
 	_ui_layer.add_child(_wall_bar)
-	_wall_bar.add_child(_kind_option(LevelFormat.WALL_KINDS, WALL_LABELS, wall_kind, func(kind: String) -> void: wall_kind = kind))
-	_button(_wall_bar, "Done", func() -> void:
+	var wall_controls := HBoxContainer.new()
+	wall_controls.add_theme_constant_override("separation", 8)
+	_wall_bar.add_child(wall_controls)
+	var wall_group := ButtonGroup.new()
+	var wall_normal := _wall_button_style(false)
+	var wall_selected := _wall_button_style(true)
+	for kind: String in LevelFormat.WALL_KINDS:
+		var button := _button(wall_controls, WALL_LABELS[kind], _set_wall_kind.bind(kind))
+		button.toggle_mode = true
+		button.button_group = wall_group
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.custom_minimum_size = Vector2(144.0, maxf(56.0, _dp_scale(48.0)))
+		button.icon = _wall_chip(kind)
+		button.add_theme_constant_override("h_separation", 8)
+		button.add_theme_stylebox_override("normal", wall_normal)
+		button.add_theme_stylebox_override("pressed", wall_selected)
+		button.add_theme_stylebox_override("hover_pressed", wall_selected)
+		var check := Label.new()
+		check.text = "✓"
+		check.visible = false
+		check.add_theme_color_override("font_color", Style.INK)
+		check.add_theme_font_size_override("font_size", 20)
+		check.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		check.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		check.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		check.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT, Control.PRESET_MODE_MINSIZE, 8)
+		button.add_child(check)
+		_wall_buttons[kind] = button
+		_wall_checks[kind] = check
+	_wall_done_button = _button(wall_controls, "Done", func() -> void:
 		doc.finish_wall()
 		_hover = {}
 		_refresh())
+	_wall_done_button.custom_minimum_size.y = maxf(56.0, _dp_scale(48.0))
+	_wall_done_button.hide()
 	_pickup_bar = HBoxContainer.new()
 	_pickup_bar.add_theme_constant_override("separation", 10)
 	_pickup_bar.hide()
@@ -1084,7 +1137,8 @@ func _build_ui() -> void:
 	_palette.offset_right = -8
 	_palette.offset_top = -72
 	_palette.offset_bottom = -8
-	_wall_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 84)
+	_wall_bar.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 12)
+	_wall_bar.offset_top = 84
 	_pickup_bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 84)
 	_modal_layer = CanvasLayer.new()
 	_modal_layer.layer = 10
@@ -1117,6 +1171,22 @@ func _button(parent: Control, text: String, action: Callable) -> Button:
 	button.pressed.connect(action)
 	parent.add_child(button)
 	return button
+
+
+func _wall_chip(kind: String) -> ImageTexture:
+	var image := Image.create(20, 20, false, Image.FORMAT_RGBA8)
+	image.fill(WALL_COLORS[kind])
+	return ImageTexture.create_from_image(image)
+
+
+func _wall_button_style(selected: bool) -> StyleBoxFlat:
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color("#111B2E")
+	style.border_color = Style.ACCENT if selected else Style.BORDER
+	style.set_border_width_all(2 if selected else 1)
+	style.set_corner_radius_all(6)
+	style.set_content_margin_all(8)
+	return style
 
 ## A dropdown of `kinds`, labelled by `labels`; picking one hands its kind to `on_pick`.
 func _kind_option(kinds: Array, labels: Dictionary, current: String, on_pick: Callable) -> OptionButton:

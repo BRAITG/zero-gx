@@ -1886,3 +1886,97 @@ func test_plus_drag_onto_first_point_of_closed_closing_edge_wraps_as_next_neighb
 	check(e.doc.data == before, "closing-edge insertion onto the first point restores the closed wall")
 	check(e.selection == previous_selection, "closing-edge cancellation restores the original point selection")
 	check(not e.doc.can_undo(), "closing-edge wraparound cancellation records no history")
+func _wall_colour_button(e: LevelEditor, text: String) -> Button:
+	for node: Node in e._wall_bar.find_children("*", "Button", true, false):
+		var button: Button = node as Button
+		if button != null and button.text == text:
+			return button
+	return null
+
+
+func test_wall_colour_strip_visibility_and_done_lifecycle() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	check(not e._wall_bar.is_visible_in_tree(), "the colour strip is hidden with no wall tool or selection")
+	e.select_tool("wall")
+	check(e._wall_bar.is_visible_in_tree(), "the Wall tool shows the colour strip")
+	for colour: String in ["Blue", "Orange", "Red"]:
+		var button: Button = _wall_colour_button(e, colour)
+		check(button != null, "%s has a labelled colour button" % colour)
+		if button != null:
+			check(button.custom_minimum_size.y >= e._dp_scale(48.0), "%s meets the 48 dp minimum height" % colour)
+			var chip: ImageTexture = button.icon as ImageTexture
+			check(chip != null, "%s button shows a colour chip" % colour)
+			if chip != null:
+				var expected: Color = {"Blue": Color("#3aa0ff"), "Orange": Color("#ff8a1f"), "Red": Color("#ff1028")}[colour]
+				check(chip.get_image().get_pixel(0, 0).is_equal_approx(expected), "%s chip uses its wall colour" % colour)
+	check(_button_named(e, "Done") == null, "Done is hidden until drawing starts")
+	e.press(Vector2(3000, 0))
+	e.release(Vector2(3000, 0), false)
+	check(_button_named(e, "Done") != null, "Done appears while a wall is being drawn")
+	var done := _button_named(e, "Done")
+	if done != null:
+		done.pressed.emit()
+		await frames(1)
+	check(e.doc.drawing == -1, "Done finishes the wall")
+	check(_button_named(e, "Done") == null, "Done hides after finishing the wall")
+	e.select_tool("select")
+	check(not e._wall_bar.is_visible_in_tree(), "the strip hides after switching away with no selection")
+	_store_wall(e, [Vector2(3000, 0), Vector2(4000, 0)])
+	e.doc.data.walls[0].kind = "red"
+	e.select({"type": "wall", "index": 0})
+	check(e._wall_bar.is_visible_in_tree(), "a selected wall shows the strip")
+	var red: Button = _wall_colour_button(e, "Red")
+	check(red != null and red.button_pressed, "a selected wall's colour is pressed")
+	e.select({"type": "wall_point", "index": 0, "point": 0})
+	check(e._wall_bar.is_visible_in_tree(), "a selected wall point shows the strip")
+
+
+func test_wall_colour_strip_recolours_selected_wall_or_point_in_one_undo() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	_store_wall(e, [Vector2(3000, 0), Vector2(4000, 0)])
+	e.select({"type": "wall", "index": 0})
+	await frames(1)
+	var blue: Button = _wall_colour_button(e, "Blue")
+	check(blue != null and blue.button_pressed, "the selected wall starts with Blue pressed")
+	var orange: Button = _wall_colour_button(e, "Orange")
+	check(orange != null, "the colour strip offers Orange")
+	if orange != null:
+		await _click_control(orange)
+	check(e.doc.data.walls[0].kind == "orange", "choosing Orange recolours the selected wall")
+	check(e.doc.can_undo(), "recolouring records an undo step")
+	e.doc.undo()
+	e._refresh()
+	check(e.doc.data.walls[0].kind == "blue" and not e.doc.can_undo(), "one undo restores the wall's original colour")
+	e.select({"type": "wall_point", "index": 0, "point": 0})
+	await frames(1)
+	var blue_point: Button = _wall_colour_button(e, "Blue")
+	check(blue_point != null and blue_point.button_pressed, "the selected point reflects its wall's colour")
+	var red: Button = _wall_colour_button(e, "Red")
+	check(red != null, "the colour strip offers Red for a selected point")
+	if red != null:
+		await _click_control(red)
+	check(e.doc.data.walls[0].kind == "red", "choosing Red from a selected point recolours its wall")
+	check(e.doc.can_undo(), "recolouring from a selected point records one undo step")
+	e.doc.undo()
+	check(e.doc.data.walls[0].kind == "blue" and not e.doc.can_undo(), "one undo restores the point's wall colour")
+
+
+func test_wall_colour_strip_sets_next_wall_and_owns_its_press() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	e.select_tool("wall")
+	await frames(1)
+	var orange: Button = _wall_colour_button(e, "Orange")
+	check(orange != null, "the colour strip offers Orange for a new wall")
+	if orange != null:
+		await _click_control(orange)
+	check(e.wall_kind == "orange", "choosing Orange without a selection sets the next wall colour")
+	var walls: Array = e.doc.data.get("walls", [])
+	check(walls.is_empty(), "a colour-strip press never reaches the canvas")
+	check(not e.doc.can_undo(), "choosing the next wall colour records no level edit")
+	e.press(Vector2(3000, 0))
+	e.release(Vector2(3000, 0), false)
+	walls = e.doc.data.get("walls", [])
+	check(walls.size() == 1 and walls[0].kind == "orange", "the next wall uses the chosen colour")
