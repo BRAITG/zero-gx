@@ -66,6 +66,10 @@ var _view := []  # [camera position, zoom] to restore, or empty for the start
 var _moving := false  # a placing tool pressed on an existing thing, which it now drags
 var _pan_from := {}  # {"screen", "camera"} while a right or middle drag pans the view
 var selection: Dictionary = {}
+var _thing_sheet: Overlay
+var _touch_input: bool = false
+var _selection_before_insert: Dictionary = {}
+var _inserted_wall_point: bool = false
 var _hover: Dictionary = {}
 var _press_ref: Dictionary = {}
 var _press_world: Vector2 = Vector2.ZERO
@@ -110,8 +114,9 @@ func _process(_delta: float) -> void:
 		_hint_label.visible = hint_visible
 
 
-## Save the level to the device. False, with a sheet saying so, when the file does not hold what was written.
 func save() -> bool:
+	_close_thing_sheet()
+	_invalidate_gesture()
 	_end_edit()
 	selection = {}
 	_hover = {}
@@ -127,6 +132,8 @@ func save() -> bool:
 
 
 func select_tool(name: String) -> void:
+	_close_thing_sheet()
+	_invalidate_gesture()
 	_end_edit()
 	_hover = {}
 	if name != tool:
@@ -141,9 +148,11 @@ func select_tool(name: String) -> void:
 
 
 func select(ref: Dictionary) -> void:
-	_end_edit()
 	if selection == ref:
+		_end_edit()
 		return
+	_close_thing_sheet()
+	_end_edit()
 	selection = ref
 	_refresh()
 
@@ -154,7 +163,64 @@ func pick(screen: Vector2, mouse: bool) -> Dictionary:
 
 func _pick_world(world: Vector2, mouse: bool) -> Dictionary:
 	var slop: float = (LevelDoc.HIT_SLOP_MOUSE if mouse else LevelDoc.HIT_SLOP) / _camera.zoom.x
-	return doc.hit(world, slop)
+	var picked: Dictionary = doc.hit(world, slop)
+	var handle: Dictionary = _pick_wall_handle(world, slop)
+	if handle.is_empty():
+		return picked
+	if picked.get("type", "") in ["wall_point", "ship", "asteroid", "pickup"]:
+		if doc.position_of(picked).distance_to(world) <= _wall_segment_midpoint(handle.index, handle.after).distance_to(world):
+			return picked
+	return handle
+
+
+func _pick_wall_handle(world: Vector2, slop: float) -> Dictionary:
+	if selection.get("type", "") not in ["wall", "wall_point"]:
+		return {}
+	var wall_index: int = selection.index
+	var walls: Array = doc.data.get("walls", [])
+	if wall_index < 0 or wall_index >= walls.size():
+		return {}
+	var wall: Dictionary = walls[wall_index]
+	var points: Array = wall.points
+	var nearest: float = INF
+	var picked_after: int = -1
+	for after in range(points.size() - 1):
+		var distance: float = _wall_segment_midpoint(wall_index, after).distance_to(world)
+		if distance <= slop and distance < nearest:
+			nearest = distance
+			picked_after = after
+	if wall.get("closed", false) and points.size() > 1:
+		var closing_distance: float = _wall_segment_midpoint(wall_index, points.size() - 1).distance_to(world)
+		if closing_distance <= slop and closing_distance < nearest:
+			nearest = closing_distance
+			picked_after = points.size() - 1
+	if picked_after < 0:
+		return {}
+	return {"type": "wall_handle", "index": wall_index, "after": picked_after}
+
+
+func _wall_segment_midpoint(wall_index: int, after: int) -> Vector2:
+	var points: Array = doc.data.walls[wall_index].points
+	return (LevelDoc._v(points[after]) + LevelDoc._v(points[(after + 1) % points.size()])) / 2.0
+
+
+func _wall_segment_after(wall_index: int, at: Vector2) -> int:
+	var wall: Dictionary = doc.data.walls[wall_index]
+	var points: Array = wall.points
+	var nearest: float = INF
+	var picked_after: int = -1
+	for after in range(points.size() - 1):
+		var distance: float = Geometry2D.get_closest_point_to_segment(at, LevelDoc._v(points[after]), LevelDoc._v(points[after + 1])).distance_to(at)
+		if distance < nearest:
+			nearest = distance
+			picked_after = after
+	if wall.get("closed", false) and points.size() > 1:
+		var closing_distance: float = Geometry2D.get_closest_point_to_segment(at, LevelDoc._v(points[-1]), LevelDoc._v(points[0])).distance_to(at)
+		if closing_distance < nearest:
+			picked_after = points.size() - 1
+	return picked_after
+
+
 
 
 ## One-finger actions in world coordinates: what a press, drag and release do with the tool.
@@ -169,13 +235,16 @@ func press(world: Vector2, mouse: bool = false) -> void:
 	_press_offset = Vector2.ZERO
 	_press_position = world
 	if tool == "select":
-		select(_press_ref)
-		if not _press_ref.is_empty():
-			_held = selection
-			_press_position = doc.position_of(_held)
-			if _held.type != "wall_point":
-				_press_offset = _press_position - world
-			doc.begin_edit()
+		if _press_ref.get("type", "") == "wall_handle":
+			_insert_wall_point(_press_ref.index, _press_ref.after, _wall_segment_midpoint(_press_ref.index, _press_ref.after))
+		else:
+			select(_press_ref)
+			if not _press_ref.is_empty():
+				_held = selection
+				_press_position = doc.position_of(_held)
+				if _held.type != "wall_point":
+					_press_offset = _press_position - world
+				doc.begin_edit()
 	elif tool in PLACING and not _press_ref.is_empty() and not _press_ref.type in ["wall", "wall_point"]:
 		_held = _press_ref
 		_moving = true
@@ -202,6 +271,24 @@ func press(world: Vector2, mouse: bool = false) -> void:
 		doc.begin_edit()
 	_refresh()
 
+
+func _insert_wall_point(wall_index: int, after: int, at: Vector2) -> bool:
+	if not doc.editing():
+		doc.begin_edit()
+	var ref: Dictionary = doc.insert_wall_point(wall_index, after, at)
+	if ref.is_empty():
+		_held = {}
+		_press_ref = {}
+		return false
+	_selection_before_insert = selection.duplicate()
+	_inserted_wall_point = true
+	selection = ref
+	_hover = {}
+	_held = ref
+	_press_ref = ref
+	_press_position = doc.position_of(ref)
+	_press_offset = Vector2.ZERO
+	return true
 
 func drag(world: Vector2) -> void:
 	if _held.is_empty():
@@ -239,29 +326,49 @@ func release(world: Vector2, was_drag: bool, mouse: bool = false) -> void:
 	_held = {}
 	_press_ref = {}
 	_moving = false
+	_inserted_wall_point = false
+	_selection_before_insert = {}
 	_refresh()
 
 
 func _erase_ref(ref: Dictionary) -> void:
 	if ref.is_empty() or ref.type in ["ship", "goal"]:
 		return
+	_invalidate_gesture()
 	var wall: Dictionary = doc.data.walls[ref.index] if ref.type == "wall_point" else {}
 	if wall.get("closed", false) and wall.points.size() >= 4:
 		_ask_reclose(ref)
 		return
 	doc.erase(ref)
-	if selection == ref:
-		selection = {}
+	selection = {}
 	_hover = {}
 	_refresh()
 
 
 func _undo() -> void:
-	_end_edit()
+	_invalidate_gesture()
 	selection = {}
 	_hover = {}
 	doc.undo()
 	_refresh()
+
+
+func _invalidate_gesture() -> void:
+	var active: bool = not _held.is_empty() or not _press_ref.is_empty() or _dragging or doc.editing()
+	if active:
+		_presses += 1
+		_gesture_cancelled = true
+	if doc.editing():
+		doc.end_edit()
+	_held = {}
+	_press_ref = {}
+	_moving = false
+	_dragging = false
+	_long_pressed = false
+	_inserted_wall_point = false
+	_selection_before_insert = {}
+
+
 
 
 func _end_edit() -> void:
@@ -312,12 +419,27 @@ func _unhandled_input(event: InputEvent) -> void:
 				drag(_to_world(event.position))
 	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION:
 		# A mouse on desktop: the wheel zooms; the right or middle button pans; the left acts like a finger.
+		if _touch_input:
+			_touch_input = false
+			_marks.queue_redraw()
 		if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN] and event.pressed:
 			_zoom_at(1.1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else 0.9, event.position)
 		elif event.button_index in [MOUSE_BUTTON_RIGHT, MOUSE_BUTTON_MIDDLE]:
 			_pan_from = {"screen": event.position, "camera": _camera.position} if event.pressed else {}
 		elif event.button_index == MOUSE_BUTTON_LEFT:
-			_one_finger(event.pressed, event.position, true)
+			if event.pressed and event.double_click and tool == "select":
+				var at: Vector2 = _to_world(event.position)
+				var slop: float = LevelDoc.HIT_SLOP_MOUSE / _camera.zoom.x
+				var segment: Dictionary = doc.hit(at, slop)
+				if segment.get("type", "") == "wall":
+					selection = {}
+				_one_finger(true, event.position, true)
+				if segment.get("type", "") == "wall" and _press_ref.get("type", "") == "wall":
+					var after: int = _wall_segment_after(segment.index, at)
+					_insert_wall_point(segment.index, after, _place_at(at, "wall_point"))
+					_refresh()
+			else:
+				_one_finger(event.pressed, event.position, true)
 	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION and event.button_mask & (MOUSE_BUTTON_MASK_RIGHT | MOUSE_BUTTON_MASK_MIDDLE) and not _pan_from.is_empty():
 		_camera.position = _pan_from.camera - (event.position - _pan_from.screen) / _camera.zoom.x
 		_marks.queue_redraw()
@@ -327,8 +449,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _dragging:
 			drag(_to_world(event.position))
 	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
+		var touch_size_changed: bool = _touch_input
+		_touch_input = false
 		var hovered: Dictionary = pick(event.position, true)
-		if hovered != _hover:
+		if hovered != _hover or touch_size_changed:
 			_hover = hovered
 			_marks.queue_redraw()
 	elif event is InputEventMagnifyGesture:
@@ -347,6 +471,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif command and event.keycode == KEY_S:
 			save()
 		elif not command and event.keycode in [KEY_DELETE, KEY_BACKSPACE]:
+			_invalidate_gesture()
 			_erase_ref(selection)
 		elif event.keycode == KEY_ESCAPE:
 			if doc.drawing >= 0:
@@ -380,6 +505,7 @@ func _zoom_at(factor: float, cursor: Vector2) -> void:
 func _one_finger(down: bool, screen: Vector2, mouse: bool = false) -> void:
 	_presses += 1
 	if down:
+		_touch_input = not mouse
 		_pressed_at = screen
 		_dragging = false
 		_long_pressed = false
@@ -397,10 +523,14 @@ func _cancel_one_finger() -> void:
 	_gesture_cancelled = true
 	if doc.editing():
 		doc.cancel_edit()
+	if _inserted_wall_point:
+		selection = _selection_before_insert
 	_held = {}
 	_press_ref = {}
 	_moving = false
 	_dragging = false
+	_inserted_wall_point = false
+	_selection_before_insert = {}
 	_refresh()
 
 
@@ -447,6 +577,8 @@ func _refresh() -> void:
 
 
 func _hint_text() -> String:
+	if tool == "select" and selection.get("type", "") in ["wall", "wall_point"]:
+		return "+ adds a point"
 	if tool == "select":
 		return "Tap to select · drag to move · hold for properties" if DisplayServer.is_touchscreen_available() else str(HINTS[tool])
 	if tool == "wall":
@@ -476,12 +608,6 @@ func _draw_marks() -> void:
 		if rock.has("velocity") and not rock.has("orbit"):
 			var from: Vector2 = LevelDoc._v(rock.position)
 			_marks.draw_line(from, from + LevelDoc._v(rock.velocity), Color(1, 1, 1, 0.6), width)
-	for wall: Dictionary in doc.data.get("walls", []):
-		for point: Array in wall.points:
-			if tool in ["wall", "erase"]:
-				var at: Vector2 = LevelDoc._v(point)
-				_marks.draw_circle(at, 4.0 / _camera.zoom.x, Color(1, 1, 1, 0.8))
-				_marks.draw_arc(at, 8.0 / _camera.zoom.x, 0.0, TAU, 16, Style.ACCENT, width)
 	if doc.drawing >= 0:
 		var points: Array = doc.data.walls[doc.drawing].points
 		_marks.draw_circle(LevelDoc._v(points[0]), LevelDoc.CLOSE_DISTANCE / _camera.zoom.x, Color(1, 1, 1, 0.15))
@@ -489,14 +615,49 @@ func _draw_marks() -> void:
 		_draw_outline(_hover, Style.INK_DIM, false)
 	if not selection.is_empty():
 		_draw_outline(selection, Style.ACCENT, true)
+		if selection.type in ["wall", "wall_point"]:
+			_draw_wall_handles(selection.index)
 	if not _held.is_empty() and _moving:
 		_marks.draw_arc(doc.position_of(_held), 60.0, 0.0, TAU, 32, Style.ACCENT, width)
 
+
+func _draw_wall_handles(wall_index: int) -> void:
+	var wall: Dictionary = doc.data.walls[wall_index]
+	var points: Array = wall.points
+	var zoom: float = _camera.zoom.x
+	var point_radius: float = (5.0 if _touch_input else 4.0) / zoom
+	var plus_radius: float = (4.0 if _touch_input else 3.0) / zoom
+	var width: float = 2.0 / zoom
+	for i in points.size():
+		var at: Vector2 = LevelDoc._v(points[i])
+		_marks.draw_circle(at, point_radius + 1.5 / zoom, Style.PANEL)
+		_marks.draw_circle(at, point_radius, Color.WHITE)
+		if selection.type == "wall_point" and selection.index == wall_index and selection.point == i:
+			_marks.draw_arc(at, point_radius + 4.0 / zoom, 0.0, TAU, 24, Style.PANEL, width + 1.0 / zoom)
+			_marks.draw_arc(at, point_radius + 4.0 / zoom, 0.0, TAU, 24, Style.ACCENT, width)
+	for after in range(points.size() - 1):
+		_draw_plus_handle(_wall_segment_midpoint(wall_index, after), plus_radius, width)
+	if wall.get("closed", false) and points.size() > 1:
+		_draw_plus_handle(_wall_segment_midpoint(wall_index, points.size() - 1), plus_radius, width)
+
+
+func _draw_plus_handle(at: Vector2, radius: float, width: float) -> void:
+	_marks.draw_circle(at, radius + 1.5 / _camera.zoom.x, Style.PANEL)
+	_marks.draw_arc(at, radius, 0.0, TAU, 16, Color.WHITE, width)
+	var arm: float = radius * 0.55
+	_marks.draw_line(at - Vector2(arm, 0), at + Vector2(arm, 0), Color.WHITE, width)
+	_marks.draw_line(at - Vector2(0, arm), at + Vector2(0, arm), Color.WHITE, width)
 
 func _draw_outline(ref: Dictionary, color: Color, selected: bool) -> void:
 	var zoom: float = _camera.zoom.x
 	var under_width: float = (4.0 if selected else 2.5) / zoom
 	var stroke_width: float = (1.5 if selected else 0.8) / zoom
+	if ref.type == "wall_handle":
+		var center: Vector2 = _wall_segment_midpoint(ref.index, ref.after)
+		var radius: float = (7.0 if _touch_input else 5.0) / zoom
+		_marks.draw_arc(center, radius, 0.0, TAU, 16, Style.PANEL, under_width)
+		_marks.draw_arc(center, radius, 0.0, TAU, 16, color, stroke_width)
+		return
 	if ref.type == "wall":
 		var wall: Dictionary = doc.data.walls[ref.index]
 		var points: Array = wall.points
@@ -716,6 +877,7 @@ func _open_sheet(ref: Dictionary) -> void:
 		return
 	doc.begin_edit()
 	var o := Overlay.open(self, TOOL_LABELS.get(ref.type, ref.type.capitalize()) if ref.type != "body" else doc.data.bodies[ref.index].kind.replace("_", " ").capitalize())
+	_thing_sheet = o
 	o.tree_exited.connect(_sheet_closed)
 	match ref.type:
 		"wall":
@@ -769,8 +931,15 @@ func _open_sheet(ref: Dictionary) -> void:
 
 
 func _sheet_closed() -> void:
+	_thing_sheet = null
 	_end_edit()
 	_refresh()
+
+
+func _close_thing_sheet() -> void:
+	if is_instance_valid(_thing_sheet):
+		_thing_sheet.close()
+	_thing_sheet = null
 
 
 ## A closed wall loses a point: ask whether it stays closed or opens where the point was.
@@ -779,15 +948,13 @@ func _ask_reclose(ref: Dictionary) -> void:
 	o.paragraph("This wall is closed. Keep it closed, or open it where the point was?", 22)
 	_button(o.body, "Keep closed", func() -> void:
 		doc.erase(ref, true)
-		if selection == ref:
-			selection = {}
+		selection = {}
 		_hover = {}
 		o.close()
 		_refresh())
 	_button(o.body, "Open here", func() -> void:
 		doc.erase(ref, false)
-		if selection == ref:
-			selection = {}
+		selection = {}
 		o.close()
 		_hover = {}
 		_refresh())

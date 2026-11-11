@@ -76,6 +76,25 @@ func add_wall_point(at: Vector2, kind: String = "blue", close: float = CLOSE_DIS
 	wall.points.append(_p(at))
 
 
+## Insert after a wall point; on an open wall, after its last point appends.
+func insert_wall_point(wall_index: int, after: int, at: Vector2) -> Dictionary:
+	var walls: Array = data.get("walls", [])
+	if wall_index < 0 or wall_index >= walls.size():
+		return {}
+	var wall: Dictionary = walls[wall_index]
+	var points: Array = wall.points
+	if after < 0 or after >= points.size():
+		return {}
+	var inserted: Array = _p(at)
+	if points[after] == inserted:
+		return {}
+	var next: int = after + 1 if after + 1 < points.size() else (0 if wall.get("closed", false) else -1)
+	if next >= 0 and points[next] == inserted:
+		return {}
+	_record()
+	points.insert(after + 1, inserted)
+	return {"type": "wall_point", "index": wall_index, "point": after + 1}
+
 ## End the wall being drawn; a wall with a single point is dropped.
 func finish_wall() -> void:
 	if drawing >= 0 and data.walls[drawing].points.size() < 2:

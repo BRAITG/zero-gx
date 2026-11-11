@@ -244,3 +244,37 @@ func test_cancel_edit_restores_data_without_adding_history() -> void:
 	check(doc.can_undo() == had_undo, "cancel preserves prior undo availability")
 	doc.undo()
 	check(doc.data.get("bodies", []).is_empty(), "cancel leaves no extra history entry")
+
+func test_insert_wall_point_appends_to_an_open_wall() -> void:
+	var doc := LevelDoc.new()
+	doc.data["walls"] = [{"kind": "blue", "points": [[0, 0], [1000, 0]]}]
+	var ref: Dictionary = doc.insert_wall_point(0, 1, Vector2(1600.4, 500.4))
+	check(doc.data.walls[0].points == [[0, 0], [1000, 0], [1600, 500]], "open wall appends the rounded point: %s" % [doc.data.walls[0].points])
+	check(ref == {"type": "wall_point", "index": 0, "point": 2}, "the inserted point ref: %s" % [ref])
+
+
+func test_insert_wall_point_after_the_last_point_of_a_closed_wall() -> void:
+	var doc := LevelDoc.new()
+	doc.data["walls"] = [{"kind": "blue", "closed": true, "points": [[0, 0], [1000, 0], [1000, 1000]]}]
+	var ref: Dictionary = doc.insert_wall_point(0, 2, Vector2(0, 500))
+	check(doc.data.walls[0].points == [[0, 0], [1000, 0], [1000, 1000], [0, 500]], "closing edge point follows the last point: %s" % [doc.data.walls[0].points])
+	check(ref == {"type": "wall_point", "index": 0, "point": 3}, "the closing-edge point ref: %s" % [ref])
+
+
+func test_duplicate_wall_point_insertion_does_not_record_history() -> void:
+	var doc := LevelDoc.new()
+	doc.data["walls"] = [{"kind": "blue", "points": [[0, 0], [1000, 0]]}]
+	var before: Dictionary = doc.data.duplicate(true)
+	doc.insert_wall_point(0, 0, Vector2(1000, 0))
+	check(doc.data == before, "inserting on the adjacent point leaves the wall unchanged: %s" % [doc.data.walls[0].points])
+	check(not doc.can_undo(), "duplicate insertion records no undo step")
+
+
+func test_undo_restores_the_wall_before_point_insertion() -> void:
+	var doc := LevelDoc.new()
+	doc.data["walls"] = [{"kind": "blue", "points": [[0, 0], [1000, 0]]}]
+	var before: Dictionary = doc.data.duplicate(true)
+	doc.insert_wall_point(0, 0, Vector2(500, 0))
+	check(doc.data.walls[0].points == [[0, 0], [500, 0], [1000, 0]], "point insertion changed the wall before undo")
+	doc.undo()
+	check(doc.data == before, "one undo restores the wall before insertion: %s" % [doc.data])
