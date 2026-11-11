@@ -1599,7 +1599,7 @@ func _open_property_panel(ref: Dictionary, property: String) -> void:
 			return
 	var free: Rect2 = _free_canvas_rect()
 	var window_height: int = DisplayServer.window_get_size().y
-	var compact: bool = DisplayServer.is_touchscreen_available() or (window_height > 0 and window_height <= 600)
+	var compact: bool = DisplayServer.is_touchscreen_available() or (window_height > 0 and window_height <= 600) or _ui_scale >= 1.5
 	if property == "start_motion":
 		title = "Start motion"
 	else:
@@ -1684,7 +1684,17 @@ func _position_property_panel(ref: Dictionary, free: Rect2) -> void:
 	position.x = clampf(position.x, free.position.x, maxf(free.position.x, free.end.x - size.x))
 	position.y = clampf(position.y, free.position.y, maxf(free.position.y, free.end.y - size.y))
 	_property_panel.position = position
-	_property_panel.reveal_focused_control()
+	call_deferred("_reveal_panel_focus_after_layout", _property_panel)
+
+
+func _reveal_panel_focus_after_layout(panel: EditorPropertyPanel) -> void:
+	var current_tree: SceneTree = get_tree()
+	if current_tree == null:
+		return
+	await current_tree.process_frame
+	if not is_instance_valid(panel) or panel != _property_panel:
+		return
+	panel.reveal_focused_control()
 
 
 

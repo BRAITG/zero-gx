@@ -65,8 +65,21 @@ func preferred_height() -> float:
 
 func reveal_focused_control() -> void:
 	var focus: Control = get_viewport().gui_get_focus_owner()
-	if is_instance_valid(focus) and is_ancestor_of(focus):
-		_scroll.ensure_control_visible(focus)
+	if not is_instance_valid(focus) or not is_ancestor_of(focus):
+		return
+	var target: Control = focus
+	while not _scroll.is_ancestor_of(target):
+		var parent: Node = target.get_parent()
+		if not parent is Control:
+			return
+		target = parent as Control
+	_scroll.ensure_control_visible(target)
+	var visible: Rect2 = _scroll.get_global_rect()
+	var focused: Rect2 = focus.get_global_rect()
+	if focused.position.y < visible.position.y:
+		_scroll.scroll_vertical -= ceili(visible.position.y - focused.position.y)
+	elif focused.end.y > visible.end.y:
+		_scroll.scroll_vertical += ceili(focused.end.y - visible.end.y)
 
 
 

@@ -2020,12 +2020,22 @@ func test_tight_keyboard_reflow_keeps_close_and_focused_field_reachable() -> voi
 	check(boxes.size() == 1 and scrolls.size() == 1, "the panel has a numeric field in a scroll view")
 	if boxes.is_empty() or scrolls.is_empty():
 		return
+	var scroll: ScrollContainer = scrolls[0] as ScrollContainer
+	var compact_title := false
+	var units_scrollable := false
+	for node: Node in e._property_panel.find_children("*", "Label", true, false):
+		var label: Label = node as Label
+		if label.text == "Planet radius":
+			compact_title = true
+		elif label.text == "px":
+			units_scrollable = scroll.is_ancestor_of(label)
+	check(compact_title and units_scrollable, "phone title and units occupy separate lines in the scroll region")
 	var field: LineEdit = boxes[0].get_line_edit()
 	field.grab_focus()
 	await frames(1)
 	var available := Rect2(0, 68, 1280, 210)
 	e._position_property_panel(ref, available)
-	await frames(2)
+	await frames(4)
 	var close: Button
 	for node: Node in e._property_panel.find_children("*", "Button", true, false):
 		var button: Button = node as Button
@@ -2033,10 +2043,9 @@ func test_tight_keyboard_reflow_keeps_close_and_focused_field_reachable() -> voi
 			close = button
 	check(close != null, "Close remains available during keyboard reflow")
 	check(available.encloses(e._property_panel.get_global_rect()), "the panel fits the keyboard-free area")
-	check(available.encloses(field.get_global_rect()), "the focused number field fits the keyboard-free area")
+	check(available.encloses(field.get_global_rect()), "the focused number field fits keyboard clearance: field=%s scroll=%s offset=%s max=%s focus=%s" % [field.get_global_rect(), scroll.get_global_rect(), scroll.scroll_vertical, scroll.get_v_scroll_bar().max_value, e.get_viewport().gui_get_focus_owner()])
 	if close != null:
 		check(available.encloses(close.get_global_rect()), "Close fits the keyboard-free area")
-	var scroll: ScrollContainer = scrolls[0] as ScrollContainer
 	check(not scroll.get_v_scroll_bar().is_visible_in_tree(), "the number box has no stray vertical scrollbar")
 
 
