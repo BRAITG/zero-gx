@@ -50,7 +50,7 @@ The fit leaves out every history of a player with counted attempts on only one l
 - cleared on attempt `a`: likelihood `(1 − p)^(a − 1) · p`;
 - not cleared after `a` attempts: likelihood `(1 − p)^a`. Abandoned and unfinished attempts count as misses, as they already count as attempts.
 
-**Priors:** `θᵢ ~ Normal(0, 1.5²)` and `βⱼ ~ Normal(2.6, 2.5²)`. They make the fit identifiable. The skill prior keeps a player with one short history near 0, so a newcomer's single failure says little. The difficulty prior is centred where a player of skill 0 has a 50% chance to clear within 10 attempts (the Normal–Hard boundary), so an unplayed version leans to neither end, and it is wide enough to be overruled by a handful of players.
+**Priors:** `θᵢ ~ Normal(0, 1.5²)` and `βⱼ ~ Normal(2.6, 2.5²)`. They make the fit identifiable. The skill prior keeps a player with few histories near 0, so a few failures say little about them. The difficulty prior is centred where a player of skill 0 has a 50% chance to clear within 10 attempts (the Normal–Hard boundary), so an unplayed version leans to neither end, and it is wide enough to be overruled by a handful of players.
 
 **Fitting** (`server/src/core/rating.ts`, pure TypeScript):
 
@@ -84,7 +84,7 @@ where `eⱼ` is the unit vector for version `j`. Each history is a run of logist
 
 Otherwise the version is **Estimating**, and the row falls back to the Reviewed or Voted chip.
 
-The required acceptance case is the owner's caveat: an easy level that newcomers with no other level played fail repeatedly, while established players clear it at once. It must never get a Rated label harder than Normal. With fewer than 10 established starters it stays Estimating; with 10 or more who clear at once it rates Easy, however many newcomers fail it.
+The required acceptance case is the owner's caveat: an easy level that newcomers with no other level played fail repeatedly, while established players clear it at once. It must never get a Rated label harder than Normal. In a catalogue that already has at least 20 reference players, it stays Estimating with fewer than 10 established starters, and with 10 or more who clear it at once it rates Easy, however many newcomers fail it. Without a reference, it stays Estimating like every other version.
 
 **Stability:** the gates decide first. If the fit failed, there is no reference player, or either gate fails, the version is Estimating at once; nothing is held. Only when the gates pass does hysteresis apply: the previous label is kept only while the new interval still overlaps it and does not reach more than 2 percentage points past its outer edge (for a range, the edge of the range as a whole). Otherwise the label the gates give now is published. The chip, the filter and the details sentence all describe the published label; when it is a held label and the current interval reaches outside it, the sentence adds "the label updates once the estimate settles".
 
@@ -165,9 +165,9 @@ Validation messages name body kinds ("planet 1", "star 2") instead of "body 0", 
 
 ## Server, API and schema
 
-Migration 0009 adds a `last_ms` column to `play_summaries` (the server receipt time of the latest report, backfilled from `play_attempts.received_ms`) and one derived table, `version_stats`, rebuilt by the scheduled job:
+Migration 0009 adds a `last_ms` column to `play_summaries` (the server receipt time of the latest report on that version, backfilled as the maximum `play_attempts.received_ms` of the player and version; a player's latest attempt is the maximum over their versions) and one derived table, `version_stats`, rebuilt by the scheduled job:
 
-`sha256` (primary key), `starters`, `clears`, `not_cleared_20` (starters without a clear after 20 or more attempts), `curve` (JSON array of 30 cleared shares), `beta`, `beta_sd`, `p10_low`, `p10_high`, `rated` (`easy`…`expert` or null), `rated_high` (upper label of a two-band range, or null), `audience` (mean skill of all starters minus `θ_ref`, or null), `computed_ms`.
+`sha256` (primary key), `starters`, `clears`, `not_cleared_20` (starters without a clear after 20 or more attempts), `curve` (JSON array of 30 cleared shares), `beta`, `rating_sd` (the `sdⱼ` above, for `θ_ref − βⱼ`), `p10_low`, `p10_high`, `rated` (`easy`…`expert` or null), `rated_high` (upper label of a two-band range, or null), `audience` (mean skill of all starters minus `θ_ref`, or null), `computed_ms`.
 
 Per-player skills exist only in memory during a run. Nothing account-linked is stored, so `DELETE /me` needs no change.
 
@@ -187,8 +187,8 @@ Privacy wording adds one sentence: play history is also used to estimate each le
   - recovers known skills and difficulties from synthetic histories within stated tolerances;
   - a level played only by weak players rates easier than its raw clear rate suggests;
   - one Newton step is clipped to ±1 (a direct unit test); the regression case of a near-trivial level plus one account with 300 failures, which also plays a second level, converges; and the fit publishes no rating while keeping raw statistics fresh when the pass limit is hit;
-  - `Vⱼ` equals the corresponding entry of a dense inverse of the full joint Hessian on small catalogues; the 90% interval of `θ_ref − βⱼ` covers the true value in 87–93% of 500 simulated catalogues;
-  - fixtures with known answers: (a) twenty reference players clear three levels on attempt 10 while ten other players clear two other levels on attempt 15 — the shared-player uncertainty withholds the label; (b) sixty established players clear three levels at once and the target only on attempt 1,000 — rated Expert, not Hard; (c) the owner's caveat in every variant (see Gates), both alone and inside a catalogue with at least 24 reference players, so the interval rather than the head count is what holds it back — never harder than Normal;
+  - `Vⱼ` equals the corresponding entry of a dense inverse of the full joint Hessian on small catalogues; the 90% interval of `θ_ref − βⱼ` covers the true value in 85–95% of 500 simulated catalogues;
+  - fixtures with known answers: (a) twenty reference players clear levels L1–L3 on attempt 10 while ten other players, who share no level with them, clear L4–L5 on attempt 15 — L1–L3 rate Normal, and L4–L5 stay Estimating because nothing ties their players to the reference; (b) sixty established players clear three levels at once and the target only on attempt 1,000 — rated Expert, not Hard; (c) the owner's caveat in every variant (see Gates), both alone and inside a catalogue with at least 24 reference players, so the interval rather than the head count is what holds it back — never harder than Normal;
   - gates hold back small, single-level and same-level-versions cohorts; a gate failure removes a held label at once; a two-band interval yields a range; the stability rule holds a single label and a range near a band edge.
 - Curve and counts against hand-computed cases, including early quitters and one heavy grinder.
 - Worker: the cron step excludes banned and deleted players; `/levels` filters and sorts; `sort=top` still works; the list and the feedback answer agree; existing fields keep their meaning.
