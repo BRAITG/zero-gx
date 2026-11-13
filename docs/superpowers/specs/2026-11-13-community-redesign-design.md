@@ -62,7 +62,7 @@ The fit leaves out every history of a player with counted attempts on only one l
 
 `Vⱼ = wᵀ D⁻¹ w + (g + eⱼ)ᵀ Σ (g + eⱼ)`, with `g = H_βθ D⁻¹ w`,
 
-where `eⱼ` is the unit vector for version `j`. This accounts for the uncertainty of every skill, of every other version through shared players, and of the reference itself. `sdⱼ = √Vⱼ`. Inverting `S` costs time cubic in the number of versions in the fit; a few hundred versions take well under a second. shortcut: dense inverse of `S`; switch to a sparse solver when the fit holds more than about 1,500 versions.
+where `eⱼ` is the unit vector for version `j`. Each history is a run of logistic trials, so the Hessian entries are exact: player `i`'s history on version `j` adds `aᵢⱼ·pᵢⱼ(1 − pᵢⱼ)` to `Hᵢ` and to `Hⱼ`, and `−aᵢⱼ·pᵢⱼ(1 − pᵢⱼ)` (negative) to the cross entry of `H_βθ`, where `aᵢⱼ` is the capped attempt count. Compute `Σg` once per run; then `Vⱼ = wᵀD⁻¹w + gᵀΣg + 2(Σg)ⱼ + Σⱼⱼ` for every version. This accounts for the uncertainty of every skill, of every other version through shared players, and of the reference itself. `sdⱼ = √Vⱼ`. Inverting `S` costs time cubic in the number of versions in the fit; a few hundred versions take well under a second. shortcut: dense inverse of `S`; switch to a sparse solver when the fit holds more than about 1,500 versions.
 
 `Hᵢ`, an entry of `D`, is the curvature of player `i`'s full posterior: the prior plus every history of theirs in the fit. If `S` is not positive definite or any `Vⱼ` is not positive, the run publishes no rating, as for a failed fit.
 
@@ -186,8 +186,8 @@ Privacy wording adds one sentence: play history is also used to estimate each le
 - `core/rating.ts`, against numeric reference values, not only orderings:
   - recovers known skills and difficulties from synthetic histories within stated tolerances;
   - a level played only by weak players rates easier than its raw clear rate suggests;
-  - converges on the oscillating case (a near-trivial level plus one account with 300 failures), and publishes no rating while keeping raw statistics fresh when the pass limit is hit;
-  - the 90% interval of `θ_ref − βⱼ` covers the true value in 87–93% of 500 simulated catalogues;
+  - one Newton step is clipped to ±1 (a direct unit test); the regression case of a near-trivial level plus one account with 300 failures, which also plays a second level, converges; and the fit publishes no rating while keeping raw statistics fresh when the pass limit is hit;
+  - `Vⱼ` equals the corresponding entry of a dense inverse of the full joint Hessian on small catalogues; the 90% interval of `θ_ref − βⱼ` covers the true value in 87–93% of 500 simulated catalogues;
   - fixtures with known answers: (a) twenty reference players clear three levels on attempt 10 while ten other players clear two other levels on attempt 15 — the shared-player uncertainty withholds the label; (b) sixty established players clear three levels at once and the target only on attempt 1,000 — rated Expert, not Hard; (c) the owner's caveat in every variant (see Gates), both alone and inside a catalogue with at least 24 reference players, so the interval rather than the head count is what holds it back — never harder than Normal;
   - gates hold back small, single-level and same-level-versions cohorts; a gate failure removes a held label at once; a two-band interval yields a range; the stability rule holds a single label and a range near a band edge.
 - Curve and counts against hand-computed cases, including early quitters and one heavy grinder.
