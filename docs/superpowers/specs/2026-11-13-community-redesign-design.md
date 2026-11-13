@@ -63,8 +63,8 @@ The fit leaves out every history of a player with counted attempts on only one l
 `Vⱼ = wᵀ D⁻¹ w + (g + eⱼ)ᵀ Σ (g + eⱼ)`, with `g = H_βθ D⁻¹ w`,
 
 where `eⱼ` is the unit vector for version `j`. This accounts for the uncertainty of every skill, of every other version through shared players, and of the reference itself. `sdⱼ = √Vⱼ`. Inverting `S` costs time cubic in the number of versions in the fit; a few hundred versions take well under a second. shortcut: dense inverse of `S`; switch to a sparse solver when the fit holds more than about 1,500 versions.
-`Hᵢ`, an entry of `D`, is the curvature of player `i`'s full posterior: the prior plus every history of theirs in the fit. If `S` is not positive definite or any `Vⱼ` is not positive, the run publishes no rating, as for a failed fit.
 
+`Hᵢ`, an entry of `D`, is the curvature of player `i`'s full posterior: the prior plus every history of theirs in the fit. If `S` is not positive definite or any `Vⱼ` is not positive, the run publishes no rating, as for a failed fit.
 
 **Reference player:** the typical established player has skill `θ_ref`, the mean fitted skill of players with counted attempts on at least 3 different levels whose latest attempt reached the server within the last 180 days. "Reached the server" uses a new `last_ms` column on `play_summaries`, set to the server's receipt time whenever the summary is recomputed. With fewer than 20 such players, there is no reference and every version is Estimating.
 
