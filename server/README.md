@@ -20,11 +20,11 @@ Auth, in the table below:
 | `GET /boards/:sha256` | session | The top 100 for one level hash plus the caller's own row. |
 | `GET /demos/:sha256/:player/:file` | session | A stored score demo. |
 | `POST /submissions` | session + integrity | Validates a level and its demo, opens or updates the pull request. An optional `suggested_difficulty` (`easy`, `normal`, `hard` or `expert`) appears in the pull request's description only; any other value, even empty, is refused with 400. |
-| `GET /me/submissions` | session | The caller's submissions with status and review comment. |
+| `GET /me/submissions` | session | The caller's submissions with status and review comment; approved rows add the approved `sha256` and the level's latest version's `rated`, `rated_high`, `reviewed_difficulty`, `starters` and `likes`. |
 | `POST /levels/:level/like`, `DELETE /levels/:level/like` | session | Likes or unlikes a level. A like needs a clear on any of its versions, five counted attempts across them, or a verified score. |
 | `POST /levels/:level/report` | session | Files a report as a GitHub issue in the levels repository. |
-| `GET /levels` | session | Visible community levels, `sort=top` or `new`, paged. Each row gives the latest version's reviewed difficulty, its community label with the voter count, its par in points (null when none), and its sketch (the parsed `levels/<id>/v<N>.sketch.json`, or null). |
-| `GET /levels/:level/feedback?sha256=` | session | One version's reviewed and community difficulty, its play statistics (ratios and median from ten starters), and the caller's own state. |
+| `GET /levels` | session | Visible community levels, `sort=popular` (`top` is an alias) or `new`, optional `difficulty=easy|normal|hard|expert` (matches the row's Rated label or range, else Reviewed, else Voted), paged. Each row adds `rated`, `rated_high` and `starters` (from `version_stats`; null and 0 until the cron has a row) and gives the latest version's reviewed difficulty, its community label with the voter count, its par in points (null when none), and its sketch (the parsed `levels/<id>/v<N>.sketch.json`, or null). |
+| `GET /levels/:level/feedback?sha256=` | session | One version's reviewed and community difficulty, its play statistics (ratios and median from ten starters), the model's `rated`, `rated_high`, `p10_low`, `p10_high`, `curve`, `not_cleared_20`, `audience` and `starters` (from `version_stats`), the vote counts per label, and the caller's own state. |
 | `PUT /levels/:level/difficulty` | session | `{sha256, difficulty}`: sets the caller's one vote on that version. Needs a clear or five counted attempts on it. |
 | `DELETE /levels/:level/difficulty?sha256=` | session | Removes the caller's vote. Needs no play. |
 | `GET /players` | session | The player ranking. |

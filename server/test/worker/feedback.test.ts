@@ -51,6 +51,15 @@ interface Feedback {
   sha256: string;
   reviewed_difficulty: string | null;
   community_difficulty: { value: string | null; votes: number };
+  rated: string | null;
+  rated_high: string | null;
+  p10_low: number | null;
+  p10_high: number | null;
+  curve: number[] | null;
+  not_cleared_20: number;
+  audience: number | null;
+  starters: number;
+  votes: Record<string, number>;
   stats: Stats;
   you: { liked: boolean; like_eligible: boolean; difficulty: string | null; difficulty_eligible: boolean; attempts: number; cleared: boolean };
 }
@@ -147,7 +156,35 @@ describe("GET /levels/:level/feedback", () => {
       community_difficulty: { value: null, votes: 0 },
       stats: { players_started: 0, players_cleared: 0, total_attempts: 0, clear_rate: null, attempts_per_first_clear: null, median_tries: null, unbeaten_5: 0, unbeaten_10: 0, unbeaten_20: 0 },
       you: { liked: false, like_eligible: false, difficulty: null, difficulty_eligible: false, attempts: 0, cleared: false },
+      rated: null,
+      rated_high: null,
+      p10_low: null,
+      p10_high: null,
+      curve: null,
+      not_cleared_20: 0,
+      audience: null,
+      starters: 0,
+      votes: { easy: 0, normal: 0, hard: 0, expert: 0 },
     });
+  });
+
+  it("reads the rating fields from version_stats and the votes per label, and agrees with the list", async () => {
+    await seedPlayer("p_you");
+    await seedStage(A, [A1]);
+    const curve = Array.from({ length: 30 }, (_, i) => (i + 1) / 60);
+    await env.DB.prepare(
+      "INSERT INTO version_stats (sha256, starters, clears, not_cleared_20, curve, beta, rating_sd, p10_low, p10_high, rated, rated_high, audience, computed_ms) VALUES (?, 14, 5, 3, ?, 1, 1, 0.2, 0.4, 'normal', 'hard', -0.5, 1)",
+    )
+      .bind(A1, JSON.stringify(curve))
+      .run();
+    for (const [i, difficulty] of ["easy", "hard", "hard"].entries()) {
+      await seedPlayer(`p_v${i}`);
+      await env.DB.prepare("INSERT INTO difficulty_votes (player, sha256, difficulty) VALUES (?, ?, ?)").bind(`p_v${i}`, A1, difficulty).run();
+    }
+    const reply = await feedback("p_you", A, A1);
+    expect(reply).toMatchObject({ rated: "normal", rated_high: "hard", p10_low: 0.2, p10_high: 0.4, curve, not_cleared_20: 3, audience: -0.5, starters: 14, votes: { easy: 1, normal: 0, hard: 2, expert: 0 } });
+    const [item] = (await (await call("p_you", "GET", "/levels")).json()) as { level_id: string; rated: string; rated_high: string; starters: number }[];
+    expect(item).toMatchObject({ level_id: A, rated: reply.rated, rated_high: reply.rated_high, starters: reply.starters });
   });
 
   it("answers 400 without a well-formed sha256", async () => {

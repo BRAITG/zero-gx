@@ -210,14 +210,19 @@ export async function postSubmission(request: Request, env: Env, _params: Record
   return Response.json({ level_id, version, pull_request: result.pullRequest }, { status: open!.pull_request === null ? 201 : 200 });
 }
 
+/** Approved rows also carry the approved hash and the level's latest version's rating, review, starters and likes. */
 export async function getMySubmissions(request: Request, env: Env): Promise<Response> {
   const player = await requirePlayer(request, env);
   const { results } = await env.DB.prepare(
-    "SELECT level AS level_id, version, status, comment, pull_request, title FROM submissions WHERE player = ? ORDER BY id DESC",
+    `SELECT s.level AS level_id, s.version, s.status, s.comment, s.pull_request, s.title, s.sha256,
+       vs.rated, vs.rated_high, v.reviewed_difficulty, COALESCE(vs.starters, 0) AS starters,
+       (SELECT COUNT(*) FROM likes k JOIN players kp ON kp.id = k.player WHERE k.level = s.level AND kp.banned = 0) AS likes
+     FROM submissions s LEFT JOIN levels l ON l.id = s.level LEFT JOIN versions v ON v.level = l.id AND v.version = l.latest LEFT JOIN version_stats vs ON vs.sha256 = v.sha256
+     WHERE s.player = ? ORDER BY s.id DESC`,
   )
     .bind(player.id)
-    .all();
-  return Response.json(results);
+    .all<{ status: string; sha256: string | null; rated: string | null; rated_high: string | null; reviewed_difficulty: string | null; starters: number; likes: number }>();
+  return Response.json(results.map(({ sha256, rated, rated_high, reviewed_difficulty, starters, likes, ...row }) => (row.status === "approved" ? { ...row, sha256, rated, rated_high, reviewed_difficulty, starters, likes } : row)));
 }
 
 /** `index.json` as the bot publishes it: levels that are listed and have an approved version. */

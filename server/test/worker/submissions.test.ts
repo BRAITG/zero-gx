@@ -176,7 +176,7 @@ async function seedOpen(level: string, version: number, player: string, pullRequ
 }
 
 beforeEach(async () => {
-  await env.DB.batch(["play_attempts", "play_summaries", "difficulty_votes", "submissions", "rate", "official_levels", "versions", "levels", "hidden_levels"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(["version_stats", "play_attempts", "play_summaries", "difficulty_votes", "submissions", "rate", "official_levels", "versions", "levels", "hidden_levels"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
 });
 
 describe("installationToken", () => {
@@ -484,6 +484,29 @@ describe("GET /me/submissions", () => {
       { level_id: "lvl_aaaaaaaaaa", version: 1, status: "rejected", comment: "too easy", pull_request: 3, title: "Alpha" },
     ]);
     expect((await call("/me/submissions")).status).toBe(401);
+  });
+
+  it("gives approved submissions the approved sha256 and the latest version's rating, review, starters and likes", async () => {
+    const { token, player } = await signIn("me-3", "Ivy");
+    const fan = await signIn("me-4", "Fay");
+    const banned = await signIn("me-5", "Bob");
+    await env.DB.prepare("UPDATE players SET banned = 1 WHERE id = ?").bind(banned.player.id).run();
+    await seedLevel("lvl_aaaaaaaaaa", player.id, { latest: 2, title: "Alpha" });
+    await seedLevel("lvl_bbbbbbbbbb", player.id);
+    const [v1, v2] = await rows<{ sha256: string }>("SELECT sha256 FROM versions WHERE level = 'lvl_aaaaaaaaaa' ORDER BY version");
+    await env.DB.prepare("UPDATE versions SET reviewed_difficulty = 'hard' WHERE sha256 = ?").bind(v2!.sha256).run();
+    await env.DB.prepare("INSERT INTO version_stats (sha256, starters, clears, not_cleared_20, curve, rated, rated_high, computed_ms) VALUES (?, 9, 1, 0, '[]', 'normal', 'hard', 1)").bind(v2!.sha256).run();
+    await env.DB.prepare("INSERT INTO likes VALUES (?, 'lvl_aaaaaaaaaa'), (?, 'lvl_aaaaaaaaaa')").bind(fan.player.id, banned.player.id).run();
+    await env.DB.prepare("INSERT INTO submissions (level, version, player, pull_request, status, created, title, sha256) VALUES ('lvl_aaaaaaaaaa', 2, ?, 2, 'approved', 1, 'Alpha', ?)").bind(player.id, v2!.sha256).run();
+    await env.DB.prepare("INSERT INTO submissions (level, version, player, pull_request, status, created, title, sha256) VALUES ('lvl_aaaaaaaaaa', 1, ?, 1, 'approved', 1, 'Alpha', ?)").bind(player.id, v1!.sha256).run();
+    await seedOpen("lvl_bbbbbbbbbb", 1, player.id, 3, "Beta");
+    const list = (await (await getMySubmissions(new Request("https://example.com/me/submissions", { headers: { Authorization: `Bearer ${token}` } }), testEnv)).json()) as Record<string, unknown>[];
+    const stats = { rated: "normal", rated_high: "hard", reviewed_difficulty: "hard", starters: 9, likes: 1 };
+    expect(list).toEqual([
+      { level_id: "lvl_bbbbbbbbbb", version: 1, status: "open", comment: null, pull_request: 3, title: "Beta" },
+      { level_id: "lvl_aaaaaaaaaa", version: 1, status: "approved", comment: null, pull_request: 1, title: "Alpha", sha256: v1!.sha256, ...stats },
+      { level_id: "lvl_aaaaaaaaaa", version: 2, status: "approved", comment: null, pull_request: 2, title: "Alpha", sha256: v2!.sha256, ...stats },
+    ]);
   });
 });
 

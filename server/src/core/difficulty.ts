@@ -7,7 +7,7 @@ const LABELS: Record<Difficulty, true> = { easy: true, normal: true, hard: true,
 export const SCALE = Object.keys(LABELS) as Difficulty[];
 
 /** A community label needs at least this many voters. */
-const MIN_VOTERS = 5;
+export const MIN_VOTERS = 5;
 /** A moderator labels a version with exactly one `difficulty:<label>` GitHub label. */
 const LABEL_PREFIX = "difficulty:";
 

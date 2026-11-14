@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { SCALE, type Difficulty, upperMedianDifficulty } from "../../src/core/difficulty";
 import { expireDemos, getIndex, postReport, recomputeRatings, runCron, sweepDemos } from "../../src/community";
 import type { Env } from "../../src/env";
 import { signSession } from "../../src/session";
@@ -135,9 +136,78 @@ describe("GET /levels", () => {
     await env.DB.prepare("INSERT INTO likes VALUES ('p_a', 'lvl_cccccccccc'), ('p_b', 'lvl_cccccccccc'), ('p_a', 'lvl_aaaaaaaaaa'), ('p_a', 'lvl_dddddddddd')").run();
     const items = await list();
     expect(items.map((i) => i.level_id)).toEqual(["lvl_cccccccccc", "lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb"]);
-    expect(items[2]).toEqual({ level_id: "lvl_bbbbbbbbbb", title: "Two versions", author: "Name p_b", latest: 2, sha256: hash("lvl_bbbbbbbbbb-v2"), likes: 0, players: 2, reviewed_difficulty: null, sketch: null, community_difficulty: { value: null, votes: 0 }, par: null });
+    expect(items[2]).toEqual({ level_id: "lvl_bbbbbbbbbb", title: "Two versions", author: "Name p_b", latest: 2, sha256: hash("lvl_bbbbbbbbbb-v2"), likes: 0, players: 2, reviewed_difficulty: null, sketch: null, community_difficulty: { value: null, votes: 0 }, par: null, rated: null, rated_high: null, starters: 0 });
     expect(items[0]).toMatchObject({ likes: 2, players: 1 });
     expect(await list("?sort=top&page=0")).toEqual(items);
+    expect(await list("?sort=popular&page=0")).toEqual(items);
+  });
+
+  /** A starters/rating row as the cron writes it. */
+  const stat = (level: string, starters: number, rated: string | null, ratedHigh: string | null = null, version = 1) =>
+    env.DB.prepare("INSERT INTO version_stats (sha256, starters, clears, not_cleared_20, curve, rated, rated_high, computed_ms) VALUES (?, ?, 0, 0, '[]', ?, ?, 1)").bind(hash(`${level}-v${version}`), starters, rated, ratedHigh).run();
+  const voters = async (level: string, tag: string, labels: Difficulty[], banned = 0) => {
+    for (const [i, difficulty] of labels.entries()) {
+      await seedPlayer(`pv_${tag}_${i}`, `v${tag}${i}`, banned);
+      await env.DB.prepare("INSERT INTO difficulty_votes (player, sha256, difficulty) VALUES (?, ?, ?)").bind(`pv_${tag}_${i}`, hash(`${level}-v1`), difficulty).run();
+    }
+  };
+
+  it("adds rated, rated_high and starters from version_stats, with null and 0 when there is no row", async () => {
+    await stat("lvl_aaaaaaaaaa", 12, "normal", "hard");
+    const items = await list();
+    expect(items.find((i) => i.level_id === "lvl_aaaaaaaaaa")).toMatchObject({ rated: "normal", rated_high: "hard", starters: 12 });
+    expect(items.find((i) => i.level_id === "lvl_cccccccccc")).toMatchObject({ rated: null, rated_high: null, starters: 0 });
+  });
+
+  it("filters by the chip label before paging: Rated or its range, else Reviewed, else Voted with 5 voters", async () => {
+    await stat("lvl_aaaaaaaaaa", 30, "hard"); // Rated Hard
+    await stat("lvl_bbbbbbbbbb", 30, "normal", "hard", 2); // a range matches both bands
+    await env.DB.prepare("UPDATE versions SET reviewed_difficulty = 'hard' WHERE level = 'lvl_cccccccccc'").run(); // Reviewed Hard
+    await seedLevel("lvl_dddddddddd2", "p_a", [600]);
+    await seedLevel("lvl_eeeeeeeeee2", "p_a", [700]);
+    await seedLevel("lvl_ffffffffff2", "p_a", [800]);
+    await voters("lvl_dddddddddd2", "d", ["hard", "hard", "hard", "hard", "hard"]); // Voted Hard
+    await voters("lvl_eeeeeeeeee2", "e", ["hard", "hard", "hard", "hard"]); // 4 voters: no chip
+    await voters("lvl_ffffffffff2", "f", ["hard", "hard", "hard", "hard", "hard"], 1); // banned voters do not count
+    await seedLevel("lvl_gggggggggg2", "p_a", [900]);
+    await stat("lvl_gggggggggg2", 30, "easy"); // Rated wins over a Reviewed Hard
+    await env.DB.prepare("UPDATE versions SET reviewed_difficulty = 'hard' WHERE level = 'lvl_gggggggggg2'").run();
+    for (let i = 0; i < 50; i++) await seedLevel(`lvl_0${String(i).padStart(9, "0")}`, "p_a", [1000 + i]); // sort first, fill page 0
+
+    const ids = async (query: string) => (await list(query)).map((i) => i.level_id).sort();
+    expect(await ids("?difficulty=hard")).toEqual(["lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb", "lvl_cccccccccc", "lvl_dddddddddd2"]);
+    expect(await ids("?difficulty=normal")).toEqual(["lvl_bbbbbbbbbb"]);
+    expect(await ids("?difficulty=easy")).toEqual(["lvl_gggggggggg2"]);
+    expect(await ids("?difficulty=expert")).toEqual([]);
+    expect(await ids("?sort=new&difficulty=hard&page=1")).toEqual([]);
+  });
+
+  it("the SQL voted label agrees with upperMedianDifficulty on every tally", async () => {
+    const tallies: Record<Difficulty, number>[] = [
+      { easy: 5, normal: 0, hard: 0, expert: 0 },
+      { easy: 2, normal: 3, hard: 0, expert: 0 },
+      { easy: 3, normal: 3, hard: 0, expert: 0 }, // even count: the harder middle vote
+      { easy: 1, normal: 1, hard: 1, expert: 1 }, // under 5
+      { easy: 1, normal: 1, hard: 2, expert: 1 },
+      { easy: 0, normal: 2, hard: 0, expert: 4 },
+      { easy: 2, normal: 0, hard: 0, expert: 3 },
+      { easy: 1, normal: 2, hard: 2, expert: 2 },
+    ];
+    const levels: string[] = [];
+    for (const [t, tally] of tallies.entries()) {
+      const level = `lvl_t${String(t).padStart(9, "0")}`;
+      levels.push(level);
+      await seedLevel(level, "p_a", [2000 + t]);
+      await voters(level, `t${t}`, SCALE.flatMap((label) => Array<Difficulty>(tally[label]).fill(label)));
+    }
+    for (const label of SCALE) {
+      const expected = levels.filter((_, t) => upperMedianDifficulty(tallies[t]!) === label).sort();
+      expect((await list(`?difficulty=${label}`)).map((i) => i.level_id).sort()).toEqual(expected);
+    }
+  });
+
+  it("answers 400 for an unknown difficulty", async () => {
+    for (const query of ["?difficulty=legendary", "?difficulty=", "?difficulty=constructor"]) expect((await call("p_a", "GET", `/levels${query}`)).status).toBe(400);
   });
 
   it("gives the latest version's stored sketch parsed, or null when it has none or is malformed", async () => {
