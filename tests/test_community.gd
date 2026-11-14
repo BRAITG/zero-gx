@@ -452,6 +452,19 @@ func test_list_caches_per_filter_and_serves_the_right_cache_offline() -> void:
 	check(hard.rows[0].title == "Hard one" and all.rows[0].title == "All" and easy.rows.is_empty(), "each filter serves its own cache: %s %s %s" % [hard, all, easy])
 
 
+func test_a_first_page_drops_list_caches_older_builds_left() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	DirAccess.make_dir_recursive_absolute(Community.dir)
+	for old in ["list_top_0.json", "list_new_3.json"]:
+		FileAccess.open(Community.dir + old, FileAccess.WRITE).store_string("[]")
+	FileAccess.open(Community.dir + "list_new_hard_1.json", FileAccess.WRITE).store_string("[]")
+	net.answer("GET", "/levels", 200, [{"level_id": LEVEL_ID, "title": "All"}])
+	await Community.list("popular", 0)
+	check(not FileAccess.file_exists(Community.dir + "list_top_0.json") and not FileAccess.file_exists(Community.dir + "list_new_3.json"), "old list caches are gone")
+	check(FileAccess.file_exists(Community.dir + "list_new_hard_1.json") and FileAccess.file_exists(Community.dir + "list_popular_all_0.json"), "current caches stay")
+
+
 func test_statuses_copies_the_new_approved_fields_and_ignores_malformed_ones() -> void:
 	var net := _fake()
 	await _signed_in(net)

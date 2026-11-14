@@ -76,6 +76,7 @@ func _ready() -> void:
 	_note.hide()
 	_show_all = _button(_column, "Show all", func() -> void:
 		_chips[0].button_pressed = true
+		_chips[0].grab_focus()  # Show all hides itself, and the unfiltered list may come back empty too
 		_load(_sort, 0, ""))
 	_show_all.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_show_all.hide()

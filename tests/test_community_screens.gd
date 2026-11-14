@@ -341,6 +341,23 @@ func test_an_empty_filter_says_so_and_show_all_clears_it() -> void:
 	check("No levels yet" in _texts(screen) and _buttons(screen, "Show all").is_empty(), "an empty All says No levels yet: %s" % [_texts(screen)])
 
 
+func test_show_all_keeps_the_focus_when_every_list_is_empty() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	var screen := await _community()
+	net.answer("GET", "/levels", 200, [])
+	_buttons(screen, "Hard")[0].pressed.emit()
+	await frames(2)
+	var show_all: Button = _buttons(screen, "Show all")[0]
+	show_all.grab_focus()
+	net.answer("GET", "/levels", 200, [])
+	show_all.pressed.emit()
+	await frames(2)
+	var focus := screen.get_viewport().gui_get_focus_owner()
+	check(focus == _buttons(screen, "All")[0], "an empty unfiltered list leaves the focus on All, not nowhere: %s" % [focus])
+
+
 func test_a_first_load_shows_placeholders_and_a_refresh_keeps_the_rows_until_the_page_arrives() -> void:
 	var net := _fake()
 	await _signed_in(net)
