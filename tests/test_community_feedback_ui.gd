@@ -13,7 +13,7 @@ extends "res://tests/test_case.gd"
 ## - Pending: a visible Label containing "pending" while a choice is queued. A refusal: its sentence in a visible Label.
 ## - Hud: `signal rate_requested`; a "Rate level" Button on the result card, visible only when result.can_rate.
 ## - Level: result.can_rate = Community.play_progress(sha).can_offer_rating on a community stage; Rate opens the sheet.
-## - CommunityScreen: each row has a "Details" Button. MyLevelsScreen: Submit for review waits for a Suggested difficulty.
+## - CommunityScreen: each row is a button that opens Details. MyLevelsScreen: Submit for review waits for a Suggested difficulty.
 
 const SHEET := "res://scenes/community_level_details.gd"
 const SHIP := "res://scenes/ship.tscn"
@@ -345,17 +345,16 @@ func _tap_action(action: StringName) -> void:
 # --- the catalogue -----------------------------------------------------------------------------------------------------
 
 
-func test_each_row_offers_details_and_both_difficulty_labels_but_no_vote_buttons() -> void:
+func test_each_row_opens_details_and_shows_one_difficulty_label_but_no_vote_buttons_or_counts() -> void:
 	var net := _fake()
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [_row({"reviewed_difficulty": "expert", "community_difficulty": {"value": "hard", "votes": 6}})])
 	var screen: CommunityScreen = await _community()
-	check(_buttons(screen, "Details").size() == 1, "each row offers Details: %s" % [_texts(screen)])
-	var vote_buttons := screen.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text.to_lower() in DIFFICULTIES)
-	check(vote_buttons.is_empty(), "the list must not show a row of difficulty buttons")
+	check(screen.find_children("Row", "Button", true, false).size() == 1, "each row is a button that opens Details: %s" % [_texts(screen)])
+	var vote_buttons := screen._rows.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text.to_lower() in DIFFICULTIES)
+	check(vote_buttons.is_empty(), "the rows must not show a row of difficulty buttons")
 	var texts := _texts(screen)
-	check(_mentions(texts, ["expert"]) and _mentions(texts, ["hard"]), "the list shows the Reviewed and the Community labels: %s" % [texts])
-	check(_lines_with(texts, "6").size() > 0, "the list shows the community voter count: %s" % [texts])
+	check("Reviewed Expert" in texts and not _mentions(texts, ["voted", "votes"]), "the list shows the one chip with its source and no vote count: %s" % [texts])
 
 
 func test_details_opens_one_sheet_and_back_returns_focus_to_its_row() -> void:
@@ -364,8 +363,8 @@ func test_details_opens_one_sheet_and_back_returns_focus_to_its_row() -> void:
 	net.answer("GET", "/levels", 200, [_row()])
 	var screen: CommunityScreen = await _community()
 	_serve(_reply())
-	var details := _buttons(screen, "Details")
-	check(details.size() == 1, "each row offers Details: %s" % [_texts(screen)])
+	var details := screen.find_children("Row", "Button", true, false)
+	check(details.size() == 1, "each row opens Details: %s" % [_texts(screen)])
 	if details.is_empty():
 		return
 	details[0].grab_focus()
@@ -392,7 +391,7 @@ func test_the_sheets_play_plays_the_stage_the_list_plays() -> void:
 	net.answer("GET", "/levels", 200, [_row({"sha256": sha})])
 	var screen: CommunityScreen = await _community()
 	_serve(_reply({}, {}, null, {}, sha))
-	var details := _buttons(screen, "Details")
+	var details := screen.find_children("Row", "Button", true, false)
 	if details.is_empty():
 		check(false, "each row offers Details")
 		return
@@ -852,7 +851,7 @@ func test_keys_and_pad_cannot_move_focus_out_of_the_sheet() -> void:
 	net.answer("GET", "/levels", 200, [_row()])
 	var screen: CommunityScreen = await _community()
 	_serve(_reply({"like_eligible": true, "difficulty_eligible": true, "attempts": 5}))
-	var details := _buttons(screen, "Details")
+	var details := screen.find_children("Row", "Button", true, false)
 	if details.is_empty():
 		check(false, "each row offers Details")
 		return

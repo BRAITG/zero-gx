@@ -31,7 +31,7 @@ func _bytes() -> PackedByteArray:
 
 
 func _row(bytes: PackedByteArray, title := "Loop") -> Dictionary:
-	return {"level_id": LEVEL_ID, "title": title, "author": "Nova", "latest": 2, "sha256": CommunityWire.sha256_hex(bytes), "likes": 7, "players": 3}
+	return {"level_id": LEVEL_ID, "title": title, "author": "Nova", "latest": 2, "sha256": CommunityWire.sha256_hex(bytes), "likes": 7, "players": 3, "starters": 64}
 
 
 func _rows(count: int) -> Array:
@@ -115,13 +115,19 @@ func _community() -> CommunityScreen:
 	return screen
 
 
+## The gear that opens Community settings, pressed as a player does.
+func _gear(screen: CommunityScreen) -> Button:
+	var gears := screen.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.tooltip_text == "Community settings")
+	check(gears.size() == 1, "Community must offer one gear for settings: %d" % gears.size())
+	return gears[0] if gears.size() == 1 else null
+
+
 func _settings(screen: CommunityScreen) -> Overlay:
-	var buttons := _buttons(screen, "Settings")
-	check(buttons.size() == 1, "Community must offer Settings")
-	if buttons.is_empty():
+	var gear := _gear(screen)
+	if gear == null:
 		return null
-	buttons[0].grab_focus()
-	buttons[0].pressed.emit()
+	gear.grab_focus()
+	gear.pressed.emit()
 	await frames(2)
 	return screen.find_children("*", "Overlay", true, false).back()
 
@@ -229,7 +235,7 @@ func test_offline_with_an_expired_session_opens_community_and_plays_from_the_cac
 	check(screen is CommunityScreen, "offline must still open Community: %s" % screen)
 	if not screen is CommunityScreen:
 		return
-	check("You are offline" in _texts(screen) and _buttons(screen, "Play").size() == 1, "the cached page must show with the offline note: %s" % [_texts(screen)])
+	check("Offline: showing saved levels" in _texts(screen) and _buttons(screen, "Play").size() == 1, "the cached page must show with the offline banner: %s" % [_texts(screen)])
 	_buttons(screen, "Play")[0].pressed.emit()
 	await frames(2)
 	var stage := tree.current_scene
@@ -238,16 +244,140 @@ func test_offline_with_an_expired_session_opens_community_and_plays_from_the_cac
 	_leave_scene()
 
 
-func test_community_lists_top_rows_with_title_version_author_and_likes() -> void:
+func test_rows_show_title_author_chip_hearts_and_players() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row := _row(_bytes())
+	row.rated = "hard"
+	net.answer("GET", "/levels", 200, [row])
+	var screen := await _community()
+	check(net.requests.size() == 1 and net.requests[0].url.ends_with("/levels?sort=popular&page=0"), "Popular page 0 must be fetched first: %s" % [net.requests.map(func(r): return r.url)])
+	var texts := _texts(screen)
+	for expected in ["Loop", "by Nova", "Rated Hard", "♥ 7", "64 players"]:
+		check(expected in texts, "the row must show %s: %s" % [expected, texts])
+	check(not texts.any(func(t: String) -> bool: return t.contains("v2")), "versions belong to the details sheet: %s" % [texts])
+	check(_buttons(screen, "Play").size() == 1, "each row has Play")
+	check(_buttons(screen, "More").is_empty(), "a short page has no More")
+
+
+func test_the_row_button_opens_details_and_play_is_its_sibling() -> void:
 	var net := _fake()
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [_row(_bytes())])
 	var screen := await _community()
-	check(net.requests.size() == 1 and net.requests[0].url.ends_with("/levels?sort=popular&page=0"), "Popular page 0 must be fetched first: %s" % [net.requests.map(func(r): return r.url)])
-	var rows := _texts(screen).filter(func(t: String) -> bool: return t.contains("Loop"))
-	check(rows.size() == 1 and rows[0].contains("v2") and rows[0].contains("Nova") and rows[0].contains("7"), "row text: %s" % [rows])
-	check(_buttons(screen, "Play").size() == 1, "each row has Play")
-	check(_buttons(screen, "More").is_empty(), "a short page has no More")
+	var rows := screen.find_children("Row", "Button", true, false)
+	var play: Button = _buttons(screen, "Play")[0]
+	check(rows.size() == 1 and rows[0].get_parent() == play.get_parent() and not rows[0].is_ancestor_of(play), "Play must be a sibling of the row button, not a child")
+	check(rows[0].size.y == 100 and play.focus_mode == Control.FOCUS_ALL, "the row is 100 px high and Play has its own focus stop: %s" % rows[0].size)
+	check(_sheets(screen).is_empty(), "control: no sheet yet")
+	rows[0].pressed.emit()
+	await frames(2)
+	check(_sheets(screen).size() == 1, "the row must open the details sheet")
+
+
+func test_the_sort_and_filter_chips_request_the_right_list() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	var screen := await _community()
+	for step in [["Hard", "sort=popular&page=0&difficulty=hard"], ["New", "sort=new&page=0&difficulty=hard"], ["All", "sort=new&page=0"], ["Expert", "sort=new&page=0&difficulty=expert"], ["Popular", "sort=popular&page=0&difficulty=expert"]]:
+		net.answer("GET", "/levels", 200, [])
+		_buttons(screen, step[0])[0].pressed.emit()
+		await frames(2)
+		check(net.requests[-1].url.ends_with("/levels?" + step[1]), "%s must ask for %s: %s" % [step[0], step[1], net.requests[-1].url])
+
+
+func test_an_empty_filter_says_so_and_show_all_clears_it() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [_row(_bytes())])
+	var screen := await _community()
+	check(_buttons(screen, "Show all").is_empty(), "control: All offers no Show all")
+	net.answer("GET", "/levels", 200, [])
+	_buttons(screen, "Hard")[0].pressed.emit()
+	await frames(2)
+	check("No Hard levels yet" in _texts(screen) and _buttons(screen, "Play").is_empty(), "the empty filter must say so: %s" % [_texts(screen)])
+	check(_buttons(screen, "Show all").size() == 1, "and offer Show all")
+	net.answer("GET", "/levels", 200, [_row(_bytes())])
+	_buttons(screen, "Show all")[0].pressed.emit()
+	await frames(2)
+	check(net.requests[-1].url.ends_with("/levels?sort=popular&page=0"), "Show all must ask for every level: %s" % net.requests[-1].url)
+	check(_buttons(screen, "Play").size() == 1 and _buttons(screen, "Show all").is_empty(), "the rows return and Show all goes")
+	check(_buttons(screen, "All")[0].button_pressed, "All must be the chosen chip again")
+	net.answer("GET", "/levels", 200, [])
+	screen.free()
+	screen = await _community()
+	check("No levels yet" in _texts(screen) and _buttons(screen, "Show all").is_empty(), "an empty All says No levels yet: %s" % [_texts(screen)])
+
+
+func test_a_first_load_shows_placeholders_and_a_refresh_keeps_the_rows_until_the_page_arrives() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [_row(_bytes(), "Old favourite")])
+	net.held = true
+	var screen := await _community()
+	check(screen._rows.get_child_count() == 3 and _buttons(screen, "Play").is_empty(), "a first load shows three placeholder rows")
+	net.release()
+	await frames(2)
+	check(screen._rows.get_child_count() == 1 and _buttons(screen, "Play").size() == 1, "the page replaces the placeholders")
+	net.answer("GET", "/levels", 200, [_row(_bytes(), "Fresh one")])
+	net.held = true
+	_buttons(screen, "New")[0].pressed.emit()
+	await frames(2)
+	var titles := _texts(screen)
+	check("Old favourite" in titles and not "Fresh one" in titles and screen._rows.get_child_count() == 1, "a refresh keeps the rows meanwhile: %s" % [titles])
+	net.release()
+	await frames(2)
+	titles = _texts(screen)
+	check("Fresh one" in titles and not "Old favourite" in titles, "the new page replaces them: %s" % [titles])
+
+
+func test_a_long_title_is_trimmed_and_a_row_without_a_chip_leaves_no_gap() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row := _row(_bytes(), "An exceedingly long level title that keeps going and going well past the end of the row")
+	net.answer("GET", "/levels", 200, [row])
+	var screen := await _community()
+	var title: Label = screen.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text == row.title)[0]
+	var heart: Label = screen.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text == "♥ 7")[0]
+	var font := title.get_theme_font("font")
+	check(title.text_overrun_behavior == TextServer.OVERRUN_TRIM_ELLIPSIS and title.size.x < font.get_string_size(title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x, "the long title must be trimmed, not widen the row: %s" % title.size)
+	check(heart.get_global_rect().position.x == title.get_global_rect().position.x, "without a chip the meta line starts at the text edge: %s vs %s" % [heart.global_position, title.global_position])
+	check(screen.find_children("*", "DifficultyChip", true, false).is_empty(), "no chip for a level without a difficulty")
+	var play: Button = _buttons(screen, "Play")[0]
+	check(play.get_global_rect().end.x <= screen.get_viewport_rect().size.x, "Play must stay on screen: %s" % play.get_global_rect())
+
+
+func test_a_row_shows_the_players_own_tries_and_clear() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var bytes := _bytes()
+	var row := _row(bytes)
+	net.answer("GET", "/levels", 200, [row])
+	net.answer("GET", "/index", 200, {"commit": "abc123"})
+	net.answer("GET", "/gh/", 200, bytes)
+	check(await Community.download(row) == "", "setup: the level is downloaded")
+	Community.record_play_start(row.sha256)
+	Community.record_play_start(row.sha256)
+	net.answer("GET", "/levels", 200, [row])
+	var screen := await _community()
+	check("2 tries" in _texts(screen), "two starts show as tries: %s" % [_texts(screen)])
+	screen.free()
+	Community.record_play_finish(Community.record_play_start(row.sha256), "cleared")
+	net.answer("GET", "/levels", 200, [row])
+	screen = await _community()
+	check("Cleared" in _texts(screen) and not _texts(screen).any(func(t: String) -> bool: return t.ends_with("tries")), "a clear shows Cleared: %s" % [_texts(screen)])
+
+
+func test_the_gear_opens_community_settings_and_replaces_the_settings_button() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	var screen := await _community()
+	var gear := _gear(screen)
+	check(gear != null and gear.text == "⚙" and _buttons(screen, "Settings").is_empty(), "the gear takes the place of the Settings button")
+	var settings := await _settings(screen)
+	check(settings != null and "Community settings" in _texts(settings), "the gear opens Community settings: %s" % [_texts(settings) if settings else null])
 
 
 func test_community_rows_show_a_sketch_thumbnail() -> void:
@@ -334,7 +464,7 @@ func test_offline_shows_the_last_fetched_page_with_a_note() -> void:
 	await Community.list("popular", 0)
 	net.answer("GET", "/levels", 0)
 	var screen := await _community()
-	check("You are offline" in _texts(screen), "the note: %s" % [_texts(screen)])
+	check("Offline: showing saved levels" in _texts(screen), "the banner: %s" % [_texts(screen)])
 	check(_buttons(screen, "Play").size() == 1, "the cached row must show")
 
 
@@ -445,7 +575,7 @@ func test_account_deletion_is_in_settings_not_the_level_list() -> void:
 	await frames(2)
 	check(screen.is_inside_tree() and tree.current_scene == null, "closing settings must keep Community open")
 	check(screen.find_children("*", "Overlay", true, false).is_empty(), "settings must close")
-	check(tree.root.gui_get_focus_owner() == _buttons(screen, "Settings")[0], "focus must return to Settings")
+	check(tree.root.gui_get_focus_owner() == _gear(screen), "focus must return to the gear")
 	check(net.count("DELETE", "/me") == 0, "opening and closing settings must not delete")
 
 
