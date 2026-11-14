@@ -833,6 +833,13 @@ func test_result_posting_is_immediate_and_exact_rank_is_for_remote_stored_best()
 	lvl.finish(true)
 	check(lvl.hud._result.visible and lvl.hud.result_text().contains("Posting"), "result shows without awaiting the held upload")
 	check(net.count("POST", "/scores") == 1, "score sync starts without waiting for the board")
+	var stored := _result_payload()
+	stored.you.rank = 7
+	stored.you.points = 900
+	for i in stored.rows.size():
+		stored.rows[i].points = 1020 - i * 20
+	stored.rows[6] = stored.you.duplicate(true)
+	net.answer("GET", "/boards/", 200, stored)
 	net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": false})
 	net.release_hold("POST", "/scores")
 	var text := lvl.hud.result_text()
@@ -902,6 +909,13 @@ func test_result_matching_posted_score_becomes_exact_and_board_restores_focus() 
 	var lvl := _result_level()
 	lvl.finish(true)
 	var points := Progress.best_points(lvl.level_id)
+	var stored := _result_payload()
+	stored.you.rank = 3
+	stored.you.points = points
+	for i in stored.rows.size():
+		stored.rows[i].points = points + 100 - i * 50
+	stored.rows[2] = stored.you.duplicate(true)
+	net.answer("GET", "/boards/", 200, stored)
 	net.answer("POST", "/scores", 200, {"rank": 3, "points": points, "best": true})
 	net.release_hold("POST", "/scores")
 	check(lvl.hud.result_text().contains("Your ranked best · Rank #3 of 30") and not lvl.hud.result_text().contains("Estimate:"), "matching local and stored best displays exact standing")
@@ -963,11 +977,18 @@ func test_result_post_after_held_board_forces_fresh_preview_without_regressing_s
 	net.hold("GET", "/boards/")
 	net.release_hold("GET", "/boards/")
 	check(net.count("GET", "/boards/") == 2 and lvl.hud.result_text().contains("Rank #3 of 30"), "old board completion schedules a forced post-upload read without regressing exact standing")
-	var fresh := _result_payload()
-	fresh.you.rank = 3
-	fresh.you.points = points
+	# Three higher scores now exist: a competitor arrived after the POST reported rank 3.
+	var fresh := {"level": {"kind": "official", "name": "Launch"}, "rows": [], "you": null, "count": 31, "quantiles": [1180, 1200, 1240, 1260, 1300, 1320, 1360, 1380, 1420, 1440, 1480, 1520, 1540, 1580, 1600, 1640, 1660, 1700, 1800, 2000, 2100]}
+	var scores: Array = [2100, 2000, 1900, 1800] + range(1700, 1160, -20)
+	for i in scores.size():
+		var row := {"rank": i + 1, "player": {"id": "p_me" if i == 3 else "pilot_%d" % i, "name": "My Pilot" if i == 3 else "Pilot %02d" % (i + 1)}, "points": scores[i], "seconds": 30.0 + i}
+		if i < 20:
+			fresh.rows.append(row)
+		if i == 3:
+			fresh.you = row
 	net.answer("GET", "/boards/", 200, fresh)
 	net.release_hold("GET", "/boards/")
 	var preview := lvl.hud.find_child("LeaderboardPreview", true, false)
 	var text := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
-	check(text.contains("Rank #3 of 30") and not text.contains("Rank #25"), "fresh own row replaces the pre-upload preview")
+	check(text.contains("Rank #4 of 31") and not text.contains("Rank #25"), "fresh own row replaces the pre-upload preview")
+	check(lvl.hud.result_text().contains("Rank #4 of 31") and not lvl.hud.result_text().contains("Rank #3"), "fresh post-upload board supersedes the provisional POST rank in the HUD too")

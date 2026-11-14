@@ -282,7 +282,8 @@ func finish(won: bool) -> void:
 			_read_result_board()
 		if _result_revision > 0:
 			Community.sync_scores()
-			_result_score = Community.score_state(_result_sha)
+			if _result_score.get("state") == "queued":
+				_result_score = Community.score_state(_result_sha)
 			_render_standing()
 	finished.emit(won)
 
@@ -345,6 +346,8 @@ func _read_result_board(force := false) -> void:
 			break
 		if not _board_again:
 			_result_board = board
+			if fresh and not board.has("error") and not board.get("cached", true):
+				_result_score = {}  # the post-upload board supersedes the provisional POST rank
 			_render_standing()
 	_board_reading = false
 
@@ -372,8 +375,10 @@ func _render_standing() -> void:
 	elif state == "dropped":
 		lines.append(_result_score.get("error", "Run could not be posted"))
 	lines.append(Leaderboard.standing(board, _result_points))
-	if state == "posted" and int(_result_score.points) != _result_points:
-		lines.append("%s · %d points" % [Leaderboard.standing(board, -1), _result_score.points])
+	var you: Variant = board.get("you")
+	var exact := Leaderboard.standing(board, -1)
+	if you is Dictionary and int(you.points) != _result_points and exact != "Not played yet":
+		lines.append("%s · %d points" % [exact, you.points])
 	hud.set_standing("\n".join(lines))
 	hud.set_board(_result_board, _result_points)
 

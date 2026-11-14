@@ -54,3 +54,11 @@ Real Godot 4.7.2 OpenGL/Metal renderer at **1280×720**, with fake transport/dev
 ## Concerns / intentionally not checked
 
 No full game suite, server suite, APK/build, Android/native banner rendering, live Play Integrity or production endpoint checks were run. Those remain integration/release validation, not simulated proof. The preview has a bounded scroll host for unusually long/error-rich content; the inspected 1280×720 cases display the full top-five and own panel without clipping. No score arithmetic, verification, nonce binding, automatic sign-in policy, queue persistence or retry behavior was changed.
+
+## Fix round 1 — Prefer the completed post-upload board
+
+Confirmed from the implementation that the provisional POST rank continued to override every later board render. Retired that override after the serialized forced post-upload board succeeds (not on a cached answer, failure or older held pre-upload GET). The initial synchronous `finish` sync also no longer reintroduces a POST result already superseded by that fresh board. A differing remote best remains separately labelled using the same board snapshot as the estimate and preview.
+
+Extended the held-read regression with a consistent 31-player board: three scores exceed the 1800-point own best, so a new competitor moves POST rank #3 to fresh board rank #4 of 31. The test asserts the old held GET cannot downgrade the provisional POST rank, then both HUD and preview adopt #4 of 31 after the forced answer. Updated the two other success fixtures to return the newly stored score during their post-upload refresh.
+
+Covering checks run once after this fix: `TEST_FILTER=test_flow GODOT=godot tests/run.sh` **54 passed, 0 failed**; `TEST_FILTER=test_leaderboard GODOT=godot tests/run.sh` **13 passed, 0 failed**. Logs: `task-5-fixround1-test_flow-check.log`, `task-5-fixround1-test_leaderboard-check.log`. No script errors; the previously recorded shutdown warnings remain. No full suite, screenshot recapture, server, APK or live Play checks in this narrow fix round. Public APIs unchanged.
