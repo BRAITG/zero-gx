@@ -1,3 +1,4 @@
+import { type History, type Label, rate } from "./core/rating";
 import type { Env } from "./env";
 import { communityLabels } from "./feedback";
 import { getHeadCommit, openIssue } from "./github";
@@ -165,6 +166,29 @@ async function recomputeRanking(env: Env): Promise<void> {
   ]);
 }
 
+/** Replaces `version_stats` from the summaries of non-banned players on the approved versions of visible levels, keeping each label the stability rule holds. */
+export async function recomputeRatings(env: Env): Promise<void> {
+  const { results } = await env.DB.prepare(
+    `SELECT s.player, v.level, s.sha256, s.attempts, s.first_clear_ms IS NOT NULL AS cleared, COALESCE(s.last_ms, 0) AS lastMs
+     FROM play_summaries s JOIN players p ON p.id = s.player JOIN versions v ON v.sha256 = s.sha256 JOIN levels l ON l.id = v.level
+     WHERE p.banned = 0 AND ${VISIBLE}`,
+  ).all<Omit<History, "cleared"> & { cleared: number }>();
+  const histories = results.map((row): History => ({ ...row, cleared: row.cleared === 1 }));
+  const old = await env.DB.prepare("SELECT sha256, rated, rated_high FROM version_stats").all<{ sha256: string; rated: Label | null; rated_high: Label | null }>();
+  const previous = new Map(old.results.map((row) => [row.sha256, { rated: row.rated, ratedHigh: row.rated_high }]));
+  const time = Date.now();
+  const { versions, fitted } = rate(histories, previous, time);
+  if (!fitted) console.error("cron: the rating fit did not converge or its uncertainty is unusable; counts and curves are still written");
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM version_stats"),
+    ...versions.map((v) =>
+      env.DB.prepare("INSERT INTO version_stats (sha256, starters, clears, not_cleared_20, curve, beta, rating_sd, p10_low, p10_high, rated, rated_high, audience, computed_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(
+        v.sha256, v.starters, v.clears, v.notCleared20, JSON.stringify(v.curve), v.beta, v.ratingSd, v.p10Low, v.p10High, v.rated, v.ratedHigh, v.audience, time,
+      ),
+    ),
+  ]);
+}
+
 /** Deletes R2 demos that no score row points to, skipping recent ones. Resumes after the key the previous run stopped at and wraps to the start once the listing ends. */
 export async function sweepDemos(env: Env, pageSize = SWEEP_PAGE): Promise<void> {
   const saved = await env.DB.prepare("SELECT last_key FROM sweep WHERE id = 1").first<{ last_key: string }>();
@@ -222,6 +246,7 @@ async function step(name: string, run: () => Promise<unknown>): Promise<void> {
 export async function runCron(env: Env, fetchFn: typeof fetch = fetch): Promise<void> {
   const time = now();
   await step("ranking", () => recomputeRanking(env));
+  await step("ratings", () => recomputeRatings(env));
   await step("cleanup", () =>
     env.DB.batch([
       // Per-minute counters ('score', 'plays') and per-day ones ('submit', 'report'); the action name says which unit the window is in.

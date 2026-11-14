@@ -130,7 +130,7 @@ const like = (player: string, level: string) => call(player, "POST", `/levels/${
 
 beforeEach(async () => {
   await env.DB.batch(
-    ["play_attempts", "play_summaries", "difficulty_votes", "players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) =>
+    ["version_stats", "play_attempts", "play_summaries", "difficulty_votes", "players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) =>
       env.DB.prepare(`DELETE FROM ${table}`),
     ),
   );

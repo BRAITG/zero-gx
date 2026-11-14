@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { expireDemos, getIndex, postReport, runCron, sweepDemos } from "../../src/community";
+import { expireDemos, getIndex, postReport, recomputeRatings, runCron, sweepDemos } from "../../src/community";
 import type { Env } from "../../src/env";
 import { signSession } from "../../src/session";
 import worker from "../../src/worker";
@@ -73,7 +73,7 @@ class Github {
 }
 
 beforeEach(async () => {
-  await env.DB.batch(["play_attempts", "play_summaries", "difficulty_votes", "players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(["version_stats", "play_attempts", "play_summaries", "difficulty_votes", "players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
   const { objects } = await env.DEMOS.list();
   if (objects.length) await env.DEMOS.delete(objects.map((o) => o.key));
 });
@@ -214,6 +214,113 @@ describe("player ranking", () => {
     await env.DB.prepare("UPDATE players SET banned = 1").run();
     await seedPlayer("p_b");
     expect((await get("p_b")).rows).toEqual([]);
+  });
+});
+
+describe("version stats", () => {
+  type Stats = { sha256: string; starters: number; clears: number; not_cleared_20: number; curve: string; beta: number | null; rating_sd: number | null; p10_low: number | null; p10_high: number | null; rated: string | null; rated_high: string | null; audience: number | null; computed_ms: number };
+  const stats = () => rows<Stats>("SELECT * FROM version_stats ORDER BY sha256");
+  const A = hash("lvl_aaaaaaaaaa-v1");
+
+  async function summary(player: string, sha256: string, attempts: number, cleared: boolean, lastMs = Date.now()) {
+    await env.DB.prepare("INSERT INTO play_summaries (player, sha256, attempts, first_clear_ms, last_ms) VALUES (?, ?, ?, ?, ?)").bind(player, sha256, attempts, cleared ? 1000 : null, lastMs).run();
+  }
+
+  /** p_1 clears on attempt 1, p_2 on attempt 2, p_3 gives up after 25. */
+  async function threeStarters() {
+    await seedLevel("lvl_aaaaaaaaaa", "p_1", [10]);
+    for (const [player, attempts, cleared] of [["p_1", 1, true], ["p_2", 2, true], ["p_3", 25, false]] as const) {
+      await seedPlayer(player);
+      await summary(player, A, attempts, cleared);
+    }
+  }
+
+  it("recomputeRatings fills version_stats for visible versions", async () => {
+    await seedLevel("lvl_aaaaaaaaaa", "p_1", [10, 20]);
+    await seedLevel("lvl_bbbbbbbbbb", "p_1", [10], { hidden: 1 });
+    for (const [player, attempts, cleared] of [["p_1", 1, true], ["p_2", 2, true], ["p_3", 25, false]] as const) {
+      await seedPlayer(player);
+      await summary(player, A, attempts, cleared);
+      await summary(player, hash("lvl_bbbbbbbbbb-v1"), 1, true);
+    }
+    await summary("p_1", hash("lvl_aaaaaaaaaa-v2"), 1, true);
+
+    const before = Date.now();
+    await recomputeRatings(testEnv);
+
+    const result = await stats();
+    expect(result.map((row) => row.sha256)).toEqual([A, hash("lvl_aaaaaaaaaa-v2")]);
+    const [first, second] = result as [Stats, Stats];
+    expect(first).toMatchObject({ starters: 3, clears: 2, not_cleared_20: 1 });
+    expect(first.computed_ms).toBeGreaterThanOrEqual(before);
+    const curve: number[] = JSON.parse(first.curve);
+    expect(curve).toHaveLength(30);
+    expect(curve[0]).toBeCloseTo(1 / 3);
+    expect(curve[1]).toBeCloseTo(2 / 3);
+    expect(curve[29]).toBeCloseTo(2 / 3);
+    expect(second).toMatchObject({ starters: 1, clears: 1, not_cleared_20: 0 });
+  });
+
+  it("fills the model fields once a reference exists", async () => {
+    const levels = ["lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb", "lvl_cccccccccc"];
+    for (const level of levels) await seedLevel(level, "p_0", [10]);
+    for (let i = 1; i <= 24; i++) {
+      await seedPlayer(`p_${i}`);
+      for (const [j, level] of levels.entries()) await summary(`p_${i}`, hash(`${level}-v1`), 1 + ((i + j) % 4), true);
+    }
+
+    await recomputeRatings(testEnv);
+
+    const result = await stats();
+    expect(result).toHaveLength(3);
+    for (const row of result) {
+      expect(row).toMatchObject({ starters: 24, clears: 24 });
+      for (const field of [row.beta, row.rating_sd, row.p10_low, row.p10_high, row.audience]) expect(field).toEqual(expect.any(Number));
+    }
+  });
+
+  it("a banned player disappears from counts and curve at the next run", async () => {
+    await threeStarters();
+    await recomputeRatings(testEnv);
+    expect(await stats()).toMatchObject([{ starters: 3, clears: 2, not_cleared_20: 1 }]);
+
+    await env.DB.prepare("UPDATE players SET banned = 1 WHERE id = 'p_1'").run();
+    await recomputeRatings(testEnv);
+
+    const [row] = await stats();
+    expect(row).toMatchObject({ starters: 2, clears: 1, not_cleared_20: 1 });
+    const curve: number[] = JSON.parse(row!.curve);
+    expect(curve[0]).toBe(0);
+    expect(curve[1]).toBeCloseTo(1 / 2);
+  });
+
+  it("a deleted player disappears at the next run", async () => {
+    await threeStarters();
+    await recomputeRatings(testEnv);
+
+    expect((await call("p_2", "DELETE", "/me")).status).toBe(204);
+    await runCron(testEnv, new Github().fetchFn);
+
+    const [row] = await stats();
+    expect(row).toMatchObject({ starters: 2, clears: 1, not_cleared_20: 1 });
+    expect(JSON.parse(row!.curve)[1]).toBeCloseTo(1 / 2);
+  });
+
+  it("no reference players → every rated null, counts still fresh", async () => {
+    await threeStarters();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    await recomputeRatings(testEnv);
+    error.mockRestore();
+
+    const [row] = await stats();
+    expect(row).toMatchObject({ starters: 3, clears: 2, rated: null, rated_high: null, p10_low: null, p10_high: null, rating_sd: null, audience: null });
+    expect(JSON.parse(row!.curve)[0]).toBeCloseTo(1 / 3);
+  });
+
+  it("is rebuilt by the cron", async () => {
+    await threeStarters();
+    await runCron(testEnv, new Github().fetchFn);
+    expect(await stats()).toMatchObject([{ starters: 3 }]);
   });
 });
 

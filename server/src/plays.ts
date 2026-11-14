@@ -92,14 +92,15 @@ const UPSERT = `INSERT INTO play_attempts (player, id, sha256, started_ms, revis
 // Recomputed from the raw attempts, never incremented: counting starts at the earliest clear's end (ties by id), and
 // without a clear every attempt counts.
 const SUMMARY = `WITH earliest AS (SELECT ended_ms FROM play_attempts WHERE player = ?1 AND sha256 = ?2 AND outcome = 'cleared' ORDER BY ended_ms, id LIMIT 1)
-  INSERT INTO play_summaries (player, sha256, attempts, first_clear_ms)
+  INSERT INTO play_summaries (player, sha256, attempts, first_clear_ms, last_ms)
   SELECT ?1, ?2,
     (SELECT COUNT(*) FROM play_attempts WHERE player = ?1 AND sha256 = ?2
       AND ((SELECT ended_ms FROM earliest) IS NULL OR started_ms <= (SELECT ended_ms FROM earliest))),
-    (SELECT ended_ms FROM earliest)
+    (SELECT ended_ms FROM earliest),
+    ?3
   WHERE EXISTS (SELECT 1 FROM players WHERE id = ?1 AND banned = 0)
     AND EXISTS (SELECT 1 FROM play_attempts WHERE player = ?1 AND sha256 = ?2)
-  ON CONFLICT (player, sha256) DO UPDATE SET attempts = excluded.attempts, first_clear_ms = excluded.first_clear_ms`;
+  ON CONFLICT (player, sha256) DO UPDATE SET attempts = excluded.attempts, first_clear_ms = excluded.first_clear_ms, last_ms = excluded.last_ms`;
 
 /** Visibility of the published versions among `sha256s`: true when visible, false when hidden; unknown hashes are absent. */
 async function visibilityOf(env: Env, sha256s: string[]): Promise<Map<string, boolean>> {
@@ -142,7 +143,7 @@ export async function postPlays(request: Request, env: Env, _params: Record<stri
       ...writable.map((record) =>
         env.DB.prepare(UPSERT).bind(player.id, record.id, record.sha256, record.started_ms, record.revision, record.outcome, record.ended_ms, received),
       ),
-      ...touched.map((sha256) => env.DB.prepare(SUMMARY).bind(player.id, sha256)),
+      ...touched.map((sha256) => env.DB.prepare(SUMMARY).bind(player.id, sha256, received)),
     ]);
     // Every write is refused once the account is gone; answer as a signed-out request would.
     await requirePlayer(request, env);

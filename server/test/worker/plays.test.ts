@@ -141,7 +141,7 @@ async function seedVersion(level: string, version: number, sha256: string, hidde
 
 beforeEach(async () => {
   await env.DB.batch(
-    ["play_attempts", "play_summaries", "difficulty_votes", "players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) =>
+    ["version_stats", "play_attempts", "play_summaries", "difficulty_votes", "players", "levels", "versions", "scores", "likes", "reports", "rate", "nonces", "hidden_levels", "player_ranking", "sweep"].map((table) =>
       env.DB.prepare(`DELETE FROM ${table}`),
     ),
   );
@@ -175,6 +175,16 @@ describe("POST /plays", () => {
       expect(stored).toMatchObject({ started_ms: 1000 });
       expect(stored.received_ms).toBeGreaterThanOrEqual(before);
       expect(stored.received_ms).toBeLessThanOrEqual(after);
+    });
+
+    it("stamps the summary's last_ms with the server's receipt time", async () => {
+      const before = Date.now();
+      await begin(ALICE, A, V1, 1000);
+      const after = Date.now();
+
+      const { last_ms } = (await rows<{ last_ms: number }>("SELECT last_ms FROM play_summaries WHERE player = ? AND sha256 = ?", ALICE, V1))[0]!;
+      expect(last_ms).toBeGreaterThanOrEqual(before);
+      expect(last_ms).toBeLessThanOrEqual(after);
     });
 
     it("gives the same summary whether the finish or the start reaches the server first", async () => {
