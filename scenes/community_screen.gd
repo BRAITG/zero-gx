@@ -6,7 +6,6 @@ const MENU := "res://scenes/main.tscn"
 const PAGE_SIZE := 50  # the server's page size: a shorter page is the last one
 const ROW_HEIGHT := 100
 const ROW_GAP := 8
-const PLACEHOLDERS := 3
 
 var _column: VBoxContainer
 var _note: Label
@@ -41,7 +40,7 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 36)
 	top.add_child(title)
 	var segments := HBoxContainer.new()  # Popular | New
-	segments.add_theme_constant_override("separation", 0)
+	segments.add_theme_constant_override("separation", 8)
 	top.add_child(segments)
 	var tabs := ButtonGroup.new()
 	for sort: String in ["popular", "new"]:
@@ -57,7 +56,7 @@ func _ready() -> void:
 	var gear := _button(top, "⚙", _open_settings)
 	gear.tooltip_text = "Community settings"
 	gear.custom_minimum_size.x = 56
-	gear.add_theme_font_size_override("font_size", 32)  # the glyph reads small at the label size
+	gear.add_theme_font_size_override("font_size", 26)  # 26 makes the 56-px button, like Back; 28 would make it 58
 	var filters := HBoxContainer.new()
 	filters.add_theme_constant_override("separation", 8)
 	_column.add_child(filters)
@@ -76,6 +75,7 @@ func _ready() -> void:
 	_note.hide()
 	_show_all = _button(_column, "Show all", func() -> void:
 		_chips[0].button_pressed = true
+		_chips[0].grab_focus()  # Show all hides itself, and the unfiltered list may come back empty too
 		_load(_sort, 0, ""))
 	_show_all.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_show_all.hide()
@@ -102,7 +102,7 @@ func _exit_tree() -> void:
 	Monetization.clear_surface(self)
 
 
-## Shows page `page` of `sort`, only of `difficulty` ("" for all): page 0 replaces the rows once it arrives (placeholders stand in on a first load), a later page adds to them.
+## Shows page `page` of `sort`, only of `difficulty` ("" for all): page 0 clears the list at once and shows a spinner until its answer arrives, so no row seems to belong to the newly chosen filter; a later page adds to the rows.
 func _load(sort: String, page: int, difficulty: String) -> void:
 	_request += 1
 	var mine := _request
@@ -112,20 +112,23 @@ func _load(sort: String, page: int, difficulty: String) -> void:
 		_more.hide()
 		_show_all.hide()
 		_note.hide()
-		if _rows.get_child_count() == 0:
-			for i in PLACEHOLDERS:
-				var placeholder := HBoxContainer.new()  # as wide as a row, with room where Play goes
-				placeholder.add_theme_constant_override("separation", 12)
-				placeholder.custom_minimum_size.y = ROW_HEIGHT
-				var panel := PanelContainer.new()
-				panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				placeholder.add_child(panel)
-				var gap := Control.new()
-				gap.custom_minimum_size.x = 160
-				gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				placeholder.add_child(gap)
-				_rows.add_child(placeholder)
+		for old in _rows.get_children():
+			old.free()
+		var waiting := CenterContainer.new()  # freed with the rows when the answer arrives
+		waiting.name = "Loading"
+		waiting.custom_minimum_size.y = ROW_HEIGHT
+		var spinner := CommunityLevelDetails.SyncIndicator.new()
+		spinner.set_pending(true, false)
+		var slot := HBoxContainer.new()
+		slot.add_theme_constant_override("separation", 12)
+		slot.add_child(spinner)
+		var caption := Label.new()
+		caption.text = "Loading levels…"
+		caption.add_theme_font_size_override("font_size", 22)
+		caption.add_theme_color_override("font_color", Style.INK_DIM)
+		slot.add_child(caption)
+		waiting.add_child(slot)
+		_rows.add_child(waiting)
 	var reply: Dictionary = await Community.list(sort, page, difficulty)
 	if mine != _request or not is_inside_tree():
 		return
@@ -250,25 +253,28 @@ func _play(row: Dictionary) -> void:
 	if error == "" and not LevelFormat.validate(LevelFormat.read(Community.level_path(row.sha256))).is_empty():
 		error = "This level cannot be played."
 	if error != "":
-		Overlay.open(self, "Cannot play").paragraph(error)
+		Overlay.open(self, "Cannot play", false, true).paragraph(error)
 		return
 	Progress.open(Community.STAGE_PREFIX + row.sha256)
 
 
 func _open_settings() -> void:
-	var o := Overlay.open(self, "Community settings")
+	var o := Overlay.open(self, "Community settings", false, true)
 	o.heading("Account")
+	var card := o.card()
 	if Community.signed_in():
-		var deletion := _button(o.body, "Delete my community account", _confirm_delete)
-		deletion.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		o.paragraph("Removes your scores, likes, play history, difficulty ratings and name from Zero-GX's servers.", 22, Style.INK_DIM, card)
+		Style.danger(_button(card, "Delete my community account", _confirm_delete))
 	else:
-		o.paragraph("Sign in to manage your community account.")
+		o.paragraph("Sign in to manage your community account.", 22, Style.INK_DIM, card)
 
 
 func _confirm_delete() -> void:
-	var o := Overlay.open(self, "Delete community account?")
+	var o := Overlay.open(self, "Delete community account?", false, true)
 	o.paragraph("This removes your scores, likes, reports, play history, difficulty ratings and your name from Zero-GX's servers. Levels you shared stay, shown as by Deleted player.")
-	_button(o.body, "Delete account", _delete_account.bind(o), "Deleting…")
+	var delete := _button(o.body, "Delete account", _delete_account.bind(o), "Deleting…")
+	delete.custom_minimum_size.x = Overlay.WIDTH
+	Style.danger(delete)
 
 
 func _delete_account(o: Overlay) -> void:
@@ -282,7 +288,7 @@ func _delete_account(o: Overlay) -> void:
 	if is_instance_valid(o):
 		o.close()
 	if error != "":
-		Overlay.open(self, "Cannot delete account").paragraph(error)
+		Overlay.open(self, "Cannot delete account", false, true).paragraph(error)
 		return
 	_to_menu()
 

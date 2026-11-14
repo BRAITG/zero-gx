@@ -4,6 +4,10 @@ compatibility_date = "2026-10-18"
 # Served only at the custom domain (Cloudflare creates its DNS record and certificate); no workers.dev URL.
 routes = [{ pattern = "zerogx.braitg.dev", custom_domain = true }]
 workers_dev = false
+# The D1 database lives in one region (eastern North America); each request makes several sequential queries, so the
+# Worker runs next to it instead of at the player's edge: one long hop per request instead of one per query.
+[placement]
+mode = "smart"
 
 [[d1_databases]]
 binding = "DB"

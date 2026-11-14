@@ -97,6 +97,7 @@ func _run() -> void:
 	_add_level("invalid.wall_kind.json", _variant(data, func(d): d.walls[0].kind = "green"), ["unknown kind"])
 	_add_level("invalid.planet_radius.json", _variant(data, func(d): d.bodies = [{"kind": "planet", "position": [1000, 500], "radius": 400, "strength": 300}]), ["radius must be"])
 	_add_level("invalid.black_hole_light.json", _variant(data, func(d): d.bodies = [{"kind": "black_hole", "position": [-1500, 1500], "radius": 64, "strength": 4000}]), ["total pull must be"])
+	_add_level("invalid.ship_in_planet.json", _variant(data, func(d): d.bodies = [{"kind": "planet", "position": [2000, 600]}, {"kind": "planet", "position": d.ship.position}]), ["the ship starts inside planet 2"])
 	_add_level("invalid.oversized.json", _oversized(data), ["larger than"], true)
 
 	_expected.official_hashes = {}

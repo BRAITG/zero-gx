@@ -135,7 +135,17 @@ func list(sort: String, page: int, difficulty := "") -> Dictionary:
 		var cached: Variant = _parse(FileAccess.get_file_as_bytes(cache))
 		return {"error": reply.error, "rows": cached if cached is Array else [], "offline": reply.error == NO_CONNECTION}
 	_store(cache, JSON.stringify(reply.data).to_utf8_buffer())
+	if page == 0:
+		_drop_old_lists()
 	return {"rows": reply.data}
+
+
+## Deletes list caches named as older builds named them (`list_top_0.json`, `list_new_0.json`); nothing reads them any more.
+func _drop_old_lists() -> void:
+	var current := RegEx.create_from_string("^list_(popular|new)_(all|easy|normal|hard|expert)_\\d+\\.json$")
+	for file in DirAccess.get_files_at(dir):
+		if file.begins_with("list_") and current.search(file) == null:
+			DirAccess.remove_absolute(dir + file)
 
 
 ## Where the level with this hash is (or will be) cached.

@@ -139,6 +139,9 @@
     "invalid.planet_radius.json": [
       "radius must be"
     ],
+    "invalid.ship_in_planet.json": [
+      "the ship starts inside planet 2"
+    ],
     "invalid.wall_kind.json": [
       "unknown kind"
     ],

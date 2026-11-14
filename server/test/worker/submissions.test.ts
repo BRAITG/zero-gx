@@ -176,7 +176,7 @@ async function seedOpen(level: string, version: number, player: string, pullRequ
 }
 
 beforeEach(async () => {
-  await env.DB.batch(["version_stats", "play_attempts", "play_summaries", "difficulty_votes", "submissions", "rate", "official_levels", "versions", "levels", "hidden_levels"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
+  await env.DB.batch(["version_stats", "likes", "play_attempts", "play_summaries", "difficulty_votes", "submissions", "rate", "official_levels", "versions", "levels", "hidden_levels"].map((table) => env.DB.prepare(`DELETE FROM ${table}`)));
 });
 
 describe("installationToken", () => {
@@ -507,6 +507,30 @@ describe("GET /me/submissions", () => {
       { level_id: "lvl_aaaaaaaaaa", version: 1, status: "approved", comment: null, pull_request: 1, title: "Alpha", sha256: v1!.sha256, ...stats },
       { level_id: "lvl_aaaaaaaaaa", version: 2, status: "approved", comment: null, pull_request: 2, title: "Alpha", sha256: v2!.sha256, ...stats },
     ]);
+  });
+  it("gives an approved version without version_stats zero starters and null ratings", async () => {
+    const { token, player } = await signIn("me-6", "Una");
+    await seedLevel("lvl_aaaaaaaaaa", player.id, { latest: 1, title: "Alpha" });
+    const [v1] = await rows<{ sha256: string }>("SELECT sha256 FROM versions WHERE level = 'lvl_aaaaaaaaaa'");
+    await env.DB.prepare("INSERT INTO submissions (level, version, player, pull_request, status, created, title, sha256) VALUES ('lvl_aaaaaaaaaa', 1, ?, 1, 'approved', 1, 'Alpha', ?)").bind(player.id, v1!.sha256).run();
+    const response = await getMySubmissions(new Request("https://example.com/me/submissions", { headers: { Authorization: `Bearer ${token}` } }), testEnv);
+    expect(await response.json()).toEqual([{ level_id: "lvl_aaaaaaaaaa", version: 1, status: "approved", comment: null, pull_request: 1, title: "Alpha", sha256: v1!.sha256, rated: null, rated_high: null, reviewed_difficulty: null, starters: 0, likes: 0 }]);
+  });
+
+  // Today the list does not filter on visibility: the owner still sees the stats of their hidden level.
+  it("does not throw for a hidden level, and still shows its stats", async () => {
+    const { token, player } = await signIn("me-7", "Vik");
+    await seedLevel("lvl_aaaaaaaaaa", player.id, { latest: 1, hidden: 1 });
+    await seedLevel("lvl_bbbbbbbbbb", player.id, { latest: 1 });
+    await env.DB.prepare("INSERT INTO hidden_levels VALUES ('lvl_bbbbbbbbbb')").run();
+    for (const level of ["lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb"]) {
+      const [v] = await rows<{ sha256: string }>("SELECT sha256 FROM versions WHERE level = ?", level);
+      await env.DB.prepare("INSERT INTO version_stats (sha256, starters, clears, not_cleared_20, curve, rated, computed_ms) VALUES (?, 4, 1, 0, '[]', 'easy', 1)").bind(v!.sha256).run();
+      await env.DB.prepare("INSERT INTO submissions (level, version, player, pull_request, status, created, title, sha256) VALUES (?, 1, ?, 1, 'approved', 1, 'T', ?)").bind(level, player.id, v!.sha256).run();
+    }
+    const response = await getMySubmissions(new Request("https://example.com/me/submissions", { headers: { Authorization: `Bearer ${token}` } }), testEnv);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject([{ level_id: "lvl_bbbbbbbbbb", rated: "easy", starters: 4 }, { level_id: "lvl_aaaaaaaaaa", rated: "easy", starters: 4 }]);
   });
 });
 

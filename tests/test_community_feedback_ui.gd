@@ -1637,3 +1637,16 @@ func test_a_vote_error_stops_motion_without_claiming_success_and_retry_confirms(
 	Community.identity_changed.emit("")
 	await frames(1)
 	check(not icon.visible, "account erasure clears the prior account's confirmation")
+
+
+func test_every_card_of_the_details_sheet_is_one_column_wide_with_a_pending_row() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var row: Dictionary = await _download(net, _level())
+	_serve(_reply({"cleared": true}, {}, null, {}, row.sha256))
+	Community.record_play_finish(Community.record_play_start(row.sha256), "cleared")  # a queued clear: the sync row shows
+	var sheet: Overlay = await _sheet(row)
+	var cards := sheet.body.find_children("*", "PanelContainer", false, false)
+	check(cards.size() == 3, "setup: three cards: %d" % cards.size())
+	check(cards.all(func(c: PanelContainer) -> bool: return c.size.x == Overlay.WIDTH), "each card is exactly the column wide: %s" % [cards.map(func(c: PanelContainer) -> float: return c.size.x)])
+	check(sheet.find_child("SyncIndicator", true, false).is_visible_in_tree(), "control: the pending row is showing")

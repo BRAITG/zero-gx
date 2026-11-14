@@ -67,10 +67,14 @@ func paragraph(text: String, size := 22, color := Style.INK, parent: Node = null
 	var label := Label.new()
 	label.text = text
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.custom_minimum_size.x = WIDTH
+	var host := parent if parent != null else body
+	if host == body:
+		label.custom_minimum_size.x = WIDTH
+	else:
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL  # a card's own minimum sizes it, so the card stays WIDTH wide
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", color)
-	(parent if parent != null else body).add_child(label)
+	host.add_child(label)
 	return label
 
 

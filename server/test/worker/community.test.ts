@@ -1,6 +1,7 @@
 import { env } from "cloudflare:workers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SCALE, type Difficulty, upperMedianDifficulty } from "../../src/core/difficulty";
+import * as rating from "../../src/core/rating";
 import { expireDemos, getIndex, postReport, recomputeRatings, runCron, sweepDemos } from "../../src/community";
 import type { Env } from "../../src/env";
 import { signSession } from "../../src/session";
@@ -179,7 +180,27 @@ describe("GET /levels", () => {
     expect(await ids("?difficulty=normal")).toEqual(["lvl_bbbbbbbbbb"]);
     expect(await ids("?difficulty=easy")).toEqual(["lvl_gggggggggg2"]);
     expect(await ids("?difficulty=expert")).toEqual([]);
-    expect(await ids("?sort=new&difficulty=hard&page=1")).toEqual([]);
+  });
+
+  it("filters on Reviewed, then Voted, when the version_stats row exists but has no rating", async () => {
+    await stat("lvl_aaaaaaaaaa", 30, null); // counts only: falls through to Reviewed Hard
+    await env.DB.prepare("UPDATE versions SET reviewed_difficulty = 'hard' WHERE level = 'lvl_aaaaaaaaaa'").run();
+    await stat("lvl_cccccccccc", 30, null); // falls through to Voted Hard
+    await voters("lvl_cccccccccc", "c", ["hard", "hard", "hard", "hard", "hard"]);
+    const ids = async (query: string) => (await list(query)).map((i) => i.level_id).sort();
+    expect(await ids("?difficulty=hard")).toEqual(["lvl_aaaaaaaaaa", "lvl_cccccccccc"]);
+    expect(await ids("?difficulty=easy")).toEqual([]);
+  });
+
+  it("pages the filtered list: the 51st match is alone on page 1", async () => {
+    for (let i = 0; i < 51; i++) {
+      await seedLevel(`lvl_h${String(i).padStart(9, "0")}`, "p_a", [5000 + i]);
+      await env.DB.prepare("UPDATE versions SET reviewed_difficulty = 'hard' WHERE level = ?").bind(`lvl_h${String(i).padStart(9, "0")}`).run();
+    }
+    const ids = async (query: string) => (await list(query)).map((i) => i.level_id);
+    expect(await ids("?sort=new&difficulty=hard&page=0")).toHaveLength(50);
+    expect(await ids("?sort=new&difficulty=hard&page=1")).toEqual(["lvl_h000000000"]); // new first: the oldest approval comes last
+    expect(await ids("?sort=new&difficulty=hard&page=2")).toEqual([]);
   });
 
   it("the SQL voted label agrees with upperMedianDifficulty on every tally", async () => {
@@ -378,13 +399,55 @@ describe("version stats", () => {
 
   it("no reference players → every rated null, counts still fresh", async () => {
     await threeStarters();
-    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     await recomputeRatings(testEnv);
-    error.mockRestore();
 
     const [row] = await stats();
     expect(row).toMatchObject({ starters: 3, clears: 2, rated: null, rated_high: null, p10_low: null, p10_high: null, rating_sd: null, audience: null });
     expect(JSON.parse(row!.curve)[0]).toBeCloseTo(1 / 3);
+  });
+
+  /** 24 players on three levels, 21 of them on the third; the third's 90% interval is [0.560, 0.808], an Easy–Normal range reaching 0.8 points past Easy's edge. */
+  async function rangeCohort() {
+    const levels = ["lvl_aaaaaaaaaa", "lvl_bbbbbbbbbb", "lvl_cccccccccc"];
+    for (const level of levels) await seedLevel(level, "p_0", [10]);
+    for (let i = 1; i <= 24; i++) {
+      await seedPlayer(`p_${i}`);
+      for (const [j, level] of levels.entries()) if (j < 2 || i <= 21) await summary(`p_${i}`, hash(`${level}-v1`), j === 2 ? 8 + (i % 3) : 1 + ((i + j) % 4), true);
+    }
+    return hash("lvl_cccccccccc-v1");
+  }
+
+  it("holds the previous label while the new interval reaches at most 2 points past its edge", async () => {
+    const sha = await rangeCohort();
+    const rated = async (label: string | null, high: string | null) => {
+      if (label) await env.DB.prepare("UPDATE version_stats SET rated = ?, rated_high = ? WHERE sha256 = ?").bind(label, high, sha).run();
+      await recomputeRatings(testEnv);
+      const [row] = await rows<{ rated: string; rated_high: string | null; p10_low: number; p10_high: number }>("SELECT rated, rated_high, p10_low, p10_high FROM version_stats WHERE sha256 = ?", sha);
+      return row!;
+    };
+
+    const fresh = await rated(null, null); // no previous label: the gates' label
+    expect(fresh).toMatchObject({ rated: "easy", rated_high: "normal" });
+    expect(fresh.p10_high).toBeGreaterThan(0.8);
+    expect(fresh.p10_high).toBeLessThanOrEqual(0.82);
+
+    expect(await rated("normal", null)).toMatchObject({ rated: "normal", rated_high: null }); // held: 0.8 points past Normal's upper edge
+    expect(await rated("hard", null)).toMatchObject({ rated: "easy", rated_high: "normal" }); // the interval no longer overlaps Hard
+  });
+
+  it("writes counts and curves with null ratings, and logs once, when the fit is unusable", async () => {
+    await threeStarters();
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const real = rating.rate;
+    const spy = vi.spyOn(rating, "rate").mockImplementationOnce((...args) => ({ ...real(...args), fitted: false }));
+    await recomputeRatings(testEnv);
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(error).toHaveBeenCalledTimes(1);
+    const [row] = await stats();
+    expect(row).toMatchObject({ starters: 3, clears: 2, not_cleared_20: 1 });
+    expect(JSON.parse(row!.curve)[0]).toBeCloseTo(1 / 3);
+    expect(row).toMatchObject({ rated: null, rated_high: null, p10_low: null, p10_high: null, rating_sd: null, audience: null, beta: null });
   });
 
   it("is rebuilt by the cron", async () => {
