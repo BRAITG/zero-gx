@@ -19,6 +19,12 @@ const MAX_REPORT_BYTES := 16384  # the server refuses a larger report
 const FEEDBACK_TRIES := 5  # counted tries that open the rating of a version without a clear
 const ERASURE_PENDING := "This device could not finish erasing your community data yet. It will be tried again."
 const ERASURE_UNSAVED := "Your account was not deleted: this device could not record the deletion."
+const SCORE_UNSAVED := "Your run could not be queued on this device."
+const BAD_RUN := "This run cannot be posted."
+const BOARD_CACHE_SECONDS := 60 * 60
+
+class BoardRead extends RefCounted:
+	signal completed(result: Dictionary)
 
 var transport: CommunityTransport
 var platform: CommunityPlatform
@@ -34,22 +40,35 @@ var _level_id := RegEx.create_from_string("\\Alvl_[a-z0-9]{10}\\z")  # the serve
 var _http: CommunityTransport
 var _signing_in := false  # one sign-in at a time; `_sign_in_done` hands its result to the callers that came meanwhile
 var _history: CommunityHistory  # loaded on first use from `history_path`; null until then
+var _scores: CommunityScores
+var _score_results := {}  # account → sha → latest revision's result; memory only, boards own exact-rank caching
+var _score_posting := {}  # account → sha → revision currently in flight
+var _score_denied := {}  # account → true after a 403 or native integrity refusal; once per launch, not per flush
 var _activated := false  # the community was entered this launch: only then may reports go out by themselves
 var _flushing := false  # one flush at a time
-var _gaps := {"plays": false, "votes": false, "retry": false}  # true while that kind of request waits out its gap; see `_start_gap`
+var _gaps := {"plays": false, "votes": false, "scores": false, "retry": false}  # true while that kind of request waits out its gap; see `_start_gap`
 var _generation := 0  # bumped by a reset and by an account deletion: work begun before it writes and retries nothing after it
 var _deleting := false  # a deletion is with the server: its local erasure is owed but must not start before the answer
 var _choices := {}  # target of a vote → serial of the latest call for it
 var _choice_serial := 0
 var _settlements := {}  # "account|vote key" → {revision, status, error}: an answer the server gave for a queued choice whose acknowledgment could not be saved. Memory only: a reset or a relaunch forgets it and the choice is simply sent again, as after a lost answer.
+var _board_reads := {}  # generation|owner|sha|version → one shared request
+var _board_errors := {}  # sha → failed refresh sentence; cache-only surfaces must show it as stale
+var _board_versions := {}  # sha → invalidation serial; a pre-upload read cannot restore freshness
 
-signal _sign_in_done(error: String)
+signal _sign_in_done(result: Dictionary)
 ## One attempt at a queued choice, after its owner and generation were checked: applied (`error` empty), refused for good (the choice is dropped) or kept for a later flush. `kind` is "like" or "difficulty"; `sha256` is "" for a like; `value` is the choice (bool, or the difficulty with "" for a removal).
 signal vote_result(account: String, kind: String, level: String, sha256: String, value: Variant, error: String)
 ## The server acknowledged durably saved play reports of `account` on version `sha256`, once per version and upload: its eligibility may have changed.
 signal play_history_synced(account: String, sha256: String)
 ## The persisted player of this device changed (a sign-in as someone else) or was erased: `account` is the one now, "" when none. Open sheets drop what they show of the previous one.
 signal identity_changed(account: String)
+## One score attempt, only for its original owner/generation: result has `state` ("posted", "dropped", "queued"), `error`
+## and `status`; a valid success also has the server's `rank`, `points` and `best`. The named revision may be older than
+## a best queued meanwhile: consumers must match both account and revision before adopting its result.
+signal score_result(account: String, sha256: String, revision: int, result: Dictionary)
+## Public rows/distribution or the current player's private standing changed for this version.
+signal board_updated(sha256: String)
 
 
 func _ready() -> void:
@@ -65,6 +84,8 @@ func use_defaults() -> void:
 	_reset_work()
 	_activated = false
 	_history = null
+	_scores = null
+	_score_denied.clear()
 	_deleting = false
 	_choices.clear()
 
@@ -80,38 +101,44 @@ func signed_in() -> bool:
 
 ## Coroutine: `""` once signed in, else why not. A call that comes while a sign-in is under way waits for that one and gets its result.
 func sign_in() -> String:
+	var result := await _sign_in_result()
+	return result.get("error", "")
+
+
+## Keeps the structured HTTP refusal for internal request callers, while public sign_in still returns one sentence.
+func _sign_in_result() -> Dictionary:
 	if _signing_in:
 		return await _sign_in_done
 	_signing_in = true
-	var error := await _sign_in()
+	var result := await _sign_in()
 	_signing_in = false
-	_sign_in_done.emit(error)
-	return error
+	_sign_in_done.emit(result)
+	return result
 
 
-func _sign_in() -> String:
+func _sign_in() -> Dictionary:
 	if not platform.available():
-		return CommunityPlatform.UNAVAILABLE  # a device without Play Games makes no request at all
+		return {"status": 0, "error": CommunityPlatform.UNAVAILABLE}  # no Play Games: no request at all
 	var generation := _generation
 	var nonce := await _nonce()  # before Play Games: offline must fail at once, not after a prompt
 	if nonce.has("error"):
-		return nonce.error
+		return nonce
 	var auth: Dictionary = await platform.sign_in()
 	if auth.has("error"):
-		return auth.error
+		return auth
 	var proof: Dictionary = await platform.integrity(nonce.nonce)
 	if proof.has("error"):
-		return proof.error
+		return proof
 	if generation != _generation:
-		return SIGNED_OUT  # the account was deleted while Play Games was asking: no session for it, on the server or here
+		return {"status": 0, "error": SIGNED_OUT}  # deleted while Play Games asked: no session on the server or here
 	var body := JSON.stringify({"authCode": auth.auth_code, "integrityToken": proof.token, "nonce": nonce.nonce}).to_utf8_buffer()
 	var reply := await _call("POST", api_url + "/session", PackedStringArray(["Content-Type: application/json"]), body)
 	if reply.has("error"):
-		return reply.error
+		return reply
 	if not reply.data.get("token") is String:
-		return BAD_ANSWER
+		return {"status": reply.status, "error": BAD_ANSWER}
 	if generation != _generation:
-		return SIGNED_OUT
+		return {"status": 0, "error": SIGNED_OUT}
 	var before := player_id()
 	var file := _session()  # keeps the last known statuses
 	file.set_value("session", "token", reply.data.token)
@@ -124,7 +151,7 @@ func _sign_in() -> String:
 		file.erase_section("player")  # a token whose player is not known must not keep the previous one's name
 	_save_session(file)
 	_announce_identity(before)
-	return ""
+	return {"status": reply.status}
 
 
 ## Coroutine: one page of `sort` ("popular" or "new"), only of levels of `difficulty` ("easy".."expert") when given: `{"rows": Array}`, or on failure `{"error", "rows": the cached page or [], "offline": bool}`. Each sort, filter and page has its own cache file.
@@ -345,6 +372,12 @@ func sync_feedback() -> Dictionary:
 	return await _sync()
 
 
+## Explicit board opening retries scores without activating feedback or identifying an unknown score owner.
+func sync_scores() -> Dictionary:
+	_finish_erasure()
+	return await _sync(true)
+
+
 ## Coroutine: likes (`value`) or unlikes stage `level`; same result as `sync_feedback`, with `error` the sentence of this choice's own attempt.
 func set_like(level: String, value: bool) -> Dictionary:
 	return await _vote(level, "like:" + level, "like", "", value, func(history: CommunityHistory, account: String) -> Error: return history.queue_like(account, level, value))
@@ -467,7 +500,7 @@ func _call(method: String, url: String, headers := PackedStringArray(), body := 
 func _authed(method: String, path: String, expect := TYPE_DICTIONARY, build := Callable(), resign := true, account := "") -> Dictionary:
 	var generation := _generation
 	var reply := await _send(method, path, expect, build, account)
-	if reply.status == 401:
+	if reply.status == 401 and reply.has("token"):  # a session refusal is not a rejection of a token we sent
 		_forget(reply.token)
 		if resign and generation == _generation:
 			reply = await _send(method, path, expect, build, account)
@@ -486,9 +519,12 @@ func _forget(token: String) -> void:
 func _send(method: String, path: String, expect: int, build: Callable, account := "") -> Dictionary:
 	var generation := _generation
 	if _token() == "":
-		var error := await sign_in()
-		if error != "":
-			return {"status": 0, "error": error}
+		var auth := await _sign_in_result()
+		var changed := _stale(account, generation)
+		if changed != "":
+			return {"status": 0, "error": changed}
+		if auth.has("error"):
+			return {"status": auth.get("status", 0), "error": auth.error, "authentication": true}
 	var stale := _stale(account, generation)
 	if stale != "":
 		return {"status": 0, "error": stale}
@@ -567,6 +603,11 @@ func _reset_work() -> void:
 	_generation += 1
 	_flushing = false
 	_settlements.clear()
+	_score_results.clear()
+	_score_posting.clear()
+	_board_reads.clear()
+	_board_errors.clear()
+	_board_versions.clear()
 	for kind in _gaps:
 		_gaps[kind] = false
 
@@ -575,30 +616,33 @@ func _reset_work() -> void:
 func _queued() -> bool:
 	var history := _hist()
 	var account := _account()
-	return history != null and account != "" and not (history.batch(account).is_empty() and history.pending_votes(account).is_empty())
+	return account != "" and (_score_pending(account) or (history != null and not (history.batch(account).is_empty() and history.pending_votes(account).is_empty())))
 
 
-## Whether a flush could send something right now: pending plays when their gap is over, else pending votes when theirs is.
+## Whether background work is ready: plays/votes only after feedback activation; scores may start for a known owner.
 func _runnable() -> bool:
 	var history := _hist()
 	var account := _account()
-	if history == null or account == "" or not available():
+	if account == "" or not available():
 		return false
-	if not history.batch(account).is_empty():
-		return not _gaps.plays
-	return not history.pending_votes(account).is_empty() and not _gaps.votes
+	if _activated and history != null:
+		if not history.batch(account).is_empty():
+			return not _gaps.plays
+		if not history.pending_votes(account).is_empty():
+			return not _gaps.votes
+	return _score_pending(account) and not _score_denied.has(account) and not _gaps.scores
 
 
 ## Starts a flush by itself when the community was entered and there is something to send; the gaps decide when.
 func _schedule() -> void:
-	if _activated and not _flushing and _runnable():
+	if not _flushing and _runnable():
 		_background.call_deferred(_generation)
 
 
 ## The flush `_schedule` asked for, one idle frame later. A Level that leaves its tree schedules one, and no request may begin inside that exit. A reset or deletion since then drops it, and so does a flush already under way.
 func _background(generation: int) -> void:
 	if generation == _generation and not _flushing and _runnable():
-		await _sync()
+		await _sync(not _activated)
 
 
 ## `kind` of request ("plays" uploads, "votes" retries, "retry" a flush that left work behind) must not repeat for `FLUSH_GAP_SECONDS`. Only what follows waits: the timer runs on its own, so no request is ever held for it, and a reset makes it inert.
@@ -612,17 +656,17 @@ func _start_gap(kind: String) -> void:
 
 
 ## One flush at a time; a call that comes meanwhile, or that plays must wait for, answers Pending sync at once.
-func _sync() -> Dictionary:
+func _sync(scores_only := false) -> Dictionary:
 	if not available():
 		return {"error": CommunityPlatform.UNAVAILABLE, "pending": false}
 	if _flushing:
 		return {"error": "", "pending": _queued()}
 	_flushing = true
 	var generation := _generation
-	var result := await _flush(generation)
+	var result := await _flush(generation, scores_only)
 	if generation == _generation:
 		_flushing = false
-		if _activated and _queued() and not (_gaps.plays or _gaps.votes or _gaps.retry):
+		if _runnable() and not (_gaps.plays or _gaps.votes or _gaps.scores or _gaps.retry):
 			_start_gap("retry")  # work is left and no timer will come for it
 	return result
 
@@ -638,8 +682,14 @@ func _identify() -> Dictionary:
 
 
 ## The body of `_sync`: one batch of plays, then (once no play waits) every queued vote. `{"error", "pending"}`: `error` is the first sentence a retained failure or a refusal gave, `pending` whether anything is still queued.
-func _flush(generation: int) -> Dictionary:
+func _flush(generation: int, scores_only := false) -> Dictionary:
 	var gone := {"error": SIGNED_OUT, "pending": false}
+	if scores_only:  # a campaign best is not an explicit community entry: never identify an unknown player here
+		var owner := _account()
+		if owner == "":
+			return gone
+		var error := await _flush_scores(owner, generation)
+		return {"error": error, "pending": _queued()}
 	var history := _hist()
 	if history == null:
 		return {"error": NO_HISTORY, "pending": false}
@@ -660,7 +710,7 @@ func _flush(generation: int) -> Dictionary:
 			return gone
 		if failure != "" or not history.batch(account).is_empty():
 			return {"error": failure, "pending": true}  # votes wait for the plays they need
-	if _gaps.votes:
+	if _gaps.votes and not history.pending_votes(account).is_empty():
 		return {"error": "", "pending": _queued()}
 	var refused := ""
 	for vote: Dictionary in history.pending_votes(account):
@@ -672,7 +722,7 @@ func _flush(generation: int) -> Dictionary:
 				return gone
 		var status: int = reply.get("status", 0)
 		var error: String = reply.get("error", "")
-		if error == "" or _refused(status):
+		if error == "" or (_refused(status) and not reply.get("authentication", false)):
 			if history.ack_vote(account, vote.key, int(vote.revision)) != OK:
 				_settlements[key] = {"revision": int(vote.revision), "status": status, "error": error}  # the answer is known: only its local settlement is retried, never the request
 				_start_gap("votes")
@@ -686,7 +736,8 @@ func _flush(generation: int) -> Dictionary:
 			_start_gap("votes")  # connection, server and rate-limit failures keep the choice for a later flush
 			vote_result.emit(account, vote.kind, vote.level, vote.sha, vote.value, error)
 			return {"error": error, "pending": true}
-	return {"error": refused, "pending": _queued()}
+	var score_error := await _flush_scores(account, generation)
+	return {"error": refused if refused != "" else score_error, "pending": _queued()}
 
 
 ## A 4xx the server will give again however often it is asked, apart from the ones a later try can change.
@@ -897,6 +948,11 @@ func _complete_erasure(account: String) -> bool:
 			_settlements.erase(key)
 	var history := _hist()
 	var done := history != null and history.erase_owner(account) == OK
+	var scores := _score_outbox()
+	if scores == null or scores.erase_owner(account) != OK:
+		done = false
+	_score_results.erase(account)
+	_score_posting.erase(account)
 	var names: Variant = _private_names(account)
 	if names == null:
 		return false
@@ -924,7 +980,7 @@ func _private_names(account: String) -> Variant:
 	var prefix := "feedback_%s_" % _owner_tag(account)
 	var file := folder.get_next()
 	while file != "":
-		if not folder.current_is_dir() and file.begins_with(prefix):
+		if not folder.current_is_dir() and (file.begins_with(prefix) or file.begins_with("board_you_%s_" % _owner_tag(account))):
 			names.append(file)
 		file = folder.get_next()
 	folder.list_dir_end()
@@ -941,3 +997,287 @@ func _finish_erasure() -> bool:
 	var file := _session()
 	file.erase_section("erasure")
 	return _save_session(file) == OK
+
+
+# --- score outbox ----------------------------------------------------------------------------------------------------
+
+
+## Queues a finalized winning run for the already-known player, durably before success ("") is returned. Does not
+## identify a player: a campaign win with no known account stays local. Task 5 owns whether this is an eligible new best.
+func queue_score(level_id: String, run: Demo) -> String:
+	if not available():
+		return CommunityPlatform.UNAVAILABLE
+	if _blocked(player_id()):
+		return ERASURE_PENDING
+	var owner := _account()
+	if owner == "":
+		return SIGNED_OUT
+	if level_id.is_empty() or run == null or run.truncated or run.frame_count() == 0 or not _is_sha(run.level_sha256) or run.level_sha256 == "0".repeat(64):
+		return BAD_RUN
+	var events := run.events()
+	if events.is_empty() or events.back()[1] != Demo.Event.GOAL_REACHED or events.back()[0] != run.frame_count():
+		return BAD_RUN
+	var bytes := run.encode()
+	if bytes.is_empty() or bytes.size() > Demo.MAX_BYTES:
+		return BAD_RUN
+	var decoded := Demo.decode(bytes)
+	if decoded == null or decoded.level_sha256 != run.level_sha256:
+		return BAD_RUN
+	var scores := _score_outbox()
+	if scores == null or scores.enqueue(owner, level_id, run.level_sha256, bytes) != OK:
+		return SCORE_UNSAVED
+	_schedule()
+	return ""
+
+
+## Current player's state of this version: {} when unknown, otherwise `{account, sha256, revision, state, error}`.
+## `state` is queued, posting, posted or dropped. A success adds rank/points/best, a denial adds `denied: true`.
+## Results are memory-only; after restart a retained snapshot reads queued and board reads supply confirmed standings.
+func score_state(sha256: String) -> Dictionary:
+	var owner := _account()
+	var scores := _score_outbox()
+	if owner == "" or scores == null or not _is_sha(sha256):
+		return {}
+	var entry := scores.entry(owner, sha256)
+	var result: Dictionary = _score_results.get(owner, {}).get(sha256, {}).duplicate(true)
+	if not entry.is_empty():
+		if result.get("revision") != entry.revision:
+			result = {"account": owner, "sha256": sha256, "revision": entry.revision, "state": "queued", "error": ""}
+		if _score_posting.get(owner, {}).get(sha256) == entry.revision:
+			result["state"] = "posting"
+		if _score_denied.has(owner):
+			result["denied"] = true
+	return result
+
+
+## Separate from history and the session, but follows the history path so redirects also isolate replay snapshots.
+func _score_outbox() -> CommunityScores:
+	if _scores == null:
+		var loaded := CommunityScores.new()
+		loaded.path = history_path.get_basename() + "_scores.json"
+		if loaded.load_file() != OK:
+			return null
+		_scores = loaded
+	return _scores
+
+
+func _score_pending(account: String) -> bool:
+	var scores := _score_outbox()
+	return scores != null and not scores.entries(account).is_empty()
+
+
+## Scores go after plays/votes. A denied score remains on disk but is not runnable until another launch, so it can
+## neither hammer integrity every 30 seconds nor starve feedback. One score attempt per gap, including a replacement.
+func _flush_scores(account: String, generation: int) -> String:
+	var scores := _score_outbox()
+	if scores == null:
+		return SCORE_UNSAVED
+	if _score_denied.has(account) or _gaps.scores or _stale(account, generation) != "" or _blocked(account):
+		return ""
+	var entries := scores.entries(account)
+	if entries.is_empty():
+		return ""
+	var entry := entries[0]
+	var sha: String = entry.sha256
+	var revision: int = entry.revision
+	var bytes := scores.snapshot(account, sha, revision)
+	_score_posting[account] = {sha: revision}
+	var reply := {"status": 400, "error": "The queued recording could not be read."}
+	if not bytes.is_empty():
+		reply = await _authed("POST", "/scores", TYPE_DICTIONARY, _score_request.bind(bytes), true, account)
+	if generation != _generation:
+		return SIGNED_OUT  # old work cannot clear the posting state of a new generation
+	if player_id() != account or _blocked(account):
+		_score_posting.erase(account)
+		return ACCOUNT_CHANGED
+	_score_posting.erase(account)
+	_start_gap("scores")
+	if not reply.has("error") and not _score_answer(reply.data):
+		reply = {"status": reply.status, "error": BAD_ANSWER}
+	var status: int = reply.get("status", 0)
+	var error: String = reply.get("error", "")
+	var denied := status == 403 or error == CommunityAndroid.INTEGRITY_FAILED
+	if denied:
+		_score_denied[account] = true
+	var settled: bool = error == "" or (_refused(status) and not denied and not reply.get("authentication", false))
+	if settled and scores.settle(account, sha, revision) != OK:
+		error = SCORE_UNSAVED
+		settled = false  # safe to resend after a lost answer or local acknowledgment failure: the server keeps max(points)
+	var result := {"account": account, "sha256": sha, "revision": revision, "state": ("posted" if error == "" else "dropped") if settled else "queued", "error": error, "status": status}
+	if denied:
+		result["denied"] = true
+	if settled and error == "":
+		result.merge(reply.data)
+		_invalidate_board(account, sha)
+	if scores.revision(account, sha) == revision:  # an answer about an older best is not this best's standing
+		if not _score_results.has(account):
+			_score_results[account] = {}
+		_score_results[account][sha] = result.duplicate(true)
+	score_result.emit(account, sha, revision, result.duplicate(true))
+	return error
+
+
+## `_authed` calls this afresh for each attempt (including its one 401 retry), never reusing a consumed nonce.
+func _score_request(bytes: PackedByteArray) -> Dictionary:
+	var nonce := await _nonce()
+	if nonce.has("error"):
+		return nonce
+	var parts: Array[PackedByteArray] = [bytes]
+	var proof: Dictionary = await platform.integrity(CommunityWire.bound_nonce(nonce.nonce, parts))
+	if proof.has("error"):
+		return proof
+	return {"headers": PackedStringArray(["Content-Type: application/octet-stream", "X-Nonce: " + nonce.nonce, "X-Integrity: " + proof.token]), "body": bytes}
+
+
+func _score_answer(data: Dictionary) -> bool:
+	for key in ["rank", "points"]:
+		var number: Variant = data.get(key)
+		if not (number is int or number is float) or not is_finite(float(number)) or int(number) != number or number < (1 if key == "rank" else 0):
+			return false
+	return data.get("best") is bool
+
+
+# --- per-version standings -------------------------------------------------------------------------------------------
+
+
+## Posting changes public standings and this owner's private best, even with no board UI open.
+func _invalidate_board(owner: String, sha256: String) -> void:
+	_board_versions[sha256] = int(_board_versions.get(sha256, 0)) + 1
+	for path: String in [dir + "board_" + sha256 + ".json", _board_you_path(owner, sha256)]:
+		var stored: Variant = _parse(FileAccess.get_file_as_bytes(path))
+		if stored is Dictionary and stored.get("sha256") == sha256:
+			stored["fetched_at"] = 0
+			_store(path, JSON.stringify(stored).to_utf8_buffer())
+
+
+## Public rows and distribution belong to the hash; `you` is read only from the current owner's separate file.
+## Cache-only answers are always labelled cached. A failed refresh also marks them offline until a successful read.
+func cached_board(sha256: String) -> Dictionary:
+	if not _is_sha(sha256):
+		return {}
+	var stored: Variant = _parse(FileAccess.get_file_as_bytes(dir + "board_" + sha256 + ".json"))
+	if not stored is Dictionary or stored.get("sha256") != sha256 or not _board_integer(stored.get("fetched_at")):
+		return {}
+	var data := _clean_board(stored)
+	if data.is_empty():
+		return {}
+	data.merge({"sha256": sha256, "fetched_at": stored.fetched_at, "owner": "", "you": null, "cached": true, "offline": not available() or _board_errors.has(sha256)}, true)
+	var owner := _account()
+	if owner != "":
+		var private: Variant = _parse(FileAccess.get_file_as_bytes(_board_you_path(owner, sha256)))
+		if private is Dictionary and private.get("owner") == owner and private.get("sha256") == sha256 and _board_integer(private.get("fetched_at")):
+			var you := _board_row(private.get("you"))
+			if private.get("you") == null or (not you.is_empty() and you.player.id == owner):
+				data.owner = owner
+				data.you = null if you.is_empty() else you
+				data.fetched_at = mini(int(data.fetched_at), int(private.fetched_at))
+	if _board_errors.has(sha256):
+		data["error"] = _board_errors[sha256]
+	return data
+
+
+## Coroutine: top 20 for this hash, at most once/hour unless forced. Concurrent reads share their owner/generation/version.
+## A refresh failure returns the last public data and this owner's standing, explicitly cached/offline.
+func board(sha256: String, force := false) -> Dictionary:
+	if not _is_sha(sha256):
+		return _board_failed(sha256, BAD_ANSWER)
+	if not available():
+		return _board_failed(sha256, CommunityPlatform.UNAVAILABLE)
+	var cached := cached_board(sha256)
+	var owner := _account()
+	var now := int(Time.get_unix_time_from_system())
+	if not force and owner != "" and cached.get("owner") == owner and not cached.get("offline", false) and now >= cached.fetched_at and now - cached.fetched_at < BOARD_CACHE_SECONDS:
+		return cached
+	var generation := _generation
+	var version: int = _board_versions.get(sha256, 0)
+	var key := "%d|%s|%s|%d" % [generation, owner, sha256, version]
+	if _board_reads.has(key):
+		var joined: Dictionary = await _board_reads[key].completed
+		return joined.duplicate(true)
+	var read := BoardRead.new()
+	_board_reads[key] = read
+	var result := await _read_board(sha256, owner, generation, version)
+	_board_reads.erase(key)
+	read.completed.emit(result)
+	return result.duplicate(true)
+
+
+func _read_board(sha256: String, owner: String, generation: int, version: int) -> Dictionary:
+	var reply := await _authed("GET", "/boards/%s?limit=20" % sha256, TYPE_DICTIONARY, Callable(), true, owner)
+	if generation != _generation or (owner != "" and owner != _account()) or (reply.has("account") and reply.account != _account()):
+		return _board_failed(sha256, ACCOUNT_CHANGED, false)
+	if version != _board_versions.get(sha256, 0):
+		return cached_board(sha256)
+	if reply.has("error"):
+		return _board_failed(sha256, reply.error)
+	var data := _clean_board(reply.data)
+	if data.is_empty():
+		return _board_failed(sha256, BAD_ANSWER)
+	var fetched := int(Time.get_unix_time_from_system())
+	data.merge({"sha256": sha256, "fetched_at": fetched}, true)
+	_store(dir + "board_" + sha256 + ".json", JSON.stringify(data).to_utf8_buffer())
+	var you := _board_row(reply.data.get("you"))
+	var account := _account()
+	if not you.is_empty() and you.player.id != account:
+		you = {}
+	if account != "":
+		_store(_board_you_path(account, sha256), JSON.stringify({"owner": account, "sha256": sha256, "fetched_at": fetched, "you": null if you.is_empty() else you}).to_utf8_buffer())
+	data.merge({"owner": account, "you": null if you.is_empty() else you, "cached": false, "offline": false}, true)
+	_board_errors.erase(sha256)
+	board_updated.emit(sha256)
+	return data
+
+
+func _board_failed(sha256: String, error: String, remember := true) -> Dictionary:
+	if remember and _is_sha(sha256):
+		_board_errors[sha256] = error
+	var data := cached_board(sha256)
+	var had_cache := not data.is_empty()
+	if not had_cache:
+		data = {"sha256": sha256, "owner": "", "rows": [], "you": null, "count": -1, "quantiles": []}
+	data.merge({"error": error, "offline": true, "cached": had_cache}, true)
+	if remember and _is_sha(sha256):
+		board_updated.emit(sha256)
+	return data
+
+
+func _board_you_path(owner: String, sha256: String) -> String:
+	return dir + "board_you_%s_%s.json" % [_owner_tag(owner), sha256]
+
+
+## Bad percentile data disables estimates, not valid rows. Never coerce strings, booleans or fractions into ranks.
+func _clean_board(raw: Dictionary) -> Dictionary:
+	if not raw.get("rows") is Array or not raw.get("level") is Dictionary:
+		return {}
+	var rows := []
+	for entry: Variant in raw.rows:
+		var row := _board_row(entry)
+		if not row.is_empty():
+			rows.append(row)
+		if rows.size() == 20:
+			break
+	var count := int(raw.count) if _board_integer(raw.get("count")) else -1
+	var quantiles: Array = raw.quantiles.duplicate() if raw.get("quantiles") is Array else []
+	var valid := (count == 0 and quantiles.is_empty()) or (count > 0 and quantiles.size() == 21)
+	for i in quantiles.size():
+		if not _board_integer(quantiles[i]) or (i > 0 and quantiles[i] < quantiles[i - 1]):
+			valid = false
+			break
+	return {"level": raw.level.duplicate(true), "rows": rows, "count": count, "quantiles": quantiles if valid else []}
+
+
+func _board_row(raw: Variant) -> Dictionary:
+	if not raw is Dictionary or not raw.get("player") is Dictionary:
+		return {}
+	if not raw.player.get("id") is String or raw.player.id == "" or not raw.player.get("name") is String:
+		return {}
+	if not _board_integer(raw.get("rank")) or raw.rank < 1 or not _board_integer(raw.get("points")):
+		return {}
+	var seconds: Variant = raw.get("seconds")
+	if not (seconds is int or seconds is float) or not is_finite(float(seconds)) or seconds < 0:
+		return {}
+	return {"rank": int(raw.rank), "player": {"id": raw.player.id, "name": raw.player.name}, "points": int(raw.points), "seconds": float(seconds)}
+
+
+func _board_integer(value: Variant) -> bool:
+	return (value is int or value is float) and is_finite(float(value)) and value >= 0 and value < 9223372036854775807 and value == floor(value)

@@ -712,3 +712,624 @@ func test_official_focus_advances_to_unfinished_level() -> void:
 	world.add_child(main)
 	next = focused()
 	check(next is Button and row_title(next).begins_with("Level 03"), "unlocking all must not suggest replaying a finished stage")
+
+
+## Result integration uses real recorder, durable outbox and HUD; only the device/network are faked.
+func _result_setup(owner := "p_me") -> FakeTransport:
+	Community.use_defaults()
+	MAIN._board_attempts.clear()
+	Community.history_path = "user://test_results/history.json"
+	_wipe_results("user://test_results")
+	var net := FakeTransport.new()
+	world.add_child(net)
+	Community.transport = net
+	Community.platform = FakePlatform.new()
+	_result_owner(owner)
+	net.answer("GET", "/nonce", 200, {"nonce": "results"})
+	net.hold("POST", "/scores")
+	net.respond("GET", "/boards/", func(_request: Dictionary) -> Dictionary:
+		return {"status": 200, "body": _result_payload()})
+	return net
+
+
+func _result_owner(owner: String) -> void:
+	var file := ConfigFile.new()
+	if owner != "":
+		file.set_value("player", "id", owner)
+		file.set_value("session", "token", "token")
+		file.set_value("session", "expires", int(Time.get_unix_time_from_system()) + 1000)
+	check(file.save(Community.session_path) == OK, "isolated result session saves")
+
+
+func _wipe_results(folder: String) -> void:
+	if not DirAccess.dir_exists_absolute(folder):
+		return
+	for sub in DirAccess.get_directories_at(folder):
+		_wipe_results(folder.path_join(sub))
+		DirAccess.remove_absolute(folder.path_join(sub))
+	for file in DirAccess.get_files_at(folder):
+		DirAccess.remove_absolute(folder.path_join(file))
+
+
+func _result_level(id := "level_01", testing := false, publishing := false) -> Level:
+	var lvl := Progress.build("level_01")
+	lvl.level_id = Community.STAGE_PREFIX + lvl.level_sha256 if id == "community" else id
+	lvl.testing = testing
+	lvl.publishing = publishing
+	world.add_child(lvl)
+	return lvl
+
+
+func _result_payload() -> Dictionary:
+	var rows := []
+	for i in 20:
+		rows.append({"rank": i + 1, "player": {"id": "pilot_%d" % i, "name": "Pilot %02d" % (i + 1)}, "points": 3000 - i * 50, "seconds": 12.5 + i})
+	return {"level": {"kind": "official", "name": "Launch"}, "rows": rows, "you": {"rank": 25, "player": {"id": "p_me", "name": "My Pilot"}, "points": 700, "seconds": 30.25}, "count": 30, "quantiles": range(0, 3100, 150)}
+
+
+## Thirty real standings: the remote best beats this device's 1800-point completion.
+func _result_higher_best_payload() -> Dictionary:
+	var payload := _result_payload()
+	payload.you.rank = 2
+	payload.you.points = 9000
+	for i in payload.rows.size():
+		payload.rows[i].points = 10000 if i == 0 else 3000 - i * 100
+	payload.rows[1] = payload.you.duplicate(true)
+	payload.quantiles = [100, 200, 300, 500, 600, 800, 900, 1100, 1200, 1400, 1500, 1700, 1800, 2000, 2100, 2300, 2400, 2600, 2700, 9000, 10000]
+	return payload
+
+
+func _result_disk() -> CommunityScores:
+	var scores := CommunityScores.new()
+	scores.path = Community.history_path.get_basename() + "_scores.json"
+	check(scores.load_file() == OK, "result outbox reloads")
+	return scores
+
+
+func test_results_enqueue_only_signed_in_play_new_best_wins() -> void:
+	for case in ["campaign", "community", "training", "test", "publish", "draft", "loss", "not_best", "desktop", "signed_out", "unknown_owner", "replay"]:
+		Progress.reset()
+		var net := _result_setup("" if case == "signed_out" else "p_me")
+		if case == "desktop":
+			(Community.platform as FakePlatform).is_available = false
+		if case == "unknown_owner":
+			var session := ConfigFile.new()
+			session.set_value("session", "token", "token")
+			session.set_value("session", "expires", int(Time.get_unix_time_from_system()) + 1000)
+			session.save(Community.session_path)
+		var id: String = {"community": "community", "training": "tutorial_1", "draft": "user_draft"}.get(case, "level_01")
+		if case == "not_best":
+			Progress.record_win("level_01", 99999, 0.0)
+		var lvl := _result_level(id, case == "test" or case == "publish", case == "publish")
+		if case == "replay":
+			lvl.process_mode = Node.PROCESS_MODE_DISABLED
+		lvl.finish(case != "loss")
+		var entries := _result_disk().entries("p_me")
+		var eligible: bool = case == "campaign" or case == "community"
+		check(entries.size() == (1 if eligible else 0), "%s: only signed-in Play new-best real wins enqueue" % case)
+		if eligible and not entries.is_empty():
+			var run := Demo.decode(_result_disk().snapshot("p_me", lvl.level_sha256, entries[0].revision))
+			check(run != null and run.events().back()[1] == Demo.Event.GOAL_REACHED and run.events().back()[0] == run.frame_count(), "%s: queue contains the finalized winning recorder" % case)
+		if case in ["desktop", "signed_out", "unknown_owner", "training", "test", "publish", "draft", "loss", "replay"]:
+			check(net.requests.is_empty(), "%s: no automatic leaderboard request" % case)
+		check((Community.platform as FakePlatform).sign_ins == 0, "%s: a result never signs in" % case)
+		lvl.free()
+
+
+func test_result_queues_its_finalized_memory_demo_when_best_demo_save_fails() -> void:
+	_result_setup()
+	var old_dir := Progress.demos_dir
+	Progress.demos_dir = "user://test_results/blocked/"
+	DirAccess.make_dir_recursive_absolute(Progress.demos_dir + "level_01.demo.gz")
+	var blocker := FileAccess.open(Progress.demos_dir + "level_01.demo.gz/occupied", FileAccess.WRITE)
+	blocker.store_string("keep directory nonempty")
+	blocker.close()
+	var lvl := _result_level()
+	lvl.ship.fuel = 31.0
+	lvl.finish(true)
+	check(Progress.best_demo("level_01") == null, "best-demo path cannot be saved")
+	var disk := _result_disk()
+	var queued := disk.entry("p_me", lvl.level_sha256)
+	check(not queued.is_empty(), "valid finalized memory replay can queue despite best-demo save failure")
+	if not queued.is_empty():
+		var bytes := disk.snapshot("p_me", lvl.level_sha256, queued.revision)
+		var run := Demo.decode(bytes)
+		check(run != null and run.ship_at(run.frame_count() - 1).fuel == 31.0 and run.events().back()[1] == Demo.Event.GOAL_REACHED, "durable queue owns this new run, never a prior Progress replay")
+		lvl.demo.level_sha256 = "b".repeat(64)
+		check(disk.snapshot("p_me", lvl.level_sha256, queued.revision) == bytes, "later in-memory mutations cannot change durable bytes")
+	Progress.demos_dir = old_dir
+
+
+func test_result_posting_is_immediate_and_exact_rank_is_for_remote_stored_best() -> void:
+	var net := _result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	check(lvl.hud._result.visible and lvl.hud.result_text().contains("Posting"), "result shows without awaiting the held upload")
+	check(net.count("POST", "/scores") == 1, "score sync starts without waiting for the board")
+	var stored := _result_higher_best_payload()
+	net.answer("GET", "/boards/", 200, stored)
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
+	net.release_hold("POST", "/scores")
+	var text := lvl.hud.result_text()
+	check(text.contains("Your ranked best") and text.contains("Rank #2") and text.contains("9000 points"), "best:false uses the stored score from the board, not the submitted points")
+	check(text.contains("Estimate:") and not text.contains("Rank #25"), "lower local score remains estimated separately from the higher remote best")
+	check(button_starting(lvl.hud, "Board").is_visible_in_tree(), "eligible win offers Board")
+	check(lvl.hud.find_child("LeaderboardPreview", true, false) != null, "eligible result hosts the shared top-five preview")
+
+
+func test_final_fix_best_false_failed_refresh_keeps_local_estimate_and_cached_remote_best() -> void:
+	var net := _result_setup()
+	net.answer("GET", "/boards/", 200, _result_higher_best_payload())
+	var lvl := _result_level()
+	lvl.finish(true)
+	net.answer("GET", "/boards/", 0)
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
+	net.release_hold("POST", "/scores")
+	var text := lvl.hud.result_text()
+	check(text.contains("Estimate:") and text.contains("9000 points") and text.contains("Rank #2 of 30 (cached)"), "POST submitted points cannot inherit the stored best's rank when refresh fails")
+	var preview := lvl.hud.find_child("LeaderboardPreview", true, false)
+	var labels := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
+	check(labels.contains("Local best · 1800 points") and labels.contains("9000"), "preview retains separate local and cached remote scores")
+
+
+func test_final_fix_best_false_without_board_never_fabricates_an_exact_local_rank() -> void:
+	var net := _result_setup()
+	net.answer("GET", "/boards/", 0)
+	var lvl := _result_level()
+	lvl.finish(true)
+	net.answer("GET", "/boards/", 0)
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
+	net.release_hold("POST", "/scores")
+	var text := lvl.hud.result_text()
+	check(text.contains("Estimate unavailable") and not text.contains("Your ranked best") and not text.contains("Rank #2"), "without a stored score the lower local completion stays unverified")
+
+
+func test_final_fix_result_uses_current_completion_not_old_hash_historical_best() -> void:
+	var net := _result_setup()
+	_campaign_best("b".repeat(64), 9999)
+	var lvl := _result_level()
+	lvl.finish(true)
+	check(Progress.best_points("level_01") == 9999 and Progress.best_demo("level_01").level_sha256 == "b".repeat(64), "historical progress remains intact")
+	check(net.count("POST", "/scores") == 0 and _result_disk().entries("p_me").is_empty(), "current non-best completion is never retroactively queued")
+	var preview := lvl.hud.find_child("LeaderboardPreview", true, false)
+	var text := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
+	check(text.contains("Local best · 1800 points") and not text.contains("9999"), "current-hash preview estimates only the completed current run")
+	button_starting(lvl.hud, "Board").pressed.emit()
+	var sheets := lvl.find_children("*", "Overlay", true, false)
+	check(sheets.size() == 1, "result still opens its current board")
+	if not sheets.is_empty():
+		var board_text := "\n".join(sheets[0].find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
+		check(board_text.contains("Local best · 1800 points") and not board_text.contains("9999"), "full board receives the same current-hash local score")
+
+
+func test_result_pending_and_queue_save_error_are_visible_without_claiming_exact_rank() -> void:
+	var net := _result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	net.answer("POST", "/scores", 0)
+	net.release_hold("POST", "/scores")
+	check(lvl.hud.result_text().contains("Will post when online") and lvl.hud.result_text().contains("Estimate:"), "offline post retains pending and honest local estimate")
+	lvl.free()
+	Progress.reset()
+	_result_setup()
+	DirAccess.make_dir_recursive_absolute(Community.history_path.get_basename() + "_scores.json.tmp")
+	lvl = _result_level()
+	lvl.finish(true)
+	check(lvl.hud.result_text().contains("could not be queued") and not lvl.hud.result_text().contains("Posting") and not lvl.hud.result_text().contains("Will post when online"), "failed durable enqueue is visible, never falsely queued")
+
+
+func test_result_ignores_wrong_owner_hash_revision_and_superseding_same_hash() -> void:
+	var net := _result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	var state := Community.score_state(lvl.level_sha256)
+	var before := lvl.hud.result_text()
+	var posted := {"state": "posted", "rank": 1, "points": 9999, "best": true}
+	Community.score_result.emit("other", lvl.level_sha256, state.revision, posted)
+	Community.score_result.emit("p_me", "b".repeat(64), state.revision, posted)
+	Community.score_result.emit("p_me", lvl.level_sha256, state.revision + 1, posted)
+	check(lvl.hud.result_text() == before, "wrong owner/hash/revision cannot change live result")
+	check(Community.queue_score(lvl.level_id, lvl.demo) == "", "new same-hash revision is durable")
+	Community.score_result.emit("p_me", lvl.level_sha256, state.revision, posted)
+	check(lvl.hud.result_text() == before, "superseded revision cannot overwrite the result")
+	_result_owner("p_other")
+	Community.identity_changed.emit("p_other")
+	check(not lvl.hud.result_text().contains("Posting") and not lvl.hud.result_text().contains("Rank #25"), "owner switch immediately clears prior private status")
+	before = lvl.hud.result_text()
+	Community.score_result.emit("p_me", lvl.level_sha256, state.revision, posted)
+	net.answer("POST", "/scores", 200, {"rank": 1, "points": 9999, "best": true})
+	net.release_hold("POST", "/scores")
+	check(lvl.hud.result_text() == before, "held previous-owner upload cannot restore private standing after an owner switch")
+
+
+func test_result_closed_during_held_score_and_board_discards_old_read_then_caches_fresh_answer() -> void:
+	var net := _result_setup()
+	net.hold("GET", "/boards/")
+	var lvl := _result_level()
+	var sha := lvl.level_sha256
+	lvl.finish(true)
+	lvl.queue_free()
+	await frames(2)
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
+	net.release_hold("POST", "/scores")
+	net.release_hold("GET", "/boards/")
+	await frames(2)
+	check(not is_instance_valid(lvl) and Community.cached_board(sha).is_empty(), "closed result cannot let the obsolete pre-upload GET create a cache")
+	net.answer("GET", "/boards/", 200, _result_higher_best_payload())
+	var fresh: Dictionary = await Community.board(sha)
+	check(net.count("GET", "/boards/") == 2 and fresh.count == 30 and Community.cached_board(sha).you.points == 9000 and Community.cached_board(sha).you.rank == 2, "only a fresh post-upload read establishes cached population and current standing after the result closes")
+
+
+func test_result_matching_posted_score_becomes_exact_and_board_restores_focus() -> void:
+	var net := _result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	var points := Progress.best_points(lvl.level_id)
+	var stored := _result_payload()
+	stored.you.rank = 3
+	stored.you.points = points
+	for i in stored.rows.size():
+		stored.rows[i].points = points + 100 - i * 50
+	stored.rows[2] = stored.you.duplicate(true)
+	net.answer("GET", "/boards/", 200, stored)
+	net.answer("POST", "/scores", 200, {"rank": 3, "points": points, "best": true})
+	net.release_hold("POST", "/scores")
+	check(lvl.hud.result_text().contains("Your ranked best · Rank #3 of 30") and not lvl.hud.result_text().contains("Estimate:"), "matching local and stored best displays exact standing")
+	var board := button_starting(lvl.hud, "Board")
+	board.grab_focus()
+	board.pressed.emit()
+	var sheets := lvl.find_children("*", "Overlay", true, false)
+	check(sheets.size() == 1, "Board opens the shared full sheet")
+	if not sheets.is_empty():
+		sheets[0].close()
+		await frames(2)
+		check(board.has_focus(), "closing Board restores the existing result action")
+
+
+func test_result_invalid_finalized_demo_never_falls_back_to_prior_best_replay() -> void:
+	_result_setup()
+	var lvl := _result_level()
+	var prior := Demo.new()
+	prior.level_sha256 = lvl.level_sha256
+	prior.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 1.0, "hull": 1.0}, {})
+	prior.add_event(Demo.Event.GOAL_REACHED)
+	Progress.save_best_demo(lvl.level_id, prior)
+	check(Progress.best_demo(lvl.level_id) != null, "prior best replay exists")
+	lvl.demo.truncated = true
+	lvl.finish(true)
+	check(_result_disk().entries("p_me").is_empty() and lvl.hud.result_text().contains("cannot be posted"), "invalid new recording never uploads the previous best replay")
+
+
+func test_result_preview_and_actions_fit_logical_viewport_with_ad_footer() -> void:
+	var old_size := tree.root.size
+	tree.root.size = Vector2i(1280, 720)
+	await frames(2)
+	_result_setup()
+	Monetization.platform = load("res://tests/support/fake_monetization_platform.gd").new()
+	Monetization.start()
+	var lvl := _result_level()
+	lvl.finish(true)
+	lvl.hud._rate.show()  # the densest legitimate result also offers community rating
+	await frames(3)
+	var available := lvl.hud._result_frame.get_global_rect()
+	check(Monetization.footer_height > 0 and available.encloses(lvl.hud._result.get_global_rect()), "result preview and breakdown fit above the reserved footer: %s in %s" % [lvl.hud._result.get_global_rect(), available])
+	for button: Button in lvl.hud._result.find_children("*", "Button", true, false):
+		if button.is_visible_in_tree():
+			check(available.encloses(button.get_global_rect()), "%s remains visible above footer" % button.text)
+	lvl.free()
+	Monetization.use_defaults()
+	tree.root.size = old_size
+
+
+func test_result_post_after_held_board_forces_fresh_preview_without_regressing_standing() -> void:
+	var net := _result_setup()
+	net.hold("GET", "/boards/")
+	var lvl := _result_level()
+	lvl.finish(true)
+	var points := Progress.best_points(lvl.level_id)
+	net.answer("POST", "/scores", 200, {"rank": 3, "points": points, "best": true})
+	net.release_hold("POST", "/scores")
+	check(lvl.hud.result_text().contains("Rank #3") and not lvl.hud.result_text().contains(" of 30"), "POST standing appears immediately without inventing a still-unknown population")
+	net.hold("GET", "/boards/")
+	net.release_hold("GET", "/boards/")
+	check(net.count("GET", "/boards/") == 2 and Community.cached_board(lvl.level_sha256).is_empty() and lvl.hud.result_text().contains("Rank #3") and not lvl.hud.result_text().contains(" of 30"), "old board is discarded while a forced post-upload read waits; provisional rank gains no stale population")
+	# Three higher scores now exist: a competitor arrived after the POST reported rank 3.
+	var fresh := {"level": {"kind": "official", "name": "Launch"}, "rows": [], "you": null, "count": 31, "quantiles": [1180, 1200, 1240, 1260, 1300, 1320, 1360, 1380, 1420, 1440, 1480, 1520, 1540, 1580, 1600, 1640, 1660, 1700, 1800, 2000, 2100]}
+	var scores: Array = [2100, 2000, 1900, 1800] + range(1700, 1160, -20)
+	for i in scores.size():
+		var row := {"rank": i + 1, "player": {"id": "p_me" if i == 3 else "pilot_%d" % i, "name": "My Pilot" if i == 3 else "Pilot %02d" % (i + 1)}, "points": scores[i], "seconds": 30.0 + i}
+		if i < 20:
+			fresh.rows.append(row)
+		if i == 3:
+			fresh.you = row
+	net.answer("GET", "/boards/", 200, fresh)
+	net.release_hold("GET", "/boards/")
+	var preview := lvl.hud.find_child("LeaderboardPreview", true, false)
+	var text := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
+	check(text.contains("Rank #4 of 31") and not text.contains("Rank #25"), "fresh own row replaces the pre-upload preview")
+	check(lvl.hud.result_text().contains("Rank #4 of 31") and not lvl.hud.result_text().contains("Rank #3"), "fresh post-upload board supersedes the provisional POST rank in the HUD too")
+
+
+func _campaign_sha(id := "level_01") -> String:
+	return LevelFormat.sha256(LevelFormat.read(Progress.LEVELS_DIR + id + LevelFormat.EXTENSION))
+
+
+func _campaign_best(sha: String, points := 700) -> void:
+	Progress.record_win("level_01", points, 30.0, 25.0, 25.0)
+	var run := Demo.new()
+	run.level_sha256 = sha
+	run.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 25.0, "hull": 25.0}, {})
+	run.add_event(Demo.Event.GOAL_REACHED)
+	Progress.save_best_demo("level_01", run)
+
+
+func _campaign_badge(main: Node) -> Button:
+	return stage_rows(main)["Level 01"].find_child("BoardBadge", true, false) as Button
+
+
+func test_campaign_cached_exact_estimate_and_no_cache_badges() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	net.hold("GET", "/boards/" + sha)
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	check(_campaign_badge(main) != null and not _campaign_badge(main).visible, "no cached board means no badge")
+	net.release_hold("GET", "/boards/" + sha)
+	await frames(3)
+	check(_campaign_badge(main).text == "#25" and _campaign_badge(main).tooltip_text.contains("cached"), "matching local best uses the cached exact rank")
+	var payload := _result_payload()
+	payload.you = null
+	net.answer("GET", "/boards/" + sha, 200, payload)
+	await Community.board(sha, true)
+	await frames(2)
+	check(_campaign_badge(main).text.begins_with("~top ") and _campaign_badge(main).text.contains("%"), "unposted same-version best uses shared percentile estimate")
+
+
+func test_opening_campaign_refreshes_only_completed_once_per_hash_hour() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	for i in 2:
+		var main := menu(MAIN.Page.OFFICIAL)
+		world.add_child(main)
+		await frames(2)
+		main.free()
+	check(net.count("GET", "/boards/") == 1 and net.count("GET", "/boards/" + sha) == 1, "opening twice refreshes only the completed current hash once")
+	_campaign_cache_age(sha, Community.BOARD_CACHE_SECONDS + 1, Community.BOARD_CACHE_SECONDS + 1)
+	MAIN._board_attempts["p_me|" + sha] = Time.get_ticks_msec() - Community.BOARD_CACHE_SECONDS * 1000 - 1
+	var reopened := menu(MAIN.Page.OFFICIAL)
+	world.add_child(reopened)
+	await frames(2)
+	check(net.count("GET", "/boards/" + sha) == 2, "expired cache refreshes on the next opening")
+
+
+func test_campaign_board_updates_in_place_and_board_return_preserves_selection() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	net.hold("GET", "/boards/" + sha)
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(2)
+	var selected: Button = stage_rows(main)["Level 02"]
+	selected.grab_focus()
+	var row: Button = stage_rows(main)["Level 01"]
+	net.release_hold("GET", "/boards/" + sha)
+	await frames(3)
+	check(stage_rows(main)["Level 01"] == row and focused() == selected, "async badge update preserves existing rows and selection")
+	var badge := _campaign_badge(main)
+	badge.grab_focus()
+	badge.pressed.emit()
+	await frames(2)
+	var sheets := main.find_children("*", "Overlay", true, false)
+	check(sheets.size() == 1, "campaign badge opens the shared board")
+	if sheets.is_empty():
+		return
+	sheets[0].close()
+	await frames(2)
+	check(focused() == badge and stage_rows(main)["Level 01"] == row, "return restores the exact campaign board action")
+
+
+func test_campaign_current_file_hash_never_uses_old_revision_rank_or_idbest() -> void:
+	var net := _result_setup()
+	var current := _campaign_sha()
+	var old := "b".repeat(64)
+	_campaign_best(old, 9999)
+	await Community.board(old)
+	var payload := _result_payload()
+	payload.you = null
+	net.answer("GET", "/boards/" + current, 200, payload)
+	net.hold("GET", "/boards/" + current)
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	check(not _campaign_badge(main).visible, "same filename with changed content does not adopt the old hash's exact rank")
+	net.release_hold("GET", "/boards/" + current)
+	await frames(3)
+	check(not _campaign_badge(main).visible, "old id best cannot produce an estimate for a new file revision")
+	check(net.count("GET", "/boards/" + current) == 1, "requests use LevelFormat.sha256 of the bundled current file")
+
+
+func test_training_and_desktop_lists_have_no_boards_requests_or_badges() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	await Community.board(sha)
+	net.requests.clear()
+	var training := menu(MAIN.Page.TRAINING)
+	world.add_child(training)
+	await frames(2)
+	check(training.find_children("BoardBadge", "Button", true, false).is_empty() and net.requests.is_empty(), "training neither displays nor fetches boards")
+	training.free()
+	(Community.platform as FakePlatform).is_available = false
+	var desktop := menu(MAIN.Page.OFFICIAL)
+	world.add_child(desktop)
+	await frames(2)
+	check(desktop.find_children("BoardBadge", "Button", true, false).is_empty() and net.requests.is_empty(), "desktop ignores even a populated board cache")
+
+
+func test_campaign_identity_change_invalidates_private_badge_immediately() -> void:
+	var net := _result_setup()
+	_campaign_best("b".repeat(64))
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(2)
+	check(_campaign_badge(main).text == "#25", "setup: current-hash remote best is exact even without a matching local replay")
+	_result_owner("")
+	Community.identity_changed.emit("")
+	check(not _campaign_badge(main).visible, "sign-out immediately removes private exact rank")
+	check(net.count("POST", "/session") == 0, "identity cancellation never signs back in")
+
+
+func test_campaign_unknown_owner_open_is_cache_only_without_sign_in_or_network() -> void:
+	var net := _result_setup("")
+	_campaign_best(_campaign_sha())
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(3)
+	check(net.requests.is_empty(), "unknown-owner Official opening sends no nonce, session or board request")
+	check((Community.platform as FakePlatform).sign_ins == 0, "unknown-owner Official opening never launches platform sign-in")
+	check(not _campaign_badge(main).visible, "without cache the unknown owner sees no badge")
+
+
+func test_campaign_long_title_and_badge_fit_above_reserved_footer() -> void:
+	_result_setup()
+	_campaign_best(_campaign_sha())
+	Monetization.platform = load("res://tests/support/fake_monetization_platform.gd").new()
+	Monetization.start()
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	Monetization.set_surface(main, true)  # stress the same frame with a reserved footer
+	await frames(4)
+	var row: Button = stage_rows(main)["Level 01"]
+	var title := row.find_child("Title", true, false) as Label
+	title.text = "Level 01 · An extremely long orbital slalom through an abandoned interstellar shipyard"
+	await frames(3)
+	var frame: Control = main._column.get_parent()
+	var scroll: ScrollContainer = main._levels.get_parent()
+	check(frame.get_global_rect().encloses(scroll.get_global_rect()), "campaign scroll stays inside the footer-reserved frame")
+	check(main._column.global_position.y >= frame.global_position.y, "the title is not pushed above the screen")
+	check(row.get_global_rect().encloses(_campaign_badge(main).get_global_rect()), "badge stays inside the long-title row")
+
+
+func test_campaign_failed_auto_refresh_is_hourly_but_manual_board_bypasses_cooldown() -> void:
+	for status in [503, 0]:
+		var net := _result_setup()
+		var sha := _campaign_sha()
+		for file in DirAccess.get_files_at(Community.dir):
+			if file.begins_with("board_") and file.ends_with(sha + ".json"):
+				DirAccess.remove_absolute(Community.dir + file)
+		_campaign_best(sha)
+		net.answer("GET", "/boards/" + sha, status, {"error": "Unavailable"})
+		for i in 2:
+			var main := menu(MAIN.Page.OFFICIAL)
+			world.add_child(main)
+			await frames(2)
+			main.free()
+		check(net.count("GET", "/boards/" + sha) == 1, "%d: failed automatic attempt counts toward the hourly limit" % status)
+		MAIN._board_attempts["p_me|" + sha] = Time.get_ticks_msec() - Community.BOARD_CACHE_SECONDS * 1000 - 1
+		net.answer("GET", "/boards/" + sha, status, {"error": "Unavailable"})
+		var later := menu(MAIN.Page.OFFICIAL)
+		world.add_child(later)
+		await frames(2)
+		check(net.count("GET", "/boards/" + sha) == 2, "%d: automatic refresh tries again after one hour" % status)
+		var sheet := Leaderboard.open(later, sha, "Launch", 700)
+		await frames(2)
+		check(net.count("GET", "/boards/" + sha) == 3, "%d: explicit board opening is not blocked by automatic cooldown" % status)
+		var refresh := sheet.find_child("RefreshBoard", true, false) as Button
+		refresh.pressed.emit()
+		await frames(2)
+		check(net.count("GET", "/boards/" + sha) == 4, "%d: explicit Refresh always bypasses the automatic cooldown" % status)
+		later.free()
+
+
+func test_campaign_automatic_cooldown_is_scoped_to_owner_and_preserved_on_return() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	net.answer("GET", "/boards/" + sha, 503, {"error": "Unavailable"})
+	var first := menu(MAIN.Page.OFFICIAL)
+	world.add_child(first)
+	await frames(2)
+	first.free()
+	_result_owner("p_other")
+	var second := menu(MAIN.Page.OFFICIAL)
+	world.add_child(second)
+	await frames(2)
+	second.free()
+	check(net.count("GET", "/boards/" + sha) == 2, "another owner has an independent automatic attempt")
+	_result_owner("p_me")
+	var returned := menu(MAIN.Page.OFFICIAL)
+	world.add_child(returned)
+	await frames(2)
+	check(net.count("GET", "/boards/" + sha) == 2, "switching back does not reset the first owner's failed-attempt cooldown")
+
+
+func test_campaign_known_owner_expired_session_may_reauthenticate() -> void:
+	var net := _result_setup()
+	_campaign_best(_campaign_sha())
+	var session := ConfigFile.new()
+	session.load(Community.session_path)
+	session.set_value("session", "expires", 0)
+	session.save(Community.session_path)
+	net.answer("POST", "/session", 200, {"token": "fresh", "player": {"id": "p_me", "name": "My Pilot"}})
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(3)
+	check((Community.platform as FakePlatform).sign_ins == 1 and net.count("POST", "/session") == 1, "known-owner expired session retains the client's same-owner reauthentication policy")
+	check(net.count("GET", "/boards/") == 1, "known-owner opening refreshes the completed board once")
+
+
+func test_campaign_unknown_owner_uses_public_cache_and_only_explicit_board_signs_in() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	await Community.board(sha)
+	_result_owner("")
+	net.requests.clear()
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(2)
+	check(net.requests.is_empty() and (Community.platform as FakePlatform).sign_ins == 0, "unknown owner sees public cached standing without any automatic sign-in/network")
+	var badge := _campaign_badge(main)
+	check(badge.visible and badge.text.begins_with("~top "), "unknown owner can use the cached public distribution, never the prior private rank")
+	net.answer("POST", "/session", 200, {"token": "fresh", "player": {"id": "p_me", "name": "My Pilot"}})
+	badge.pressed.emit()
+	await frames(3)
+	check((Community.platform as FakePlatform).sign_ins == 1 and net.count("POST", "/session") == 1, "explicit board action may initiate sign-in")
+
+
+func _campaign_cache_age(sha: String, public_seconds: int, private_seconds: int) -> void:
+	for file in DirAccess.get_files_at(Community.dir):
+		if file.begins_with("board_") and file.ends_with(sha + ".json"):
+			var cached: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Community.dir + file))
+			var age := private_seconds if file.begins_with("board_you_") else public_seconds
+			cached.fetched_at = int(Time.get_unix_time_from_system()) - age
+			var saved := FileAccess.open(Community.dir + file, FileAccess.WRITE)
+			saved.store_string(JSON.stringify(cached))
+			saved.close()
+
+
+func test_campaign_fresh_cache_hit_does_not_delay_private_cache_expiry_refresh() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	await Community.board(sha)
+	_campaign_cache_age(sha, 0, 59 * 60)  # effective freshness is the older owner's private answer
+	net.requests.clear()
+	var fresh := menu(MAIN.Page.OFFICIAL)
+	world.add_child(fresh)
+	await frames(2)
+	check(net.requests.is_empty(), "59-minute-old owner cache reuses the board without network")
+	fresh.free()
+	_campaign_cache_age(sha, 0, Community.BOARD_CACHE_SECONDS + 1)
+	net.answer("GET", "/boards/" + sha, 503, {"error": "Unavailable"})
+	var expired := menu(MAIN.Page.OFFICIAL)
+	world.add_child(expired)
+	await frames(2)
+	check(net.count("GET", "/boards/" + sha) == 1, "private cache expiry refreshes immediately despite the recent public-cache-only opening")
+	expired.free()
+	var failed := menu(MAIN.Page.OFFICIAL)
+	world.add_child(failed)
+	await frames(2)
+	check(net.count("GET", "/boards/" + sha) == 1, "the actual failed network attempt, unlike a cache hit, consumes the automatic cooldown")

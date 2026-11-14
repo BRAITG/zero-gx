@@ -8,9 +8,9 @@ This policy covers the game, its optional community features, and optional adver
 
 ## Playing without signing in
 
-You can play the official levels and the training stages, and use the level editor, without signing in. These offline activities are not sent to Zero-GX's servers. In a monetized Google Play build, advertising and purchase verification can use the internet without a community account, as described below.
+You can play the official levels and the training stages, and use the level editor, without signing in. Without a known Zero-GX community account, these activities are not sent to Zero-GX's servers. Once you have signed in to community features, new personal-best campaign runs are uploaded as described below. In a monetized Google Play build, advertising and purchase verification can use the internet without a community account, as described below.
 
-On Android, Google Play Games may sign you in to Play Games automatically when the game starts. That is Google's own service, and [Google's privacy policy](https://policies.google.com/privacy) applies to it. This does not sign you in to Zero-GX's community features or send your Play Games identity to Zero-GX's servers. Community sign-in happens when you open Community or submit a level.
+On Android, Google Play Games may sign you in to Play Games automatically when the game starts. That is Google's own service, and [Google's privacy policy](https://policies.google.com/privacy) applies to it. This does not sign you in to Zero-GX's community features or send your Play Games identity to Zero-GX's servers. Community sign-in happens when you open Community, submit a level or explicitly open a leaderboard; winning a campaign stage without a known community account never starts sign-in.
 
 Zero-GX is also available for Windows, macOS and Linux. Those versions have no community features: they never sign in, never connect to our servers, and record no play history or difficulty ratings. Levels you import or export there are files you choose, and they go only where you put them.
 
@@ -40,7 +40,7 @@ Use **Restore purchases** with the Google Play account that owns the purchase if
 
 ## Community features
 
-Leaderboards, the player ranking, shared levels, likes, reports, difficulty ratings and community play statistics are online features, available only in the Google Play build of the Android game. To use them you sign in with Google Play Games. Opening Community or submitting a level starts that community sign-in. Advertising and purchase verification, when enabled, are separate and do not require it.
+Leaderboards, the player ranking, shared levels, likes, reports, difficulty ratings and community play statistics are online features, available only in the Google Play build of the Android game. To use them you sign in with Google Play Games. Opening Community, submitting a level or explicitly opening a leaderboard can start that community sign-in. Advertising and purchase verification, when enabled, are separate and do not require it.
 
 ### What we collect
 
@@ -53,6 +53,8 @@ Leaderboards, the player ranking, shared levels, likes, reports, difficulty rati
 | Levels you submit: the level with its title and hint, a recording of you finishing it, and the difficulty you suggest for it | To review the level, set its difficulty label and share it with other players. |
 | Your likes, difficulty ratings and reports, including the reason you write in a report | To rank community levels, show how hard players find them, and moderate them. |
 | Your community play history: for each version of a community level you play, a random attempt ID, the version's hash, when the attempt started and ended, and whether it was cleared, failed or abandoned | To count how many players have started and cleared each version, and to decide when you may rate its difficulty. |
+
+For a known signed-in community account, a new personal-best winning run on a campaign or published community level automatically queues its score details and recording for upload. Pending uploads are saved on your device for that account and retried when connected; they are never sent as another account's runs. A campaign win without a known account is not queued for an account that signs in later. Training, editor Test and Publish flights, and replay playback never upload scores.
 
 Your play history is also used to estimate each level's difficulty with a model of player skill. The skill estimates are temporary and are neither stored nor shown.
 
@@ -74,6 +76,7 @@ The community service does not collect your email address, contacts, precise loc
 Other signed-in players can see:
 
 - leaderboards, with your display name, your Zero-GX player ID, your score details and, while we keep it, the recording of your best run;
+- aggregate score distributions for each level version: the number of ranked players and score quantiles, used to estimate where an unposted local best might stand; these aggregates do not identify individual players;
 - the player ranking, with your display name and total points;
 - the list of community levels, with the author's display name, the number of likes, and the level's difficulty: the label a moderator has set, and the community difficulty with how many players rated it;
 - for each version of a community level, aggregate figures only: its Rated difficulty label and the range it covers, the clear curve (the share of players who had cleared it within each number of tries), how many players have started it and how many have cleared it, how many have not cleared it (and how many of those after 20 or more tries), and whether the players so far were stronger or weaker than typical.
@@ -103,7 +106,7 @@ The community data is shared only with the services and audiences described in t
 
 We keep your community data for as long as you have a Zero-GX community account, or until you delete it. This includes your play history, the per-level summaries computed from it and your difficulty ratings. A run recording is deleted as soon as you post a better score on the same level. Recordings of runs in a level's top 10 are kept; every other recording is deleted 14 days after you post it, and the score stays without it. A sign-in session lasts 7 days. Abuse-prevention counters are deleted within 2 days.
 
-On your device, the play history and ratings for your account stay in the game's private storage until you delete your community account or uninstall the game.
+On your device, the play history and ratings for your account stay in the game's private storage until you delete your community account or uninstall the game. Pending score uploads include account-owned recording copies; they are removed when acknowledged, replaced by a newer best, permanently rejected or erased with the account.
 
 ## Deleting your data
 
@@ -111,7 +114,7 @@ You can delete your community account at any time in the game: open Community, c
 
 Community deletion does not erase Google's advertising or purchase records, cancel your purchase, or remove the game's independent ad-free entitlement. Privacy choices and Google's privacy controls apply to Google-held information. Uninstalling removes the game's local cache, not Google's purchase record.
 
-Deleting your community account removes your Google Play Games player ID, your display name, your scores and run recordings, your likes, your reports, your play history and your difficulty ratings from our servers. Run recordings are removed from storage within a day. The app also removes the play history and ratings it holds for that account on your device, including any not yet sent, so unsent activity from a deleted account cannot restore its history under a new account. The play figures for each level are recalculated without the deleted records within 10 minutes.
+Deleting your community account removes your Google Play Games player ID, your display name, your scores and run recordings, your likes, your reports, your play history and your difficulty ratings from our servers. Run recordings are removed from storage within a day. The app also removes the play history, ratings and pending score uploads (including their recording copies) it holds for that account on your device, so unsent activity from a deleted account cannot restore its history or scores under a new account. Score distributions exclude the deleted scores on the next board request; the play figures for each level are recalculated without the deleted records within 10 minutes. Other devices may still show previously cached public board data until refreshed.
 
 The levels you submitted stay in the game and in the public repository, shown as by "Deleted player". The random Zero-GX player ID stays on them and on the reports you filed, but nothing links it to you any more. The difficulty you suggested for them, and any label a moderator set, stay with each level. Your display name stays in the history of the public level list until we rewrite that history. If you ask, we rewrite it, and we also remove your levels from the repository and its history. Copies that other people made under the level licence, and copies kept by third-party archives, are outside our control.
 

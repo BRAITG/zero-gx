@@ -7,6 +7,7 @@ signal menu_requested
 signal next_requested
 signal replay_requested
 signal rate_requested
+signal board_requested
 
 const INTRO_FADE := 0.6  # s
 const INTRO_WIDTH := 860.0  # px; the hint wraps inside this
@@ -65,6 +66,10 @@ var _parts := {}  # ScoreIcon.Kind -> value Label
 var _next: Button
 var _replay: Button
 var _rate: Button
+var _board: Button
+var _standing: Label
+var _board_preview: VBoxContainer
+var _board_scroll: ScrollContainer
 var _time: Label
 var _arrow: Control
 var _intro: PanelContainer
@@ -157,6 +162,8 @@ func _ready() -> void:
 	_result_frame = Style.menu_frame(self)
 	_result = PanelContainer.new()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
+	_result.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_result.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_result.hide()
 	_result_frame.add_child(_result)
 	var column := VBoxContainer.new()
@@ -172,9 +179,12 @@ func _ready() -> void:
 	_result_name.add_theme_color_override("font_color", Style.INK_DIM)
 	column.add_child(_result_name)
 	column.add_child(_result_label)
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 24)
+	column.add_child(body)
 	_score = VBoxContainer.new()
 	_score.add_theme_constant_override("separation", 6)
-	column.add_child(_score)
+	body.add_child(_score)
 	_total = Label.new()
 	_total.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_total.add_theme_font_override("font", Style.display_font)
@@ -206,15 +216,36 @@ func _ready() -> void:
 		cell.add_child(value)
 		_parts[kind] = value
 		parts.add_child(cell)
+	_standing = Label.new()
+	_standing.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_standing.add_theme_font_size_override("font_size", 22)
+	_standing.add_theme_color_override("font_color", Style.INK_DIM)
+	_standing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_standing.custom_minimum_size.x = 340
+	_standing.hide()
+	_score.add_child(_standing)
+	_board_scroll = ScrollContainer.new()
+	_board_scroll.custom_minimum_size = Vector2(700, 440)
+	_board_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_board_scroll.hide()
+	body.add_child(_board_scroll)
+	_board_preview = VBoxContainer.new()
+	_board_preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_board_scroll.add_child(_board_preview)
 	_detail = Label.new()
 	_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_detail.add_theme_font_size_override("font_size", 24)
 	column.add_child(_detail)
-	_next = _button(column, next_text, next_requested.emit)
-	_button(column, "Retry", retry_requested.emit)
-	_replay = _button(column, "Replay", replay_requested.emit)
-	_rate = _button(column, "Rate level", rate_requested.emit)
-	_button(column, menu_text, menu_requested.emit)
+	var actions := HBoxContainer.new()
+	actions.alignment = BoxContainer.ALIGNMENT_CENTER
+	actions.add_theme_constant_override("separation", 12)
+	column.add_child(actions)
+	_next = _button(actions, next_text, next_requested.emit)
+	_button(actions, "Retry", retry_requested.emit)
+	_replay = _button(actions, "Replay", replay_requested.emit)
+	_rate = _button(actions, "Rate level", rate_requested.emit)
+	_board = _button(actions, "Board", board_requested.emit)
+	_button(actions, menu_text, menu_requested.emit)
 	_pause = PauseCard.new()
 	_pause.process_mode = Node.PROCESS_MODE_ALWAYS
 	_pause.resume_requested.connect(toggle_pause)
@@ -319,12 +350,26 @@ func show_result(won: bool, result: Dictionary) -> void:
 	_next.visible = won and result.has_next
 	_replay.visible = can_replay
 	_rate.visible = result.get("can_rate", false)
+	_board.visible = won and result.get("can_board", false)
+	_board_scroll.visible = _board.visible
+	if not _board.visible:
+		set_standing("")
 	_result.reset_size()
 	_result.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 	_result.show()
 	Monetization.set_surface(self, true)
 	get_tree().create_timer(RESULT_FOCUS_DELAY).timeout.connect(_focus_result)
 
+
+
+## Replaces only the online status, leaving score animation, medals and focus untouched.
+func set_standing(text: String) -> void:
+	_standing.text = text
+	_standing.visible = text != ""
+
+
+func set_board(board: Dictionary, local_points: int) -> void:
+	Leaderboard.preview(_board_preview, board, local_points)
 
 func _focus_result() -> void:
 	if not is_inside_tree():
@@ -368,6 +413,8 @@ func result_text() -> String:
 			lines.append(_parts[kind].text)
 	else:
 		lines.append(_detail.text)
+	if _standing.visible:
+		lines.append(_standing.text)
 	return "\n".join(lines)
 
 

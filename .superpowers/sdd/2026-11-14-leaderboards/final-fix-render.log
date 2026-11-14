@@ -1,0 +1,104 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+OpenGL API 4.1 Metal - 91.7 - Compatibility - Using Device: Apple - Apple M1 Pro
+
+WARNING: Camera2D overridden to physics process mode due to use of physics interpolation.
+     at: _update_process_callback (scene/2d/camera_2d.cpp:88)
+     GDScript backtrace (most recent call first):
+         [0] _ready (res://scenes/ship.gd:131)
+         [1] _result_level (res://tests/test_flow.gd:759)
+         [2] _run (res://tools/render_final_fix.gd:30)
+PNG res://.superpowers/sdd/2026-11-14-leaderboards/final-fix-best-false-fallback.png size=(1280, 720) result=[P: (90.0, 6.5), S: (1100.0, 641.0)] footer=66.0
+HUD best-false-fallback Level 1 · Launch
+Course clear
+1800
+New best!
+Medals: Bronze, Silver, Gold
++1500
++300
+−0
+Estimate: would be in the top 20 (cached)
+Your ranked best · Rank #2 of 30 (cached) · 9000 points
+PREVIEW best-false-fallback Offline · cached standings
+No connection
+Top 5
+Rank
+Name
+Points
+Time
+#1
+Pilot 01
+10000
+12.50 s
+#2
+My Pilot
+9000
+30.25 s
+#3
+Pilot 03
+2800
+14.50 s
+#4
+Pilot 04
+2700
+15.50 s
+#5
+Pilot 05
+2600
+16.50 s
+You
+Local best · 1800 points
+Estimate: would be in the top 20 (cached)
+Your ranked best · Rank #2 of 30 (cached)
+#2
+My Pilot
+9000
+30.25 s
+REQUESTS best-false-fallback POST=1 GET=2
+PNG res://.superpowers/sdd/2026-11-14-leaderboards/final-fix-current-hash.png size=(1280, 720) result=[P: (90.0, 6.5), S: (1100.0, 641.0)] footer=66.0
+HUD current-hash Level 1 · Launch
+Course clear
+1800
+Medals: Bronze, Silver, Gold
++1500
++300
+−0
+Estimate: would be in the top 20
+Your ranked best · Rank #2 of 30 · 9000 points
+PREVIEW current-hash Top 5
+Rank
+Name
+Points
+Time
+#1
+Pilot 01
+10000
+12.50 s
+#2
+My Pilot
+9000
+30.25 s
+#3
+Pilot 03
+2800
+14.50 s
+#4
+Pilot 04
+2700
+15.50 s
+#5
+Pilot 05
+2600
+16.50 s
+You
+Local best · 1800 points
+Estimate: would be in the top 20
+Your ranked best · Rank #2 of 30
+#2
+My Pilot
+9000
+30.25 s
+REQUESTS current-hash POST=0 GET=1
+WARNING: 6 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 2 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)

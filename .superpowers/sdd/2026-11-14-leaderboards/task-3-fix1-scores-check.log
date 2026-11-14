@@ -1,0 +1,20 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+SCRIPT ERROR: Parse Error: Cannot infer the type of "settled" variable because the value doesn't have a set type.
+          at: GDScript::reload (res://scripts/community.gd:1084)
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+          at: GDScript::reload (res://scenes/level.gd:0)
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+          at: GDScript::reload (res://scripts/progress.gd:0)
+ERROR: Failed to load script "res://scripts/progress.gd" with error "Compilation failed".
+   at: load (modules/gdscript/gdscript_resource_format.cpp:46)
+ERROR: Failed to instantiate an autoload, script 'res://scripts/community.gd' does not inherit from 'Node'.
+   at: start (main/main.cpp:4539)
+ERROR: Node not found: "Community" (relative to "/root").
+   at: get_node (scene/main/node.cpp:1976)
+   GDScript backtrace (most recent call first):
+       [0] _run (res://tests/run_tests.gd:63)
+SCRIPT ERROR: Invalid assignment of property or key 'dir' with value of type 'String' on a base object of type 'null instance'.
+          at: _run (res://tests/run_tests.gd:64)
+          GDScript backtrace (most recent call first):
+              [0] _run (res://tests/run_tests.gd:64)

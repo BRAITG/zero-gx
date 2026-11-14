@@ -7,7 +7,8 @@ import { PLAYER_ROW, type Player, playerFromRow, requireIntegrity, requirePlayer
 import { base64url, randomId } from "./util";
 
 const SCORES_PER_MINUTE = 30;
-const BOARD_SIZE = 100;
+const BOARD_MAX = 100;
+const BOARD_DEFAULT = 20;
 const SHA256 = /^[0-9a-f]{64}$/;
 const DEMO_KEY = /^demos\/[0-9a-f]{64}\/p_[a-z0-9]{16}\/[A-Za-z0-9_-]{8,64}\.demo\.gz$/;
 
@@ -123,6 +124,13 @@ const BOARD_ROW = `SELECT (SELECT COUNT(*) FROM scores o
     WHERE o.sha256 = s.sha256 AND o.player NOT IN (SELECT id FROM players WHERE banned = 1) AND o.points > s.points) + 1 AS rank,
   s.player AS id, p.name, s.points, s.fuel, s.hull, s.seconds, s.demo
   FROM scores s JOIN players p ON p.id = s.player WHERE s.sha256 = ? AND p.banned = 0`;
+// Population of the board: every unbanned score, not only the listed rows.
+const BOARD_COUNT = "SELECT COUNT(*) AS count FROM scores s JOIN players p ON p.id = s.player WHERE s.sha256 = ? AND p.banned = 0";
+// Nearest-rank quantiles at 0, 5, ..., 100%: the score at rank max(1, ceil(k*n/20)) of the ascending scores.
+const BOARD_QUANTILES = `WITH RECURSIVE steps(k) AS (SELECT 0 UNION ALL SELECT k + 1 FROM steps WHERE k < 20),
+  ranked AS (SELECT s.points, ROW_NUMBER() OVER (ORDER BY s.points) AS rn, COUNT(*) OVER () AS n
+    FROM scores s JOIN players p ON p.id = s.player WHERE s.sha256 = ? AND p.banned = 0)
+  SELECT steps.k, ranked.points FROM steps JOIN ranked ON ranked.rn = MAX(1, (steps.k * ranked.n + 19) / 20) ORDER BY steps.k`;
 
 interface BoardRow {
   rank: number;
@@ -137,22 +145,35 @@ interface BoardRow {
 
 const boardEntry = ({ id, name, ...rest }: BoardRow) => ({ rank: rest.rank, player: { id, name }, points: rest.points, fuel: rest.fuel, hull: rest.hull, seconds: rest.seconds, demo: rest.demo || null });
 
+/** The `limit` query parameter: BOARD_DEFAULT when absent, else its value; null unless a whole number from 1 to BOARD_MAX. */
+function boardLimit(request: Request): number | null {
+  const raw = new URL(request.url).searchParams.get("limit");
+  if (raw === null) return BOARD_DEFAULT;
+  const limit = Number(raw);
+  return /^\d+$/.test(raw) && limit >= 1 && limit <= BOARD_MAX ? limit : null;
+}
+
 export async function getBoard(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
   const playerId = await sessionPlayerId(request, env);
+  const limit = boardLimit(request);
+  // A malformed limit is refused after the auth and level checks, so it never masks a 401, 403 or 404.
   const sha256 = params.sha256!;
-  const [players, official, community, top, mine] = (
+  const [players, official, community, top, mine, counted, quantiles] = (
     await env.DB.batch([
       env.DB.prepare(PLAYER_ROW).bind(playerId),
       env.DB.prepare(OFFICIAL).bind(sha256),
       env.DB.prepare(COMMUNITY).bind(sha256),
-      env.DB.prepare(`${BOARD_ROW} ORDER BY s.points DESC, s.posted ASC, s.player ASC LIMIT ${BOARD_SIZE}`).bind(sha256),
+      env.DB.prepare(`${BOARD_ROW} ORDER BY s.points DESC, s.posted ASC, s.player ASC LIMIT ?`).bind(sha256, limit ?? BOARD_DEFAULT),
       env.DB.prepare(`${BOARD_ROW} AND s.player = ?`).bind(sha256, playerId),
+      env.DB.prepare(BOARD_COUNT).bind(sha256),
+      env.DB.prepare(BOARD_QUANTILES).bind(sha256),
     ])
-  ).map((result) => result.results) as [Player[], OfficialRow[], CommunityRow[], BoardRow[], BoardRow[]];
+  ).map((result) => result.results) as [Player[], OfficialRow[], CommunityRow[], BoardRow[], BoardRow[], { count: number }[], { k: number; points: number }[]];
   playerFromRow(players[0]);
   const level = SHA256.test(sha256) ? levelRef(env, official[0], community[0]) : null;
   if (!level) throw notFound();
-  return Response.json({ level: { kind: level.kind, name: level.name }, rows: top.map(boardEntry), you: mine[0] ? boardEntry(mine[0]) : null });
+  if (limit === null) throw new HttpError(400, `limit must be 1 to ${BOARD_MAX}.`);
+  return Response.json({ level: { kind: level.kind, name: level.name }, rows: top.map(boardEntry), you: mine[0] ? boardEntry(mine[0]) : null, count: counted[0]!.count, quantiles: quantiles.map((q) => q.points) });
 }
 
 export async function getDemo(request: Request, env: Env, params: Record<string, string>): Promise<Response> {

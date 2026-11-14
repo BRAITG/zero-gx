@@ -38,6 +38,17 @@ var _done := false
 var _attempt := ""
 ## Whether the run's live-start decision was made. It is made once, even when nothing was recorded.
 var _start_checked := false
+var _result_generation := 0
+var _result_account := ""
+var _result_sha := ""
+var _result_revision := 0
+var _result_points := -1
+var _result_board := {}
+var _result_score := {}
+var _result_error := ""
+var _board_reading := false
+var _board_again := false
+var _board_force := false
 
 
 func _ready() -> void:
@@ -81,6 +92,9 @@ func _ready() -> void:
 	hud.replay_requested.connect(_replay)
 	hud.rate_requested.connect(_rate)
 	hud.next_requested.connect(_next)
+	hud.board_requested.connect(_open_board)
+	Community.board_updated.connect(_board_updated)
+	Community.identity_changed.connect(_result_identity_changed)
 	goal.reached.connect(finish.bind(true))
 	ship.destroyed.connect(_ship_lost)
 	ship.stranded.connect(_ship_stranded)
@@ -110,6 +124,7 @@ func _community_sha() -> String:
 
 ## Leaving a live run (Retry, Menu, Back, a scene change or quitting) abandons it once. Only the record is saved here: the upload waits for a later flush, so no request starts while the tree is leaving.
 func _exit_tree() -> void:
+	_result_generation += 1
 	if _attempt != "" and not _done and is_instance_valid(Community):
 		_done = true
 		Community.record_play_finish(_attempt, "abandoned")
@@ -247,8 +262,126 @@ func finish(won: bool) -> void:
 	result.can_rate = sha != "" and Community.play_progress(sha).can_offer_rating
 	if demo and result.get("new_best", false) and not level_id.begins_with(MyLevels.PREFIX):  # a draft's best demo would never be read
 		Progress.save_best_demo(level_id, demo)
+	result.can_board = won and _board_eligible()
+	if result.can_board:
+		_result_generation += 1
+		_result_account = Community.player_id()
+		_result_sha = level_sha256
+		var best_run := Progress.best_demo(level_id)
+		_result_points = Progress.best_points(level_id) if best_run != null and best_run.level_sha256 == _result_sha else int(result.points)
+		_result_board = Community.cached_board(_result_sha)
+		if result.new_best and demo != null and Community.signed_in() and _result_account != "":
+			_result_error = Community.queue_score(level_id, demo)
+			if _result_error == "":
+				_result_score = Community.score_state(_result_sha)
+				_result_revision = int(_result_score.get("revision", 0))
+				Community.score_result.connect(_score_result.bind(_result_generation))
 	hud.show_result(won, result)
+	if result.can_board:
+		_render_standing()
+		if Community.signed_in() and _result_account != "":
+			_read_result_board()
+		if _result_revision > 0:
+			Community.sync_scores()
+			if _result_score.get("state") == "queued":
+				_result_score = Community.score_state(_result_sha)
+			_render_standing()
 	finished.emit(won)
+
+
+## Frozen editor/viewer previews and training/drafts have no online result surface.
+func _board_eligible() -> bool:
+	return Community.available() and not testing and not publishing and process_mode != PROCESS_MODE_DISABLED and level_sha256 != "" and (level_id in Progress.levels() or level_id == Community.STAGE_PREFIX + level_sha256)
+
+
+func _result_alive() -> bool:
+	return is_inside_tree() and not is_queued_for_deletion() and _done and _result_sha != "" and _result_sha == level_sha256 and _result_points >= 0
+
+
+func _open_board() -> void:
+	if _result_alive() and _board_eligible() and find_children("*", "Overlay", true, false).is_empty():
+		Leaderboard.open(self, _result_sha, display_name(), _result_points)
+
+
+func _board_updated(sha: String) -> void:
+	if _result_alive() and sha == _result_sha:
+		_result_board = Community.cached_board(sha)
+		_render_standing()
+
+
+func _result_identity_changed(_account: String) -> void:
+	if not _result_alive():
+		return
+	_result_generation += 1
+	_result_account = Community.player_id()
+	_result_revision = 0
+	_result_score = {}
+	_result_error = ""
+	_result_board = Community.cached_board(_result_sha)
+	_render_standing()
+
+
+func _score_result(account: String, sha: String, revision: int, result: Dictionary, generation: int) -> void:
+	if not _result_alive() or generation != _result_generation or account != _result_account or account != Community.player_id() or sha != _result_sha or revision != _result_revision or Community.score_state(sha).get("revision") != revision:
+		return
+	_result_score = result.duplicate(true)
+	_render_standing()
+	if result.get("state") == "posted":
+		_read_result_board(true)
+
+
+## Serialize the post-upload refresh after any older held read; never let its pre-upload row win.
+func _read_result_board(force := false) -> void:
+	_board_again = true
+	_board_force = _board_force or force
+	if _board_reading:
+		return
+	_board_reading = true
+	var generation := _result_generation
+	while _board_again and _result_alive() and generation == _result_generation:
+		_board_again = false
+		var fresh := _board_force
+		_board_force = false
+		var board := await Community.board(_result_sha, fresh)
+		if not _result_alive() or generation != _result_generation:
+			break
+		if not _board_again:
+			_result_board = board
+			if fresh and not board.has("error") and not board.get("cached", true):
+				_result_score = {}  # the post-upload board supersedes the provisional POST rank
+			_render_standing()
+	_board_reading = false
+
+
+func _render_standing() -> void:
+	if not _result_alive():
+		return
+	var board := _result_board.duplicate(true)
+	var state: String = _result_score.get("state", "")
+	if state == "posted" and _result_score.get("best", false):
+		# POST points are submitted points; only best:true associates them with the stored-best rank.
+		board["owner"] = _result_account
+		board["you"] = {"rank": _result_score.rank, "points": _result_score.points, "player": {"id": _result_account}}
+		board["cached"] = false
+		board["offline"] = false
+	var lines: Array[String] = []
+	if _result_error != "":
+		lines.append(_result_error)
+	elif state == "posting":
+		lines.append("Posting…")
+	elif state == "queued":
+		lines.append("Posting unavailable this launch" if _result_score.get("denied", false) else "Will post when online")
+		if _result_score.get("error", "") != "":
+			lines.append(_result_score.error)
+	elif state == "dropped":
+		lines.append(_result_score.get("error", "Run could not be posted"))
+	lines.append(Leaderboard.standing(board, _result_points))
+	var you: Variant = board.get("you")
+	var exact := Leaderboard.standing(board, -1)
+	if you is Dictionary and int(you.points) != _result_points and exact != "Not played yet":
+		lines.append("%s · %d points" % [exact, you.points])
+	hud.set_standing("\n".join(lines))
+	hud.set_board(_result_board, _result_points)
 
 
 func _score() -> Dictionary:

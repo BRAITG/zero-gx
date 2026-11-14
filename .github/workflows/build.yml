@@ -282,23 +282,6 @@ jobs:
           tracks: internal
           status: completed
 
-      - name: Register official levels with the community server
-        # Needs the release tag above, so it runs with the publish step. The token is scoped to this step only; a
-        # server outage or a missing secret must not fail the release build.
-        if: ${{ (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)) && vars.COMMUNITY_API != '' }}
-        continue-on-error: true
-        env:
-          ADMIN_TOKEN: ${{ secrets.ADMIN_TOKEN }}
-          COMMUNITY_API: ${{ vars.COMMUNITY_API }}
-        run: |
-          [ -n "$ADMIN_TOKEN" ] || { echo "No ADMIN_TOKEN; skipping."; exit 0; }
-          levels=$(sha256sum levels/level_*.json | jq -R -s -c 'split("\n")[:-1] | map(split("  ") | {name: (.[1] | ltrimstr("levels/") | rtrimstr(".json")), sha256: .[0]})')
-          jq -n -c --arg release "prototype-r${GITHUB_RUN_NUMBER}" --argjson levels "$levels" '{release: $release, levels: $levels}' > "$RUNNER_TEMP/official.json"
-          # The header comes from stdin so the token never appears in the process arguments.
-          printf 'Authorization: Bearer %s\n' "$ADMIN_TOKEN" |
-            curl --fail-with-body -sS -X POST -H @- -H "Content-Type: application/json" \
-              --data-binary @"$RUNNER_TEMP/official.json" "$COMMUNITY_API/admin/official"
-
   graph:
     # The committed code graph must equal a rebuild with the pinned Graphify build.
     runs-on: ubuntu-24.04
@@ -398,3 +381,28 @@ jobs:
           if [ -z "$CLOUDFLARE_API_TOKEN" ]; then echo "No CLOUDFLARE_API_TOKEN; skipping the deploy."; exit 0; fi
           [ -n "$CLOUDFLARE_ACCOUNT_ID" ] || unset CLOUDFLARE_ACCOUNT_ID
           scripts/deploy.sh
+
+  register-official:
+    # Only trusted master releases, after both release creation and database deployment.
+    needs: [apk, deploy-server]
+    if: github.ref == 'refs/heads/master' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - run: npm ci
+      - name: Register official levels
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: scripts/register-official.sh "prototype-r${GITHUB_RUN_NUMBER}"

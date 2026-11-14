@@ -1456,3 +1456,464 @@ func _draft_with_demo() -> String:
 	run.level_sha256 = LevelFormat.sha256(MyLevels.load_level(id))
 	MyLevels.save_demo(id, run)
 	return id
+
+
+# --- account-owned score posting --------------------------------------------------------------------------------------
+
+
+func test_scores_require_known_identity_and_a_finalized_winning_demo() -> void:
+	var net := _boot()
+	var sha := "a".repeat(64)
+	check(_c.queue_score("stage1", _score_run(sha)) == Community.SIGNED_OUT, "unknown identity cannot enqueue")
+	await frames(3)
+	check(pilot.sign_ins == 0 and net.requests.is_empty(), "campaign win must never identify an unknown account")
+	await _sign_in(net)
+	var run := _score_run(sha)
+	run.truncated = true
+	check(_c.queue_score("stage1", run) == Community.BAD_RUN, "truncated run refused")
+	run = Demo.new()
+	run.level_sha256 = sha
+	run.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 10.0, "hull": 10.0}, {})
+	check(_c.queue_score("stage1", run) == Community.BAD_RUN, "unfinished run refused")
+	run.add_event(Demo.Event.SHIP_LOST)
+	check(_c.queue_score("stage1", run) == Community.BAD_RUN, "loss refused")
+	check(_c.queue_score("stage1", _score_run("0".repeat(64))) == Community.BAD_RUN, "default hash refused")
+	pilot.is_available = false
+	check(_c.queue_score("stage1", _score_run(sha)) == CommunityPlatform.UNAVAILABLE, "non-Play platform refuses scores")
+	check(net.requests.is_empty() and _score_disk().entries("p_1").is_empty(), "refused inputs cannot create a score upload")
+	_done()
+
+
+func test_scores_use_durable_snapshot_bytes_not_the_mutable_progress_demo() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var sha := "a".repeat(64)
+	var run := _score_run(sha)
+	var original := run.encode()
+	Progress.save_best_demo("stage1", run)
+	check(_c.queue_score("stage1", run) == "", "enqueue saved before returning success")
+	var revision: int = _c.score_state(sha).revision
+	Progress.save_best_demo("stage1", _score_run(sha, 90.0))
+	run.level_sha256 = "b".repeat(64)
+	_restart(net)
+	check(_c.score_state(sha).get("revision") == revision, "queued run survives restart")
+	_auto_nonces(net)
+	net.answer("POST", "/scores", 200, {"rank": 3, "points": 123, "best": true})
+	await _c.sync_feedback()
+	var requests := _score_requests(net)
+	check(requests.size() == 1 and requests[0].body == original and _bound(requests[0], "n_auto_1"), "raw upload binds exact immutable bytes")
+	check(_c.score_state(sha).get("state") == "posted" and _c.score_state(sha).get("rank") == 3, "valid reply exposes exact rank")
+	check(_score_disk().entries("p_1").is_empty() and _score_files().is_empty(), "success durably removes only posted snapshot")
+	_done()
+
+
+func test_scores_newer_best_queued_while_old_post_is_held_survives_old_acknowledgment() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var sha := "a".repeat(64)
+	var old := _score_run(sha)
+	var newer := _score_run(sha, 90.0)
+	_auto_nonces(net)
+	net.hold("POST", "/scores")
+	_c.queue_score("stage1", old)
+	var results := []
+	var listener := func(account: String, hash: String, revision: int, result: Dictionary) -> void:
+		results.append([account, hash, revision, result])
+	_c.score_result.connect(listener)
+	var flushed := []
+	var flush := func() -> void: flushed.append(await _c.sync_feedback())
+	flush.call()
+	await frames(3)
+	check(_score_requests(net).size() == 1 and _c.score_state(sha).get("state") == "posting", "old revision is held in flight")
+	check(_c.queue_score("stage1", newer) == "", "new best queues while old HTTP waits")
+	check(_c.score_state(sha).get("revision") == 2 and _c.score_state(sha).get("state") == "queued", "old posting state cannot claim new revision")
+	net.answer("POST", "/scores", 200, {"rank": 8, "points": 100, "best": true})
+	net.release_hold("POST", "/scores")
+	check(await _until(func() -> bool: return not flushed.is_empty(), 100), "old request completes")
+	check(_score_disk().entry("p_1", sha).get("revision") == 2, "old ack leaves newer revision durable")
+	check(_score_disk().snapshot("p_1", sha, 2) == newer.encode(), "new snapshot still matches newer run")
+	check(_c.score_state(sha).get("rank") == null, "old rank never becomes the new best's standing")
+	check(results.size() == 1 and results[0][0] == "p_1" and results[0][1] == sha and results[0][2] == 1, "signal captures owner, hash and uploaded revision")
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 200, "best": true})
+	await _cooldown()
+	check(_score_requests(net).size() == 2 and _score_requests(net)[1].body == newer.encode(), "replacement sends automatically after gap")
+	check(_c.score_state(sha).get("revision") == 2 and _c.score_state(sha).get("rank") == 2, "only current revision's rank adopted")
+	_c.score_result.disconnect(listener)
+	_done()
+
+
+func test_scores_transient_failures_keep_snapshot_and_retry_only_after_gap() -> void:
+	for status: int in [0, 500, 502, 408, 429]:
+		var net := _boot()
+		await _sign_in(net)
+		var sha := "a".repeat(64)
+		_auto_nonces(net)
+		net.answer("POST", "/scores", status, {"error": "Try later."})
+		_c.queue_score("stage1", _score_run(sha))
+		var answer: Dictionary = await _c.sync_feedback()
+		check(answer.pending and _score_disk().entry("p_1", sha).get("revision") == 1, "status %d keeps snapshot queued" % status)
+		await _c.sync_feedback()
+		await frames(3)
+		check(_score_requests(net).size() == 1, "status %d must not retry within 30 seconds" % status)
+		net.answer("POST", "/scores", 200, {"rank": 1, "points": 123, "best": true})
+		await _cooldown()
+		check(_score_requests(net).size() == 2 and _c.score_state(sha).get("state") == "posted", "status %d retries after gap" % status)
+		check(_bound(_score_requests(net)[1], "n_auto_2"), "retry gets fresh nonce/binding")
+		_done()
+
+
+func test_scores_lost_success_response_safely_resends_same_snapshot() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var sha := "a".repeat(64)
+	_auto_nonces(net)
+	var stored := {"bytes": PackedByteArray(), "posts": 0}
+	net.respond("POST", "/scores", func(request: Dictionary) -> Dictionary:
+		stored.posts += 1
+		if stored.posts == 1:
+			stored.bytes = request.body
+			return {"status": 0}  # server stored the score, client lost its answer
+		check(request.body == stored.bytes, "retry sends identical owner-owned snapshot")
+		return {"status": 200, "body": {"rank": 1, "points": 123, "best": false}})
+	_c.queue_score("stage1", _score_run(sha))
+	await _c.sync_feedback()
+	check(_score_disk().entries("p_1").size() == 1, "lost answer keeps replay durable")
+	await _cooldown()
+	check(stored.posts == 2 and _score_disk().entries("p_1").is_empty(), "idempotent retry accepts already-stored best")
+	_done()
+
+
+func test_scores_permanent_400_and_404_drop_with_reason_without_deleting_local_best() -> void:
+	for status: int in [400, 404]:
+		var net := _boot()
+		await _sign_in(net)
+		var sha := "a".repeat(64)
+		var run := _score_run(sha)
+		Progress.save_best_demo("stage1", run)
+		_auto_nonces(net)
+		net.answer("POST", "/scores", status, {"error": "Run refused."})
+		_c.queue_score("stage1", run)
+		await _c.sync_feedback()
+		check(_score_disk().entries("p_1").is_empty() and _score_files().is_empty(), "permanent refusal drops outbox snapshot")
+		check(_c.score_state(sha).get("state") == "dropped" and _c.score_state(sha).get("error") == "Run refused.", "drop reason is observable")
+		check(Progress.best_demo("stage1").encode() == run.encode(), "local best is not outbox-owned and remains")
+		await _cooldown()
+		check(_score_requests(net).size() == 1, "permanent refusal never retries")
+		_done()
+
+
+func test_scores_denied_once_per_launch_does_not_starve_plays_or_votes() -> void:
+	for refusal: String in ["The integrity check failed.", "This player is banned.", CommunityAndroid.INTEGRITY_FAILED]:
+		var net := _boot()
+		await _sign_in(net)
+		var row: Dictionary = await _cached(net)
+		_auto_nonces(net)
+		if refusal == CommunityAndroid.INTEGRITY_FAILED:
+			pilot.integrity_error = refusal
+		else:
+			net.answer("POST", "/scores", 403, {"error": refusal})
+		_c.queue_score(LEVEL_ID, _score_run(row.sha256))
+		await _c.sync_feedback()
+		var attempts := pilot.nonces.size()
+		check(_score_disk().entries("p_1").size() == 1 and _c.score_state(row.sha256).get("denied") == true, "denial retains replay and is explicit")
+		pilot.integrity_error = ""
+		await _cooldown()
+		await _c.sync_feedback()
+		check(pilot.nonces.size() == attempts, "no repeated denial loop this launch")
+		var id: String = _c.record_play_start(row.sha256)
+		_c.record_play_finish(id, "failed")
+		_auto_acks(net)
+		net.answer("POST", LIKE_PATH, 200, {"likes": 1})
+		await _c.set_like(LEVEL_ID, true)
+		check(net.count("POST", "/plays") == 1 and net.count("POST", LIKE_PATH) == 1, "denied score never blocks plays/votes")
+		_restart(net)
+		net.answer("POST", "/scores", 200, {"rank": 1, "points": 123, "best": true})
+		await _c.sync_feedback()
+		check(_score_disk().entries("p_1").is_empty(), "new launch may retry integrity once")
+		_done()
+
+
+func test_scores_401_retry_rebuilds_nonce_and_never_crosses_owner() -> void:
+	for switched: bool in [false, true]:
+		var net := _boot()
+		await _sign_in(net)
+		var sha := "a".repeat(64)
+		_auto_nonces(net)
+		net.answer("POST", "/scores", 401, UNAUTHORIZED)
+		net.answer("POST", "/session", 200, {"token": "tok2", "player": {"id": "p_2" if switched else "p_1"}})
+		net.answer("POST", "/scores", 200, {"rank": 2, "points": 123, "best": true})
+		_c.queue_score("stage1", _score_run(sha))
+		await _c.sync_feedback()
+		var requests := _score_requests(net)
+		check(net.count("POST", "/session") == 1, "401 re-signs in once")
+		if switched:
+			check(requests.size() == 1 and _score_disk().entries("p_1").size() == 1 and _score_disk().entries("p_2").is_empty(), "changed identity cannot receive or send original owner's queued run")
+			check(_c.score_state(sha).is_empty(), "new owner sees no old result")
+		else:
+			check(requests.size() == 2 and _bound(requests[0], "n_auto_1") and _bound(requests[1], "n_auto_3"), "401 retry rebuilds fresh score nonce after sign-in nonce")
+			check(_header(requests[1], "Authorization") == "Bearer tok2" and requests[0].body == requests[1].body, "retry uses refreshed same-owner token and exact original snapshot")
+		_done()
+
+
+func test_scores_enqueue_and_acknowledgment_write_failure_stays_visible_and_preserves_data() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var sha := "a".repeat(64)
+	var path: String = Community.history_path.get_basename() + "_scores.json"
+	DirAccess.make_dir_recursive_absolute(path + ".tmp")
+	check(_c.queue_score("stage1", _score_run(sha)) == Community.SCORE_UNSAVED, "failed persistence must never falsely show queued")
+	check(_c.score_state(sha).is_empty() and _score_files().is_empty(), "failed enqueue has no queued state or orphan replay")
+	DirAccess.remove_absolute(path + ".tmp")
+	_c.queue_score("stage1", _score_run(sha))
+	DirAccess.make_dir_recursive_absolute(path + ".tmp")
+	_auto_nonces(net)
+	net.answer("POST", "/scores", 200, {"rank": 1, "points": 123, "best": true})
+	await _c.sync_feedback()
+	check(_score_disk().entries("p_1").size() == 1 and _score_files().size() == 1, "acknowledgment persistence failure keeps original replay")
+	check(_c.score_state(sha).get("error") == Community.SCORE_UNSAVED, "settlement failure is visible")
+	DirAccess.remove_absolute(path + ".tmp")
+	net.answer("POST", "/scores", 200, {"rank": 1, "points": 123, "best": false})
+	await _cooldown()
+	check(_score_disk().entries("p_1").is_empty(), "safe idempotent retry settles after writes recover")
+	_done()
+
+
+func test_scores_account_deletion_during_held_post_erases_replays_and_ignores_late_answers() -> void:
+	for status: int in [200, 401]:
+		var net := _boot()
+		await _sign_in(net)
+		var sha := "a".repeat(64)
+		_auto_nonces(net)
+		net.hold("POST", "/scores")
+		_c.queue_score("stage1", _score_run(sha))
+		var flushed := []
+		var flush := func() -> void: flushed.append(await _c.sync_feedback())
+		flush.call()
+		await frames(3)
+		check(_score_requests(net).size() == 1, "score request is in flight")
+		net.answer("DELETE", "/me", 204)
+		check(await Community.delete_account() == "", "account deletion completes")
+		var signs := pilot.sign_ins
+		net.answer("POST", "/scores", status, {"rank": 1, "points": 123, "best": true} if status == 200 else UNAUTHORIZED)
+		net.release_hold("POST", "/scores")
+		check(await _until(func() -> bool: return not flushed.is_empty(), 100), "late request completes")
+		check(_score_disk().entries("p_1").is_empty() and _score_files().is_empty() and _c.score_state(sha).is_empty(), "late callback recreates neither metadata, snapshot nor rank")
+		check(pilot.sign_ins == signs, "late 401 never signs erased account in again")
+		_done()
+
+
+func test_scores_snapshot_cleanup_failure_keeps_erasure_owed_and_no_erased_run_can_be_sent() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var sha := "a".repeat(64)
+	_c.queue_score("stage1", _score_run(sha))
+	var folder: String = CommunityScores.replay_dir(Community.history_path.get_basename() + "_scores.json")
+	if not _lock(folder):
+		_done()
+		return
+	net.answer("DELETE", "/me", 204)
+	check(await Community.delete_account() == Community.ERASURE_PENDING, "cannot claim complete erasure when snapshot removal fails")
+	check(_score_files().size() == 1 and _score_disk().entries("p_1").is_empty(), "metadata committed erasure but failed cleanup is still owed")
+	await _sign_in(net, "p_1", "tok9")
+	check(_c.queue_score("stage1", _score_run(sha)) == Community.ERASURE_PENDING, "owed erasure blocks enqueue even after re-sign-in")
+	_auto_nonces(net)
+	await _c.sync_feedback()
+	check(_score_requests(net).is_empty(), "erased replay never goes out")
+	_unlock(folder)
+	await _c.sync_feedback()
+	check(_score_files().is_empty() and _c.score_state(sha).is_empty(), "later explicit action finishes cleanup without restoring score")
+	_done()
+
+
+func test_scores_background_activation_does_not_send_pending_plays_or_votes() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var row: Dictionary = await _cached(net)
+	var id: String = _c.record_play_start(row.sha256)
+	_c.record_play_finish(id, "failed")
+	var history := CommunityHistory.new()
+	history.path = Community.history_path
+	history.load_file()
+	history.queue_like("p_1", LEVEL_ID, true)
+	_restart(net)  # reload history without activating feedback
+	_auto_nonces(net)
+	net.answer("POST", "/scores", 200, {"rank": 1, "points": 123, "best": true})
+	_c.queue_score(LEVEL_ID, _score_run(row.sha256))
+	check(await _until(func() -> bool: return _score_requests(net).size() == 1, 100), "known owner score starts automatically")
+	check(net.count("POST", "/plays") == 0 and net.count("POST", LIKE_PATH) == 0, "campaign score does not activate play/vote uploads")
+	check(_disk().batch("p_1").size() == 1 and _disk().pending_votes("p_1").size() == 1, "feedback remains queued until explicit entry")
+	_done()
+
+
+func test_scores_concurrent_sync_calls_share_one_integrity_attempt() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var sha := "a".repeat(64)
+	_auto_nonces(net)
+	net.hold("GET", "/nonce")
+	_c.queue_score("stage1", _score_run(sha))
+	var flushed := []
+	var flush := func() -> void: flushed.append(await _c.sync_feedback())
+	flush.call()
+	await frames(3)
+	await _c.sync_feedback()
+	await _c.sync_feedback()
+	check(net.count("GET", "/nonce") == 1 and pilot.nonces.is_empty(), "overlapping flushes never start competing score integrity work")
+	net.answer("POST", "/scores", 200, {"rank": 1, "points": 123, "best": true})
+	net.release_hold("GET", "/nonce")
+	check(await _until(func() -> bool: return not flushed.is_empty(), 100), "single integrity attempt completes")
+	check(pilot.nonces.size() == 1 and _score_requests(net).size() == 1, "exactly one platform.integrity call and one post")
+	_done()
+
+
+func _score_run(sha: String, fuel := 50.0) -> Demo:
+	var run := Demo.new()
+	run.level_sha256 = sha
+	run.add_frame({"position": Vector2(100, 100), "rotation": 0.0, "firing": false, "fuel": fuel, "hull": 50.0}, {})
+	run.add_event(Demo.Event.GOAL_REACHED)
+	return run
+
+
+func _score_disk() -> CommunityScores:
+	var scores := CommunityScores.new()
+	scores.path = Community.history_path.get_basename() + "_scores.json"
+	check(scores.load_file() == OK, "load durable scores")
+	return scores
+
+
+func _score_files() -> PackedStringArray:
+	var folder := CommunityScores.replay_dir(Community.history_path.get_basename() + "_scores.json")
+	return DirAccess.get_files_at(folder) if DirAccess.dir_exists_absolute(folder) else PackedStringArray()
+
+
+func _score_requests(net: FakeTransport) -> Array:
+	return net.requests.filter(func(request: Dictionary) -> bool: return request.method == "POST" and request.url.ends_with("/scores"))
+
+
+func test_scores_owner_switch_during_held_upload_never_attributes_the_answer_to_new_owner() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var sha := "a".repeat(64)
+	var first := _score_run(sha)
+	_auto_nonces(net)
+	net.hold("POST", "/scores")
+	_c.queue_score("stage1", first)
+	var flushed := []
+	var flush := func() -> void: flushed.append(await _c.sync_feedback())
+	flush.call()
+	await frames(3)
+	await _sign_in(net, "p_2", "tok2")
+	var second := _score_run(sha, 90.0)
+	_c.queue_score("stage1", second)
+	net.answer("POST", "/scores", 200, {"rank": 1, "points": 123, "best": true})
+	net.release_hold("POST", "/scores")
+	check(await _until(func() -> bool: return not flushed.is_empty(), 100), "first owner's request returns")
+	check(_c.score_state(sha).get("state") == "queued" and _c.score_state(sha).get("rank") == null, "new owner never adopts old owner's result")
+	check(_score_disk().snapshot("p_1", sha, 1) == first.encode() and _score_disk().snapshot("p_2", sha, 1) == second.encode(), "both owners keep independent queued bytes")
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 456, "best": true})
+	await _c.sync_feedback()
+	check(_score_requests(net).size() == 1 and _header(_score_requests(net)[0], "Authorization") == "Bearer tok2" and _score_requests(net)[0].body == second.encode(), "only new owner's run sends with new token")
+	check(_score_disk().entries("p_1").size() == 1 and _score_disk().entries("p_2").is_empty(), "old owner's queue not settled by new owner's success")
+	_done()
+
+
+func test_scores_erasure_metadata_failure_preserves_queue_but_blocks_all_sends_until_cleanup() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var sha := "a".repeat(64)
+	_c.queue_score("stage1", _score_run(sha))
+	var path: String = Community.history_path.get_basename() + "_scores.json"
+	DirAccess.make_dir_recursive_absolute(path + ".tmp")
+	net.answer("DELETE", "/me", 204)
+	check(await Community.delete_account() == Community.ERASURE_PENDING, "failed metadata erase is not complete erasure")
+	check(_score_disk().entries("p_1").size() == 1 and _score_files().size() == 1, "failure preserves old metadata and snapshot, not partially purged data")
+	await _sign_in(net, "p_1", "tok9")
+	_auto_nonces(net)
+	await _c.sync_feedback()
+	check(_score_requests(net).is_empty() and _c.score_state(sha).is_empty(), "owed erasure blocks retained queue and private result")
+	DirAccess.remove_absolute(path + ".tmp")
+	await _c.sync_feedback()
+	check(_score_disk().entries("p_1").is_empty() and _score_files().is_empty(), "retry finishes erasure without sending prior score")
+	_done()
+
+
+func test_scores_session_403_retains_run_and_suppresses_known_owner_reauthentication_until_next_launch() -> void:
+	for reason: String in ["The integrity check failed.", "This player is banned."]:
+		var net := _boot()
+		await _sign_in(net)
+		var sha := "a".repeat(64)
+		var session := ConfigFile.new()
+		session.load(Community.session_path)
+		session.erase_section("session")  # expired/rejected token, but its last known owner remains
+		session.save(Community.session_path)
+		_auto_nonces(net)
+		net.answer("POST", "/session", 403, {"error": reason})
+		_c.queue_score("stage1", _score_run(sha))
+		await _c.sync_feedback()
+		check(_c.player_id() == "p_1" and not Community.signed_in(), "refusal preserves known owner without restoring a token")
+		check(_c.score_state(sha).get("denied") == true and _c.score_state(sha).get("status") == 403, "structured session refusal marks retained score denied")
+		check(_score_disk().entries("p_1").size() == 1 and _score_files().size() == 1, "session refusal never drops owner's replay")
+		await _cooldown()
+		await _c.sync_feedback()
+		await _cooldown()
+		check(net.count("POST", "/session") == 1 and pilot.nonces.size() == 1 and _score_requests(net).is_empty(), "session403 never restarts integrity/sign-in every 30 seconds")
+		# Explicit authentication can recover feedback without reactivating denied score work this launch.
+		net.answer("POST", "/session", 200, {"token": "tok2", "player": {"id": "p_1"}})
+		check(await Community.sign_in() == "", "explicit sign-in still allowed")
+		var row := _place_level()
+		await Community.download(row)
+		var id: String = _c.record_play_start(row.sha256)
+		_c.record_play_finish(id, "failed")
+		_auto_acks(net)
+		net.answer("POST", LIKE_PATH, 200, {"likes": 1})
+		await _c.set_like(LEVEL_ID, true)
+		check(net.count("POST", "/plays") == 1 and net.count("POST", LIKE_PATH) == 1 and _score_requests(net).is_empty(), "session denial does not disable play/vote synchronization")
+		_done()
+
+
+func test_scores_malformed_success_retains_snapshot_and_never_emits_or_adopts_rank() -> void:
+	var invalid := [
+		{"rank": 0, "points": 123, "best": true},
+		{"rank": -1, "points": 123, "best": true},
+		{"rank": "1", "points": 123, "best": true},
+		{"points": 123, "best": true},
+		{"rank": 1, "points": -1, "best": true},
+		{"rank": 1, "points": 123},
+		{"rank": 1, "points": 123, "best": "true"},
+		{"rank": 1, "points": 123, "best": 1},
+	]
+	for answer: Dictionary in invalid:
+		var net := _boot()
+		await _sign_in(net)
+		var sha := "a".repeat(64)
+		var run := _score_run(sha)
+		_auto_nonces(net)
+		net.answer("POST", "/scores", 200, answer)
+		var results := []
+		var listener := func(_account: String, _hash: String, _revision: int, result: Dictionary) -> void:
+			results.append(result)
+		_c.score_result.connect(listener)
+		_c.queue_score("stage1", run)
+		var result: Dictionary = await _c.sync_feedback()
+		var state: Dictionary = _c.score_state(sha)
+		check(result.pending and result.error == Community.BAD_ANSWER, "malformed score success must be a retained failure: %s" % [answer])
+		check(state.get("state") == "queued" and state.get("error") == Community.BAD_ANSWER and not state.has("rank"), "malformed rank must never be adopted: %s" % [answer])
+		check(results.size() == 1 and results[0].get("error") == Community.BAD_ANSWER and not results[0].has("rank"), "malformed rank must never be emitted: %s" % [answer])
+		check(_score_disk().entry("p_1", sha).get("revision") == 1 and _score_disk().snapshot("p_1", sha, 1) == run.encode() and _score_files().size() == 1, "malformed success preserves durable entry and exact replay: %s" % [answer])
+		_c.score_result.disconnect(listener)
+		_done()
+
+
+func test_authentication_refusal_is_not_a_permanent_refusal_of_a_queued_vote() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var session := ConfigFile.new()
+	session.load(Community.session_path)
+	session.erase_section("session")
+	session.save(Community.session_path)
+	_auto_nonces(net)
+	net.answer("POST", "/session", 403, {"error": "The integrity check failed."})
+	var result: Dictionary = await _c.set_like(LEVEL_ID, true)
+	check(result.pending and result.error == "The integrity check failed.", "authentication failure retains choice")
+	check(_disk().pending_votes("p_1").size() == 1 and net.count("POST", LIKE_PATH) == 0, "structured auth403 must not be mistaken for endpoint refusal")
+	_done()
