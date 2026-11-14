@@ -270,9 +270,9 @@ describe("POST /scores", () => {
 });
 
 describe("GET /boards/<sha256>", () => {
-  const board = (token: string, sha = SHA_01) => call(`/boards/${sha}`, { headers: { Authorization: `Bearer ${token}` } });
+  const board = (token: string, sha = SHA_01, search = "") => call(`/boards/${sha}${search}`, { headers: { Authorization: `Bearer ${token}` } });
 
-  it("lists the top 100 by points, then who posted first, with the requester's own row", async () => {
+  it("lists the top 20 by points by default, then who posted first, with the requester's own row", async () => {
     const { token, player } = await signIn("b-1", "Ola");
     const stmts = [];
     for (let i = 0; i < 105; i++) {
@@ -286,7 +286,9 @@ describe("GET /boards/<sha256>", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { level: unknown; rows: { rank: number; player: { id: string; name: string }; points: number; fuel: number; hull: number; seconds: number; demo: string }[]; you: unknown };
     expect(body.level).toEqual({ kind: "official", name: "level_01" });
-    expect(body.rows).toHaveLength(100);
+    expect(body.rows).toHaveLength(20);
+    const wide = (await (await board(token, SHA_01, "?limit=100")).json()) as { rows: unknown[] };
+    expect(wide.rows).toHaveLength(100);
     expect(body.rows[0]).toEqual({
       rank: 1,
       player: { id: "p_board00000000049", name: "P49" },
@@ -308,9 +310,11 @@ describe("GET /boards/<sha256>", () => {
       env.DB.prepare("INSERT INTO scores VALUES (?, 'p_banned', 9000, 1, 1, 1, 'demos/x', 1)").bind(SHA_01),
       env.DB.prepare("INSERT INTO scores VALUES (?, ?, 100, 1, 1, 1, 'demos/y', 1)").bind(SHA_01, player.id),
     ]);
-    const body = (await (await board(token)).json()) as { rows: { player: { id: string }; rank: number }[]; you: { rank: number } };
+    const body = (await (await board(token)).json()) as { rows: { player: { id: string }; rank: number }[]; you: { rank: number }; count: number; quantiles: number[] };
     expect(body.rows.map((r) => r.player.id)).toEqual([player.id]);
     expect(body.you.rank).toBe(1);
+    expect(body.count).toBe(1);
+    expect(body.quantiles).toEqual(Array(21).fill(100));
   });
 
   it("names a community level <id>/v<N> and returns null for you with no score", async () => {
@@ -320,7 +324,7 @@ describe("GET /boards/<sha256>", () => {
     ]);
     const { token } = await signIn("b-2", "Pia");
     const body = (await (await board(token, SHA_05)).json()) as { level: unknown; rows: unknown[]; you: unknown };
-    expect(body).toEqual({ level: { kind: "community", name: "lvl_cccccccccc/v1" }, rows: [], you: null });
+    expect(body).toEqual({ level: { kind: "community", name: "lvl_cccccccccc/v1" }, rows: [], you: null, count: 0, quantiles: [] });
   });
 
   it("answers 404 for an unknown hash, a malformed hash and a hidden level; 401 without a session", async () => {
@@ -333,6 +337,46 @@ describe("GET /boards/<sha256>", () => {
     ]);
     expect((await board(token, SHA_05)).status).toBe(404);
     expect((await call(`/boards/${SHA_01}`)).status).toBe(401);
+  });
+
+  it("counts every scored player except banned ones, and gives nearest-rank quantiles", async () => {
+    const { token } = await signIn("b-5", "Sol");
+    const stmts = [];
+    for (let i = 1; i <= 100; i++) {
+      const id = `p_quant${String(i).padStart(12, "0")}`;
+      stmts.push(env.DB.prepare("INSERT INTO players (id, name, created) VALUES (?, ?, 1)").bind(id, `Q${i}`));
+      stmts.push(env.DB.prepare("INSERT INTO scores VALUES (?, ?, ?, 1, 1, 1, ?, 1)").bind(SHA_01, id, i, `demos/${SHA_01}/${id}/q.demo.gz`));
+    }
+    stmts.push(env.DB.prepare("INSERT INTO players (id, name, banned, created) VALUES ('p_quantbanned', 'Cheat', 1, 1)"));
+    stmts.push(env.DB.prepare("INSERT INTO scores VALUES (?, 'p_quantbanned', 5000, 1, 1, 1, 'demos/x', 1)").bind(SHA_01));
+    await env.DB.batch(stmts);
+    const body = (await (await board(token)).json()) as { count: number; quantiles: number[] };
+    expect(body.count).toBe(100);
+    expect(body.quantiles).toEqual([1, ...Array.from({ length: 19 }, (_, i) => 5 * (i + 1)), 100]);
+  });
+
+  it("ranks equal points by competition rank and rounds nearest-rank steps up", async () => {
+    const { token, player } = await signIn("b-6", "Tam");
+    await env.DB.batch([
+      env.DB.prepare("INSERT INTO scores VALUES (?, ?, 500, 1, 1, 1, 'demos/a', 1)").bind(SHA_01, player.id),
+      env.DB.prepare("INSERT INTO players (id, name, created) VALUES ('p_tie2', 'Uma', 1)"),
+      env.DB.prepare("INSERT INTO scores VALUES (?, 'p_tie2', 500, 1, 1, 1, 'demos/b', 1)").bind(SHA_01),
+      env.DB.prepare("INSERT INTO players (id, name, created) VALUES ('p_tie3', 'Vic', 1)"),
+      env.DB.prepare("INSERT INTO scores VALUES (?, 'p_tie3', 300, 1, 1, 1, 'demos/c', 1)").bind(SHA_01),
+    ]);
+    const body = (await (await board(token)).json()) as { rows: { rank: number }[]; you: { rank: number }; count: number; quantiles: number[] };
+    expect(body.rows.map((r) => r.rank)).toEqual([1, 1, 3]);
+    expect(body.you.rank).toBe(1);
+    expect(body.count).toBe(3);
+    expect(body.quantiles).toEqual([...Array(7).fill(300), ...Array(14).fill(500)]);
+  });
+
+  it("answers 400 for a malformed, zero or over-100 limit after the 401 session check", async () => {
+    const { token } = await signIn("b-7", "Ren");
+    for (const search of ["?limit=0", "?limit=101", "?limit=-1", "?limit=1.5", "?limit=abc", "?limit="]) {
+      expect((await board(token, SHA_01, search)).status, search).toBe(400);
+    }
+    expect((await call(`/boards/${SHA_01}?limit=0`)).status).toBe(401);
   });
 });
 
