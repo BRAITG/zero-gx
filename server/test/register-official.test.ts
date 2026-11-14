@@ -148,4 +148,16 @@ it("wires registration after release and deployment, only for published trusted 
   }
   expect(job).not.toMatch(/^\s+continue-on-error:\s*true\s*$/m);
   expect(job).not.toMatch(/^    env:/m); // The credential belongs to the registration step, not the whole job.
+
+  const step = job.split(/^      - /m).find((block) => block.startsWith("name: Register official levels\n"))!;
+  const command = step.match(/^        run:\s*(.+)$/m)![1]!;
+  const argsFile = join(root, "workflow-registration.args");
+  writeFileSync(join(server, "scripts/register-official.sh"), '#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$REGISTER_ARGS"\nexit 42\n');
+  const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "-o", "pipefail", "-c", command], {
+    cwd: server,
+    encoding: "utf8",
+    env: { ...process.env, GITHUB_RUN_NUMBER: "151", REGISTER_ARGS: argsFile },
+  });
+  expect(result.status, result.stdout + result.stderr).toBe(42);
+  expect(readFileSync(argsFile, "utf8")).toBe("prototype-r151\n");
 });
