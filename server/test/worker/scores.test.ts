@@ -378,6 +378,16 @@ describe("GET /boards/<sha256>", () => {
     }
     expect((await call(`/boards/${SHA_01}?limit=0`)).status).toBe(401);
   });
+
+  it("refuses a bad limit only after the 401 and 403 checks", async () => {
+    const banned = await signIn("b-8", "Ivo");
+    await env.DB.prepare("UPDATE players SET banned = 1 WHERE id = ?").bind(banned.player.id).run();
+    expect((await board(banned.token, SHA_01, "?limit=0")).status).toBe(403);
+    const erased = await signIn("b-9", "Jo");
+    await env.DB.prepare("DELETE FROM players WHERE id = ?").bind(erased.player.id).run();
+    expect((await board(erased.token, SHA_01, "?limit=0")).status).toBe(401);
+    expect((await call(`/boards/${SHA_01}?limit=0`)).status).toBe(401);
+  });
 });
 
 describe("GET /demos/<key>", () => {

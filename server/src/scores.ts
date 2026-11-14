@@ -145,25 +145,25 @@ interface BoardRow {
 
 const boardEntry = ({ id, name, ...rest }: BoardRow) => ({ rank: rest.rank, player: { id, name }, points: rest.points, fuel: rest.fuel, hull: rest.hull, seconds: rest.seconds, demo: rest.demo || null });
 
-/** The `limit` query parameter: a whole number from 1 to BOARD_MAX, BOARD_DEFAULT when absent. */
-function boardLimit(request: Request): number {
+/** The `limit` query parameter: BOARD_DEFAULT when absent, else its value; null unless a whole number from 1 to BOARD_MAX. */
+function boardLimit(request: Request): number | null {
   const raw = new URL(request.url).searchParams.get("limit");
   if (raw === null) return BOARD_DEFAULT;
   const limit = Number(raw);
-  if (!/^\d+$/.test(raw) || limit < 1 || limit > BOARD_MAX) throw new HttpError(400, `limit must be 1 to ${BOARD_MAX}.`);
-  return limit;
+  return /^\d+$/.test(raw) && limit >= 1 && limit <= BOARD_MAX ? limit : null;
 }
 
 export async function getBoard(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
   const playerId = await sessionPlayerId(request, env);
   const limit = boardLimit(request);
+  // A malformed limit is refused after the auth and level checks, so it never masks a 401, 403 or 404.
   const sha256 = params.sha256!;
   const [players, official, community, top, mine, counted, quantiles] = (
     await env.DB.batch([
       env.DB.prepare(PLAYER_ROW).bind(playerId),
       env.DB.prepare(OFFICIAL).bind(sha256),
       env.DB.prepare(COMMUNITY).bind(sha256),
-      env.DB.prepare(`${BOARD_ROW} ORDER BY s.points DESC, s.posted ASC, s.player ASC LIMIT ?`).bind(sha256, limit),
+      env.DB.prepare(`${BOARD_ROW} ORDER BY s.points DESC, s.posted ASC, s.player ASC LIMIT ?`).bind(sha256, limit ?? BOARD_DEFAULT),
       env.DB.prepare(`${BOARD_ROW} AND s.player = ?`).bind(sha256, playerId),
       env.DB.prepare(BOARD_COUNT).bind(sha256),
       env.DB.prepare(BOARD_QUANTILES).bind(sha256),
@@ -172,6 +172,7 @@ export async function getBoard(request: Request, env: Env, params: Record<string
   playerFromRow(players[0]);
   const level = SHA256.test(sha256) ? levelRef(env, official[0], community[0]) : null;
   if (!level) throw notFound();
+  if (limit === null) throw new HttpError(400, `limit must be 1 to ${BOARD_MAX}.`);
   return Response.json({ level: { kind: level.kind, name: level.name }, rows: top.map(boardEntry), you: mine[0] ? boardEntry(mine[0]) : null, count: counted[0]!.count, quantiles: quantiles.map((q) => q.points) });
 }
 
