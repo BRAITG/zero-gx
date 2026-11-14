@@ -121,7 +121,7 @@ func _rich(overrides := {}) -> Dictionary:
 	var curve := []
 	for i in 30:
 		curve.append(0.01 * (i + 5))
-	var extra := {"rated": "normal", "rated_high": "hard", "p10_low": 0.35, "p10_high": 0.55, "curve": curve, "not_cleared_20": 9, "audience": null, "starters": 64, "votes": {"easy": 3, "normal": 5, "hard": 11, "expert": 2}}
+	var extra := {"rated": "normal", "rated_high": "hard", "p10_low": 0.35, "p10_high": 0.55, "curve": curve, "not_cleared_20": 9, "audience": null, "starters": 64, "clears": 22, "votes": {"easy": 3, "normal": 5, "hard": 11, "expert": 2}}
 	extra.merge(overrides, true)
 	return extra
 
@@ -580,7 +580,7 @@ func test_like_keeps_its_own_progress_line() -> void:
 func test_the_curve_and_the_cleared_percentage_need_ten_starters() -> void:
 	var net := _fake()
 	await _signed_in(net)
-	_serve(_reply({}, {"players_started": 9, "players_cleared": 1, "clear_rate": null}, null, {}, SHA, _rich({"starters": 9, "curve": null})))
+	_serve(_reply({}, {"players_started": 9, "players_cleared": 1, "clear_rate": null}, null, {}, SHA, _rich({"starters": 9, "clears": 1, "curve": null})))
 	var few: Overlay = await _sheet(_row())
 	if few == null:
 		return
@@ -589,7 +589,7 @@ func test_the_curve_and_the_cleared_percentage_need_ten_starters() -> void:
 	check("Players: 9" in texts and "Cleared: 1" in texts and _lines_with(texts, "cleared:").all(func(t: String) -> bool: return not t.contains("%")), "the counts show without a percentage: %s" % [texts])
 	few.close()
 	await frames(2)
-	_serve(_reply({}, {"players_started": 10, "players_cleared": 4, "clear_rate": 0.4}, null, {}, SHA, _rich({"starters": 10})))
+	_serve(_reply({}, {"players_started": 10, "players_cleared": 4, "clear_rate": 0.4}, null, {}, SHA, _rich({"starters": 10, "clears": 4})))
 	var ten: Overlay = await _sheet(_row())
 	if ten == null:
 		return
@@ -609,6 +609,29 @@ func test_not_cleared_names_those_who_tried_twenty_times() -> void:
 	check("42 not cleared, 9 of them after 20+ tries" in _texts(sheet), "not cleared: %s" % [_texts(sheet)])
 
 
+func test_the_counts_and_the_curve_come_from_one_source() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	# The cron's row is behind the live stats: 64 starters and 22 clears against 70 and 30 now.
+	_serve(_reply({}, {"players_started": 70, "players_cleared": 30, "unbeaten_20": 15, "clear_rate": 0.43}, null, {}, SHA, _rich()))
+	var behind: Overlay = await _sheet(_row())
+	if behind == null:
+		return
+	var texts := _texts(behind)
+	check("Players: 64" in texts and "Cleared: 22 (34%)" in texts and "42 not cleared, 9 of them after 20+ tries" in texts, "the three numbers come from the row the curve comes from: %s" % [texts])
+	check(not _mentions(texts, ["after more than 30"]), "a clear the cron has not counted yet is no late clear: %s" % [texts])
+	behind.close()
+	await frames(2)
+	# A new version has no row yet: the live counts, and no curve or late-clear caption.
+	_serve(_reply({}, {"players_started": 3, "players_cleared": 1, "unbeaten_20": 1}, null, {}, SHA, {"starters": null, "clears": null, "curve": null, "not_cleared_20": 0}))
+	var fresh: Overlay = await _sheet(_row())
+	if fresh == null:
+		return
+	texts = _texts(fresh)
+	check("Players: 3" in texts and "Cleared: 1" in texts and "2 not cleared, 1 of them after 20+ tries" in texts and "Estimating · 3 players" in texts, "without a row the live stats show: %s" % [texts])
+	check(fresh.find_children("*", "ClearCurve", true, false).is_empty() and not _mentions(texts, ["after more than 30"]), "and no curve: %s" % [texts])
+
+
 func test_the_curve_caption_counts_clears_after_thirty_tries() -> void:
 	var net := _fake()
 	await _signed_in(net)
@@ -619,7 +642,7 @@ func test_the_curve_caption_counts_clears_after_thirty_tries() -> void:
 	check(not _mentions(_texts(plain), ["after more than 30"]), "no caption when the curve reaches the clears: %s" % [_texts(plain)])
 	plain.close()
 	await frames(2)
-	_serve(_reply({}, {"players_started": 64, "players_cleared": 30, "clear_rate": 0.47}, null, {}, SHA, _rich()))
+	_serve(_reply({}, {"players_started": 64, "players_cleared": 30, "clear_rate": 0.47}, null, {}, SHA, _rich({"clears": 30})))
 	var late: Overlay = await _sheet(_row())
 	if late == null:
 		return

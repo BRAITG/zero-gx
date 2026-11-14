@@ -58,7 +58,8 @@ interface Feedback {
   curve: number[] | null;
   not_cleared_20: number;
   audience: number | null;
-  starters: number;
+  starters: number | null;
+  clears: number | null;
   votes: Record<string, number>;
   stats: Stats;
   you: { liked: boolean; like_eligible: boolean; difficulty: string | null; difficulty_eligible: boolean; attempts: number; cleared: boolean };
@@ -163,7 +164,8 @@ describe("GET /levels/:level/feedback", () => {
       curve: null,
       not_cleared_20: 0,
       audience: null,
-      starters: 0,
+      starters: null,
+      clears: null,
       votes: { easy: 0, normal: 0, hard: 0, expert: 0 },
     });
   });
@@ -182,9 +184,22 @@ describe("GET /levels/:level/feedback", () => {
       await env.DB.prepare("INSERT INTO difficulty_votes (player, sha256, difficulty) VALUES (?, ?, ?)").bind(`p_v${i}`, A1, difficulty).run();
     }
     const reply = await feedback("p_you", A, A1);
-    expect(reply).toMatchObject({ rated: "normal", rated_high: "hard", p10_low: 0.2, p10_high: 0.4, curve, not_cleared_20: 3, audience: -0.5, starters: 14, votes: { easy: 1, normal: 0, hard: 2, expert: 0 } });
+    expect(reply).toMatchObject({ rated: "normal", rated_high: "hard", p10_low: 0.2, p10_high: 0.4, curve, not_cleared_20: 3, audience: -0.5, starters: 14, clears: 5, votes: { easy: 1, normal: 0, hard: 2, expert: 0 } });
     const [item] = (await (await call("p_you", "GET", "/levels")).json()) as { level_id: string; rated: string; rated_high: string; starters: number }[];
     expect(item).toMatchObject({ level_id: A, rated: reply.rated, rated_high: reply.rated_high, starters: reply.starters });
+  });
+
+  it("exposes the cron row's starters and clears next to the live stats, which may be ahead of it", async () => {
+    await seedPlayer("p_you");
+    await seedStage(A, [A1]);
+    await starters(A1, EXAMPLE);  // live: ten starters, three clears
+    await env.DB.prepare(
+      "INSERT INTO version_stats (sha256, starters, clears, not_cleared_20, curve, beta, rating_sd, p10_low, p10_high, rated, rated_high, audience, computed_ms) VALUES (?, 9, 2, 1, ?, 1, 1, NULL, NULL, NULL, NULL, NULL, 1)",
+    )
+      .bind(A1, JSON.stringify(Array.from({ length: 30 }, () => 0.2)))
+      .run();
+    const reply = await feedback("p_you", A, A1);
+    expect(reply).toMatchObject({ starters: 9, clears: 2, stats: { players_started: 10, players_cleared: 3 } });
   });
 
   it("answers 400 without a well-formed sha256", async () => {

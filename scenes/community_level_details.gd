@@ -417,7 +417,7 @@ func _show_hero(ready: bool) -> void:
 	var likes: Variant = _row.get("likes")
 	if likes is int or likes is float:
 		meta.append("♥ %d" % int(likes))
-	var players: Variant = _starters() if ready else _row.get("starters", _row.get("players"))
+	var players: Variant = _counts().players if ready else _row.get("starters", _row.get("players"))
 	if players is int or players is float:
 		meta.append("%d %s" % [int(players), "player" if int(players) == 1 else "players"])
 	_meta.text = " · ".join(meta)
@@ -438,7 +438,7 @@ func _show_difficulty(ready: bool) -> void:
 		if sentence != "":
 			_overlay.paragraph(sentence, 22, Style.INK, _difficulty)
 	else:
-		var starters := _starters()
+		var starters: int = _counts().players
 		_overlay.paragraph("Estimating · %d %s" % [starters, "player" if starters == 1 else "players"], 26, Style.INK, _difficulty)
 	_overlay.paragraph(reviewed_label(_data.get("reviewed_difficulty")), 24, Style.INK, _difficulty)
 	_show_votes()
@@ -525,11 +525,11 @@ func _show_facts() -> void:
 		old.free()
 	if _data.is_empty():
 		return
-	var stats: Dictionary = _data.get("stats", {})
-	var started := _starters()
-	var cleared := _count(stats.get("players_cleared"))
+	var counts := _counts()
+	var started: int = counts.players
+	var cleared: int = counts.cleared
 	var curve: Variant = _data.get("curve")
-	if started >= MIN_STARTERS and curve is Array and curve.size() > 1:
+	if counts.row and started >= MIN_STARTERS and curve is Array and curve.size() > 1:
 		var plot := ClearCurve.new(curve)
 		_facts.add_child(plot)
 		_overlay.paragraph("Share of players who cleared within each number of tries, 1 to %d" % ClearCurve.MAX_TRIES, 20, Style.INK_DIM, _facts)
@@ -537,11 +537,10 @@ func _show_facts() -> void:
 		if late > 0:
 			_overlay.paragraph("%d cleared after more than %d tries" % [late, ClearCurve.MAX_TRIES], 20, Style.INK_DIM, _facts)
 	_overlay.paragraph("Players: %d" % started, 22, Style.INK, _facts)
-	var rate: Variant = stats.get("clear_rate")
-	var share := " (%s%%)" % _number(float(rate) * 100.0) if (rate is float or rate is int) and started >= MIN_STARTERS else ""
+	var share := " (%d%%)" % roundi(100.0 * cleared / started) if started >= MIN_STARTERS else ""
 	_overlay.paragraph("Cleared: %d%s" % [cleared, share], 22, Style.INK, _facts)
 	var missing := maxi(0, started - cleared)
-	var slow := _count(_data.get("not_cleared_20"))
+	var slow: int = counts.slow
 	_overlay.paragraph("%d not cleared%s" % [missing, ", %d of them after 20+ tries" % slow if slow > 0 else ""], 22, Style.INK, _facts)
 	var audience: Variant = _data.get("audience")
 	if (audience is float or audience is int) and absf(audience) >= 0.5:
@@ -570,10 +569,13 @@ func _scroll_to_you() -> void:
 		_overlay.scroll.scroll_vertical = int(_you_heading.global_position.y - _overlay.body.global_position.y)
 
 
-func _starters() -> int:
-	var value: Variant = _data.get("starters")
+## Players, clears and slow non-clears from one source, so they always add up: the cron's version row when the answer has one (`clears` is not null; the curve belongs to it), else the live stats, which carry no curve.
+func _counts() -> Dictionary:
+	var clears: Variant = _data.get("clears")
+	if clears is int or clears is float:
+		return {"row": true, "players": _count(_data.get("starters")), "cleared": int(clears), "slow": _count(_data.get("not_cleared_20"))}
 	var stats: Dictionary = _data.get("stats", {})
-	return _count(value if value is int or value is float else stats.get("players_started"))
+	return {"row": false, "players": _count(stats.get("players_started")), "cleared": _count(stats.get("players_cleared")), "slow": _count(stats.get("unbeaten_20"))}
 
 
 func _label(text: String, size: int, color: Color) -> Label:
@@ -593,11 +595,6 @@ static func _name(value: Variant, fallback: String) -> String:
 
 static func _count(value: Variant) -> int:
 	return int(value) if value is int or value is float else 0
-
-
-## One decimal at most, none when whole.
-static func _number(value: float) -> String:
-	return String.num(snappedf(value, 0.1), 1).trim_suffix(".0")
 
 
 ## The native choice of a difficulty: item 0 is the unselected placeholder (metadata ""), items 1-4 the four labels with their wire values as metadata. Used by the Publish confirmation.

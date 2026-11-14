@@ -112,7 +112,7 @@ export async function getFeedback(request: Request, env: Env, params: Record<str
   const version = await versionOf(env, level.id, sha256);
   const votes = (await tallies(env, [sha256])).get(sha256)!;
   const model = await env.DB.prepare(
-    "SELECT rated, rated_high, p10_low, p10_high, curve, not_cleared_20, audience, starters FROM version_stats WHERE sha256 = ?",
+    "SELECT rated, rated_high, p10_low, p10_high, curve, not_cleared_20, audience, starters, clears FROM version_stats WHERE sha256 = ?",
   )
     .bind(sha256)
     .first<{ curve: string }>();
@@ -130,14 +130,15 @@ export async function getFeedback(request: Request, env: Env, params: Record<str
     sha256,
     reviewed_difficulty: version.reviewed_difficulty,
     community_difficulty: communityOf(votes),
-    // The model's fields wait for the cron's row: null, and 0 starters, until it exists.
+    // The model's fields wait for the cron's row. Without one, starters and clears are null (not 0), so a client can tell "no row" from "nobody started" and use the live stats instead.
     rated: null,
     rated_high: null,
     p10_low: null,
     p10_high: null,
     audience: null,
     not_cleared_20: 0,
-    starters: 0,
+    starters: null,
+    clears: null,
     ...model,
     curve: model && JSON.parse(model.curve),
     votes,
