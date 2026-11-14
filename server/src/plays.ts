@@ -171,19 +171,29 @@ export async function postPlays(request: Request, env: Env, _params: Record<stri
  * ELIGIBLE_ATTEMPTS counted attempts. A verified score counts as a clear (its demo reached the goal), so scores from
  * before play history keep their eligibility without any attempt rows.
  */
-export async function playEligibility(env: Env, player: string, level: string, sha256?: string): Promise<Eligibility> {
-  const row = await env.DB.prepare(
+export const eligibilityQuery = (env: Env, player: string, level: string, sha256?: string): D1PreparedStatement =>
+  env.DB.prepare(
     `SELECT COALESCE(SUM(s.attempts), 0) AS attempts, MAX(s.first_clear_ms IS NOT NULL) AS cleared,
        EXISTS (SELECT 1 FROM scores c JOIN versions w ON w.sha256 = c.sha256
          WHERE w.level = ?2 AND c.player = ?1 AND (?3 IS NULL OR c.sha256 = ?3)) AS scored
      FROM versions v LEFT JOIN play_summaries s ON s.sha256 = v.sha256 AND s.player = ?1
      WHERE v.level = ?2 AND (?3 IS NULL OR v.sha256 = ?3)`,
-  )
-    .bind(player, level, sha256 ?? null)
-    .first<{ attempts: number; cleared: number | null; scored: number }>();
-  const attempts = row!.attempts;
-  const cleared = row!.cleared === 1 || row!.scored === 1;
-  return { attempts, cleared, eligible: cleared || attempts >= ELIGIBLE_ATTEMPTS };
+  ).bind(player, level, sha256 ?? null);
+
+export interface EligibilityRow {
+  attempts: number;
+  cleared: number | null;
+  scored: number;
+}
+
+/** The `Eligibility` of an `eligibilityQuery` row. */
+export function eligibilityOf(row: EligibilityRow): Eligibility {
+  const cleared = row.cleared === 1 || row.scored === 1;
+  return { attempts: row.attempts, cleared, eligible: cleared || row.attempts >= ELIGIBLE_ATTEMPTS };
+}
+
+export async function playEligibility(env: Env, player: string, level: string, sha256?: string): Promise<Eligibility> {
+  return eligibilityOf((await eligibilityQuery(env, player, level, sha256).first<EligibilityRow>())!);
 }
 
 /** SQL form of playEligibility for one version (`?1` player, `?2` version hash), so a write can check it atomically. */
