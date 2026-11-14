@@ -60,16 +60,19 @@ Pure function `RankEstimate.estimate(points, count, quantiles, top20_lowest) -> 
 
 ## Official level registration
 
-CI registers each release's campaign levels with `POST /admin/official`, which the board and score routes need to know a campaign level. Since r124 Cloudflare's bot challenge answers that request from the GitHub runner with `403` ("Just a moment..."), and the step's `continue-on-error` hid it, so the current campaign levels are unknown to the server.
+Since r124 Cloudflare's ordinary Bot Fight Mode answers GitHub runner requests to `POST /admin/official` with `403` ("Just a moment..."); a normal WAF custom skip rule cannot bypass it. The owner approved trusted deployment registration instead of modifying zone security.
 
-- Add a Cloudflare WAF custom rule on the `braitg.dev` zone that skips the bot challenge for `zerogx.braitg.dev` path `/admin/official` (the route is still protected by `ADMIN_TOKEN`).
-- Make the step fail the build when registration fails on `master` (keep skipping when the secret is missing).
-- Register the current release once after the fix.
+- After both release creation and server/database deployment succeed, CI registers the trusted checkout's canonical bundled hashes through authenticated Wrangler D1 execution, using the existing `CLOUDFLARE_API_TOKEN` and optional `CLOUDFLARE_ACCOUNT_ID` deployment environment. Never run registration on untrusted pull-request input.
+- Resolve the real `zero-gx` database id by name, not the committed placeholder. Validate release/name/count boundaries before network access; use strictly allowlisted SQL values and the same `sha256` upsert semantics as `postOfficial`. Registration is idempotent and preserves old hashes.
+- Make every configured-credential registration failure fail the job; a missing deployment token explicitly skips, matching deployment policy. Credentials never appear in arguments or logs and are scoped to the registration step.
+- Keep Bot Fight Mode, zone security, `workers_dev = false` and the existing admin-authenticated public endpoint unchanged. No WAF bypass or alternate public host is needed.
+- After review, register the already published current release from its trusted checkout and verify every bundled hash with a read-only D1 query. No remote database writes occur during implementation.
 
 ## Server and privacy
 
 - No new tables. `count` and `quantiles` come from one query over `scores` for the version (excluding banned players), in the same batch as the rows.
 - Players' names on boards are already public by design (`PRIVACY.md` "Who can see it" lists leaderboards). Add the rank estimate's inputs (score distribution) to that list as aggregate data.
+- The privacy policy discloses automatic account-owned new-best campaign/community score and recording uploads, offline retry, account-deletion erasure and public score-distribution aggregates. A campaign win with no known community account never signs in or queues retrospectively; explicitly opening a board may sign in. Publish the matching website policy before rollout.
 
 ## Testing
 
@@ -77,4 +80,4 @@ CI registers each release's campaign levels with `POST /admin/official`, which t
 - Score queue: one entry per level, newer best replaces older, sent once on success, kept on connection failure and `5xx`, dropped on `400`/`404`, other account's entries not sent, cleared on account deletion, never queued for training, drafts or test flights.
 - Server: `count` and `quantiles` (nearest-rank, banned excluded, empty board), default `limit` 20 and `limit=100`, existing fields unchanged.
 - UI: result line states (posted rank, posting, offline estimate), board sheet rows and own row, details section, campaign list badge, desktop shows none of it; screenshots at 1280×720 reviewed before merge.
-- CI: registration step fails the build on a non-2xx answer when the secret is set.
+- CI: stub the authenticated Wrangler boundary; verify missing-credential skip, validated canonical hashes and release, idempotent upsert with old hashes preserved, invalid release/names rejected before network, real database-id resolution, visible remote failures and no credential leakage. Registration depends on both release creation and database deployment.

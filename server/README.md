@@ -17,7 +17,7 @@ Auth, in the table below:
 | `POST /scores` | session + integrity | Re-checks the posted demo against its level, scores it, keeps the player's best. |
 | `POST /plays` | session + integrity | Records the caller's attempts (at most 32 per 16 KiB batch, 30 batches a minute) and acknowledges each one. Attempts up to a version's first clear feed the vote eligibility. |
 | `DELETE /me` | session | Erases the caller: Play Games link, name, scores, likes, reports, play history, difficulty votes, rate counters and ranking row. The demo sweep deletes the orphaned demos. Their levels and submissions stay under the bare player id, with the author shown as "Deleted player". |
-| `GET /boards/:sha256` | session | The top 100 for one level hash plus the caller's own row. |
+| `GET /boards/:sha256` | session | The top 20 for one level hash (optional `limit=1..100`), the caller's own row, ranked player count and 21 ascending score quantiles (0,5,…,100%; empty when no scores). |
 | `GET /demos/:sha256/:player/:file` | session | A stored score demo. |
 | `POST /submissions` | session + integrity | Validates a level and its demo, opens or updates the pull request. An optional `suggested_difficulty` (`easy`, `normal`, `hard` or `expert`) appears in the pull request's description only; any other value, even empty, is refused with 400. |
 | `GET /me/submissions` | session | The caller's submissions with status and review comment; approved rows add the approved `sha256` and the level's latest version's `rated`, `rated_high`, `reviewed_difficulty`, `starters` and `likes`. |
@@ -56,7 +56,24 @@ Repository secrets of `BRAITG/zero-gx` the job reads (GitHub forbids secret name
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `PLAY_SERVICE_ACCOUNT` | same names |
 | `LEVELS_APP_ID`, `LEVELS_APP_KEY`, `LEVELS_APP_INSTALLATION_ID`, `LEVELS_WEBHOOK_SECRET` | `GITHUB_APP_ID`, `GITHUB_APP_KEY`, `GITHUB_INSTALLATION_ID`, `GITHUB_WEBHOOK_SECRET` |
 
-After the first deploy, set the repository variable `COMMUNITY_API` to `https://zerogx.braitg.dev` (no trailing slash) so releases register official level hashes. The API token also needs **Zone → Workers Routes → Edit** on `braitg.dev` (included in the "Edit Cloudflare Workers" template) for the custom domain.
+The API token also needs **Zone → Workers Routes → Edit** on `braitg.dev` (included in the "Edit Cloudflare Workers" template) for the custom domain. Official hash registration reuses this deployment credential and its D1 Edit scope; neither `COMMUNITY_API` nor `ADMIN_TOKEN` is needed by the registration job.
+
+### Official level registration
+
+The `register-official` job waits for both `apk` (including release creation) and `deploy-server`, and runs only for published, trusted `master` releases, never pull requests. It calls `scripts/register-official.sh RELEASE` from `server/`. The token and optional account id are scoped to that step's environment. An absent `CLOUDFLARE_API_TOKEN` emits a notice and skips, matching deployment policy; every configured-token failure fails the job.
+
+The script validates the release (`[A-Za-z0-9._-]`, 1–64 characters), all bundled JSON names (`level_NN.json`, 1–200 regular files), and hashes their canonical bytes without reserializing. Wrangler resolves the real `zero-gx` D1 id by name rather than using the committed placeholder. A single allowlisted SQL upsert has the same `sha256` conflict semantics as `postOfficial`: matching hashes update name/release, old hashes remain, and repeat registration is safe. There are no caller-supplied SQL, file paths or database ids.
+
+Cloudflare's ordinary Bot Fight Mode cannot be skipped by a normal WAF custom rule. The owner-approved registration path uses the authenticated Cloudflare D1 control plane instead: do not disable Bot Fight Mode, change zone security, add a zone-wide bypass or expose a `workers.dev` host. The existing admin-authenticated `POST /admin/official` remains unchanged for compatibility, but CI does not call it.
+
+For a reviewed, already published release, check out the exact release commit in a trusted worktree with dependencies installed and load `CLOUDFLARE_API_TOKEN` and, if needed, `CLOUDFLARE_ACCOUNT_ID` into the shell environment using the existing secret mechanism. Do not put credential values in commands or enable shell tracing:
+
+```sh
+cd server
+scripts/register-official.sh prototype-r150  # replace with the existing release tag for this checkout
+```
+
+Do not run this against pull-request input. After registration, query `official_levels` read-only with Wrangler against the resolved production id and compare every `sha256sum ../levels/level_*.json` value with the stored name/release. Also verify an authenticated board request resolves a bundled hash. A successful registration job alone is not rollout proof; publish the matching privacy policy and verify its live page before client rollout.
 
 ### Community feedback rollout and rollback
 
@@ -90,7 +107,7 @@ All commands run in `server/`.
 | `GITHUB_APP_KEY` | The App's private key as **PKCS#8** PEM. GitHub issues PKCS#1; convert it: `openssl pkcs8 -topk8 -nocrypt -in app.pem -out app-pkcs8.pem`. |
 | `GITHUB_INSTALLATION_ID` | The installation id of the App on `zero-gx-levels` (the number in the installation's URL). |
 | `GITHUB_WEBHOOK_SECRET` | The secret you give GitHub for the webhook. |
-| `ADMIN_TOKEN` | A random token; the release workflow uses it for `POST /admin/official`. |
+| `ADMIN_TOKEN` | A random token protecting the backward-compatible `POST /admin/official` endpoint; trusted release registration uses the Cloudflare deployment credential instead. |
 
 Non-secret variables are in `wrangler.toml` under `[vars]`:
 
@@ -126,7 +143,7 @@ For the optional monetization feature, create an active one-time in-app product 
    - Generate a private key (give its PKCS#8 form to `GITHUB_APP_KEY`), note the App ID.
    - Install it on `zero-gx-levels` only; the number in the installation's URL is `GITHUB_INSTALLATION_ID`.
 4. Protect `main` with a **ruleset** (Settings, Rules, Rulesets), not classic branch protection: require a pull request, require review from Code Owners, require the `check` status, block force pushes, and set the bypass list to the GitHub App with **Always allow** (it commits `index.json` directly) and the **Repository admin** role with **For pull requests only** (an admin can then merge a pull request that lacks the second review, which bootstraps the first moderators; pull-request-only is enough because admins never push to `main` directly, except for the deletion rewrite described in the levels repository's README, for which they temporarily switch to Always allow). Classic branch protection cannot do this: its bypass of pull-request rules does not lift required status checks, so the App's direct `index.json` commit, which has no `check` run, would be rejected (GH006).
-5. In `BRAITG/zero-gx`, add the repository secret `ADMIN_TOKEN` (same value as the Worker's) and the repository variable `COMMUNITY_API` (the Worker URL, no trailing slash). The Build workflow then registers the official level hashes after each published release; without them official boards do not exist.
+5. In `BRAITG/zero-gx`, configure the Cloudflare deployment secrets listed above. The Build workflow then registers official level hashes directly in D1 after both the published release and database deployment succeed; without registered hashes official boards do not exist. `ADMIN_TOKEN` remains the Worker's admin-route credential, not the CI registration credential.
 6. In the App's Advanced tab, a ping delivery should show a 200.
 
 ## Operations

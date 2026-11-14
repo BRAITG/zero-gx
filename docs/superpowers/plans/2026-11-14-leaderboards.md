@@ -19,6 +19,7 @@
 - All HTTP/plugin waits remain at most 30 seconds. Background attempts are spaced by `FLUSH_GAP_SECONDS` and use the existing integrity serialization.
 - Never publish an unverified estimate as a ranked row. No replay watching or player profiles.
 - Work only in this task's linked worktree. Commit and push each completed slice.
+- Official registration uses only the trusted release checkout and existing Cloudflare deployment credential/D1 control plane. Keep Bot Fight Mode, zone security, the public admin endpoint and `workers_dev = false` unchanged.
 
 ## Review Focus
 
@@ -129,15 +130,15 @@ These preserve the approved feature intent where the draft formula leaves an edg
 
 **Files:** Modify `.github/workflows/build.yml`, create `server/scripts/register-official.sh`, add registration tests to server tests; modify `PRIVACY.md`, `README.md`, `server/README.md`.
 
-- [ ] Write a test invoking the registration script with fake curl: missing token skips, successful 2xx succeeds, HTTP 403/challenge and transport failure return nonzero. Verify headers/token never appear in process arguments or logs.
-- [ ] Observe RED; extract the existing registration shell into the script and remove `continue-on-error` from the release step. Keep it after release creation, gated on configured API.
-- [ ] Fix the external Cloudflare challenge narrowly. Inspect actual zone rules first: a custom skip rule cannot skip ordinary Bot Fight Mode. Do not disable zone-wide protection or assume all WAF products are skippable. If credentials/product restrictions prevent a host/path-scoped solution, stop that deployment step and present the precise manual action needed; finish reachable code first.
-- [ ] Register the current release and verify every bundled campaign hash exists in `official_levels` via a read-only query. Protect the admin token as the existing workflow does.
-- [ ] Document score posting/queues, exact vs estimated ranks, account deletion and cached freshness. Add aggregate score distributions to privacy policy and its braitg.dev copy in its own linked worktree/PR; verify the published policy before rollout.
-- [ ] Run `npm test && npm run typecheck`, full Godot suite and screenshot smoke checks. Commit/push, final independent review, PR checks, then merge/deploy per repository policy. Verify board and registration endpoints, not just job success.
+- [ ] Write registration tests with a stub Wrangler boundary: missing deploy token visibly skips; canonical bytes produce name/hash/release upserts; repeat execution preserves old hashes; bad releases/names/counts fail before network; database ids resolve by name; configured-token failures are nonzero and credentials never appear in arguments/logs.
+- [ ] Implement `server/scripts/register-official.sh` with strict release/name/count validation and SQL allowlisting. Reuse authenticated Wrangler D1 execution and the existing deployment credential/scopes, not public `/admin/official`. The owner-approved change supersedes the original fake-curl/WAF-skip proposal: ordinary Bot Fight Mode cannot be skipped by a normal WAF rule.
+- [ ] Replace the public curl step and `continue-on-error` with a trusted `master` registration job depending on both `apk` (release creation) and `deploy-server` (database migrations/deployment). Scope credential environment to the step; missing-token skip matches deployment, configured-token failure fails the job.
+- [ ] Parent, after review: register the already published current release from its trusted checkout and verify every bundled campaign hash in `official_levels` using a read-only query. Do not write production D1 during implementation; do not alter zone security or add a public host.
+- [ ] Document score posting/queues, exact vs estimated ranks, account deletion and cached freshness. Add account-owned automatic new-best campaign/community uploads, sign-in boundaries and public score-distribution aggregates to `PRIVACY.md` and its website body, preserving website metadata and relative Terms link. Commit/push the website branch separately; parent handles PR/publication and live verification before rollout.
+- [ ] Run `bash -n`, focused server registration tests plus existing admin registration semantics, and server typecheck once after changes. Commit/push both assigned branches; parent handles full game suite, screenshots, independent review, PRs and deployment.
 
 ## Self-review and handoff
 
 Coverage: server/quantiles (1), estimator (2), durable retry/ownership/erasure (3), board cache and shared UI (4), results/posting eligibility (5), details/campaign (6), registration/privacy/release (7). The five Review Focus items have explicit tests in their owning tasks.
 
-Execution order is 1→2→3→4→5→6→7. Shared files have one implementer at a time. Per-task reviewers inspect the actual diff and test evidence; final review covers cross-task integration. External WAF changes remain a separately verified deployment action, not a reason to relax authentication or bypass checks.
+Execution order is 1→2→3→4→5→6→7. Shared files have one implementer at a time. Per-task reviewers inspect the actual diff and test evidence; final review covers cross-task integration. Trusted D1 registration supersedes the WAF-change proposal; deployment and live policy/hash verification remain parent-owned rollout actions.
