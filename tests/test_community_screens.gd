@@ -308,6 +308,25 @@ func test_the_sort_and_filter_chips_request_the_right_list() -> void:
 		check(net.requests[-1].url.ends_with("/levels?" + step[1]), "%s must ask for %s: %s" % [step[0], step[1], net.requests[-1].url])
 
 
+func test_a_real_chip_press_toggles_the_group_and_asks_for_that_filter() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	var screen := await _community()
+	var hard: Button = _buttons(screen, "Hard")[0]
+	var all: Button = _buttons(screen, "All")[0]
+	check(all.button_pressed and not hard.button_pressed, "control: All starts chosen")
+	net.answer("GET", "/levels", 200, [])
+	hard.grab_focus()
+	_send_action(&"ui_accept")  # the keyboard press of a focused chip, which toggles it as a tap does; `pressed.emit()` would not
+	_send_action(&"ui_accept", false)
+	await frames(2)
+	check(hard.button_pressed and not all.button_pressed, "pressing Hard must choose it and release All: %s / %s" % [hard.button_pressed, all.button_pressed])
+	check(net.requests[-1].url.ends_with("/levels?sort=popular&page=0&difficulty=hard"), "and ask for the Hard list: %s" % net.requests[-1].url)
+	net.answer("GET", "/levels", 200, [])
+	screen.free()
+
+
 func test_an_empty_filter_says_so_and_show_all_clears_it() -> void:
 	var net := _fake()
 	await _signed_in(net)

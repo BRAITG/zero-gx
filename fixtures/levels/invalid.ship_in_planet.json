@@ -1,0 +1,135 @@
+{
+  "bodies": [
+    {
+      "kind": "planet",
+      "position": [
+        2000,
+        600
+      ]
+    },
+    {
+      "kind": "planet",
+      "position": [
+        0,
+        0
+      ]
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      3650,
+      -700
+    ]
+  },
+  "hint": "Touch and hold: the ship turns toward your finger and fires its engine. Reach the green ring.",
+  "par": 1522,
+  "route": {
+    "points": [
+      [
+        1550,
+        0
+      ],
+      [
+        2700,
+        -700
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ]
+  },
+  "title": "Launch",
+  "tour": [
+    {
+      "position": [
+        800,
+        -170
+      ],
+      "text": "Blue walls bounce you back. Glancing hits barely hurt; head-on hits at speed scratch your hull."
+    },
+    {
+      "position": [
+        0,
+        0
+      ],
+      "text": "Touch and hold anywhere: the ship turns toward your finger and fires its engine. Let go to coast."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          170
+        ],
+        [
+          -250,
+          -170
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          3900,
+          -530
+        ],
+        [
+          3900,
+          -870
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          170
+        ],
+        [
+          1650,
+          170
+        ],
+        [
+          2750,
+          -530
+        ],
+        [
+          3900,
+          -530
+        ]
+      ]
+    },
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -250,
+          -170
+        ],
+        [
+          1550,
+          -170
+        ],
+        [
+          2650,
+          -870
+        ],
+        [
+          3900,
+          -870
+        ]
+      ]
+    }
+  ]
+}
