@@ -48,7 +48,22 @@ describe("validateLevel edge cases", () => {
   it("rejects a ship starting inside a body", () => {
     const level = base();
     level.bodies = [{ kind: "planet", position: level.ship.position }];
-    expect(validateLevel(level)).toContain("the ship starts inside body 0");
+    expect(validateLevel(level)).toContain("the ship starts inside planet 1");
+  });
+  it("names a body by its kind and its place among that kind", () => {
+    const level = base();
+    level.bodies = [
+      { kind: "planet", position: [2000, 0] },
+      { kind: "planet", position: level.ship.position },
+    ];
+    expect(validateLevel(level)).toContain("the ship starts inside planet 2");
+  });
+  it("names a body out of range by its kind, and numbers an unknown kind from 1", () => {
+    const level = base();
+    level.bodies = [{ kind: "star", position: [9000, 0], radius: 1000, strength: 100 }];
+    expect(validateLevel(level).some((e) => e.startsWith("star 1: a star's total pull must be"))).toBe(true);
+    level.bodies = [{ kind: "planet", position: [2000, 0] }, { kind: "moon", position: [0, 0] }];
+    expect(validateLevel(level)).toContain("body 2: unknown kind");
   });
   it("counts title characters, not UTF-16 units", () => {
     const level = base();

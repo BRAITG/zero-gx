@@ -116,15 +116,16 @@ export function validateLevel(data: unknown): string[] {
   const bodies = list(d, "bodies", MAX_BODIES, errors);
   bodies.forEach((body, i) => {
     if (!isObj(body) || !BODY_KINDS.includes(get(body, "kind") as string)) {
-      errors.push(`body ${i}: unknown kind`);
+      errors.push(`body ${i + 1}: unknown kind`);
       return;
     }
+    const label = bodyName(bodies, i);
     const before = errors.length;
-    point(get(body, "position"), `body ${i} position`, errors);
+    point(get(body, "position"), `${label} position`, errors);
     for (const [key, [low, high]] of Object.entries(BODY_RANGES)) {
-      if (key in body) number(body[key], low, high, `body ${i} ${key}`, errors);
+      if (key in body) number(body[key], low, high, `${label} ${key}`, errors);
     }
-    if (errors.length === before) checkKindLimits(i, body, errors); // only well-formed numbers can be compared
+    if (errors.length === before) checkKindLimits(label, body, errors); // only well-formed numbers can be compared
   });
 
   const rocks = list(d, "asteroids", MAX_ASTEROIDS, errors);
@@ -180,12 +181,19 @@ export function bodyValue(body: Obj, key: string): number {
   return get(body, key, PRESETS[body.kind as string][key]) as number;
 }
 
-function checkKindLimits(i: number, body: Obj, errors: string[]): void {
+// A body's name in messages: its kind and its place among the bodies of that kind, e.g. "star 2".
+function bodyName(bodies: unknown[], i: number): string {
+  const kind = (bodies[i] as Obj).kind as string;
+  const n = bodies.slice(0, i + 1).filter((b) => isObj(b) && b.kind === kind).length;
+  return `${kind.replaceAll("_", " ")} ${n}`;
+}
+
+function checkKindLimits(label: string, body: Obj, errors: string[]): void {
   const kind = body.kind as string;
   for (const [key, [low, high]] of Object.entries(KIND_LIMITS[kind])) {
     const value = key === "total_pull" ? bodyValue(body, "strength") * (bodyValue(body, "radius") / 1000) ** 2 : bodyValue(body, key);
     if (value < low - 0.001 || value > high + 0.001) {
-      errors.push(`body ${i}: a ${kind.replaceAll("_", " ")}'s ${key.replaceAll("_", " ")} must be ${fmt(low)} to ${fmt(high)}`);
+      errors.push(`${label}: a ${kind.replaceAll("_", " ")}'s ${key.replaceAll("_", " ")} must be ${fmt(low)} to ${fmt(high)}`);
     }
   }
 }
@@ -222,9 +230,10 @@ function checkStart(d: Obj, errors: string[]): void {
       }
     }
   });
-  (get(d, "bodies", []) as Obj[]).forEach((body, i) => {
+  const bodies = get(d, "bodies", []) as Obj[];
+  bodies.forEach((body, i) => {
     if (dist(vec(body.position), start) < bodyValue(body, "radius") + SHIP_RADIUS) {
-      errors.push(`the ship starts inside body ${i}`);
+      errors.push(`the ship starts inside ${bodyName(bodies, i)}`);
     }
   });
   if (dist(vec((d.goal as Obj).position), start) < GOAL_RADIUS + SHIP_RADIUS) {

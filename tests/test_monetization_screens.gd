@@ -279,7 +279,8 @@ func test_home_community_settings_purchase_gameplay_and_pause_surfaces() -> void
 		return
 	await frames(2)
 	check(money.footer_height > 0.0, "Community must be an eligible surface")
-	var community_settings_button := _button(community, "Settings")
+	var gears := community.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.tooltip_text == "Community settings")
+	var community_settings_button: Button = gears[0] if not gears.is_empty() else null
 	if community_settings_button != null:
 		community_settings_button.pressed.emit()
 	await frames(2)

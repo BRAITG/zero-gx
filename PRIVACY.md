@@ -1,6 +1,6 @@
 # Zero-GX Privacy Policy
 
-Last updated: 10 November 2026
+Last updated: 14 November 2026
 
 Zero-GX is made by Andre Brait under the name BRAITG. This policy explains what data the game and its community service handle, who can see it, and how to have it deleted.
 
@@ -54,6 +54,8 @@ Leaderboards, the player ranking, shared levels, likes, reports, difficulty rati
 | Your likes, difficulty ratings and reports, including the reason you write in a report | To rank community levels, show how hard players find them, and moderate them. |
 | Your community play history: for each version of a community level you play, a random attempt ID, the version's hash, when the attempt started and ended, and whether it was cleared, failed or abandoned | To count how many players have started and cleared each version, and to decide when you may rate its difficulty. |
 
+Your play history is also used to estimate each level's difficulty with a model of player skill. The skill estimates are temporary and are neither stored nor shown.
+
 The play history is kept apart from your scores. It holds no recording of a run, no controls or cursor input, and no device identifier. A failed or abandoned attempt is counted, but we keep no recording of it. Score recordings are separate and are kept as described above. The app reports attempts itself; we do not check them against a recording.
 
 Only attempts on published community levels count. Menus, paused introductions, the editor's Test and Publish flights, training and campaign stages, and replays are not counted. If the app does not yet know your Zero-GX account, a community level you play is not recorded, and nothing from it is attached to an account that signs in later.
@@ -74,7 +76,7 @@ Other signed-in players can see:
 - leaderboards, with your display name, your Zero-GX player ID, your score details and, while we keep it, the recording of your best run;
 - the player ranking, with your display name and total points;
 - the list of community levels, with the author's display name, the number of likes, and the level's difficulty: the label a moderator has set, and the community difficulty with how many players rated it;
-- for each version of a community level, aggregate play figures: how many players have started it, how many have cleared it, the median number of attempts among those who cleared it, and how many players are still unbeaten after 5, 10 or 20 attempts.
+- for each version of a community level, aggregate figures only: its Rated difficulty label and the range it covers, the clear curve (the share of players who had cleared it within each number of tries), how many players have started it and how many have cleared it, how many have not cleared it (and how many of those after 20 or more tries), and whether the players so far were stronger or weaker than typical.
 
 Other players never see which players started, cleared or rated a level, or any player's play history. In the app you see your own progress and your own rating.
 
@@ -109,7 +111,7 @@ You can delete your community account at any time in the game: open Community, c
 
 Community deletion does not erase Google's advertising or purchase records, cancel your purchase, or remove the game's independent ad-free entitlement. Privacy choices and Google's privacy controls apply to Google-held information. Uninstalling removes the game's local cache, not Google's purchase record.
 
-Deleting your community account removes your Google Play Games player ID, your display name, your scores and run recordings, your likes, your reports, your play history and your difficulty ratings from our servers, together with the per-level figures built from them. Run recordings are removed from storage within a day. The app also removes the play history and ratings it holds for that account on your device, including any not yet sent, so unsent activity from a deleted account cannot restore its history under a new account. The play figures for each level are recalculated without the deleted records.
+Deleting your community account removes your Google Play Games player ID, your display name, your scores and run recordings, your likes, your reports, your play history and your difficulty ratings from our servers. Run recordings are removed from storage within a day. The app also removes the play history and ratings it holds for that account on your device, including any not yet sent, so unsent activity from a deleted account cannot restore its history under a new account. The play figures for each level are recalculated without the deleted records within 10 minutes.
 
 The levels you submitted stay in the game and in the public repository, shown as by "Deleted player". The random Zero-GX player ID stays on them and on the reports you filed, but nothing links it to you any more. The difficulty you suggested for them, and any label a moderator set, stay with each level. Your display name stays in the history of the public level list until we rewrite that history. If you ask, we rewrite it, and we also remove your levels from the repository and its history. Copies that other people made under the level licence, and copies kept by third-party archives, are outside our control.
 

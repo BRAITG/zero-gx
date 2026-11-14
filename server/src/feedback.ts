@@ -41,19 +41,24 @@ const VOTE_UPSERT = `INSERT INTO difficulty_votes (player, sha256, difficulty)
   ON CONFLICT (player, sha256) DO UPDATE SET difficulty = excluded.difficulty
   RETURNING difficulty`;
 
-/** Each version's community label and voter count. Banned voters are left out at query time; deleted ones have no rows. */
-export async function communityLabels(env: Env, sha256s: string[]): Promise<Map<string, Community>> {
+/** Each version's vote counts. Banned voters are left out at query time; deleted ones have no rows. */
+async function tallies(env: Env, sha256s: string[]): Promise<Map<string, Tally>> {
   const { results } = await env.DB.prepare(
     `SELECT v.sha256, v.difficulty, COUNT(*) AS votes FROM difficulty_votes v JOIN players p ON p.id = v.player
      WHERE p.banned = 0 AND v.sha256 IN (SELECT value FROM json_each(?)) GROUP BY v.sha256, v.difficulty`,
   )
     .bind(JSON.stringify(sha256s))
     .all<{ sha256: string; difficulty: Difficulty; votes: number }>();
-  const tallies = new Map<string, Tally>(sha256s.map((sha256): [string, Tally] => [sha256, { easy: 0, normal: 0, hard: 0, expert: 0 }]));
-  for (const row of results) tallies.get(row.sha256)![row.difficulty] = row.votes;
-  const labels = new Map<string, Community>();
-  for (const [sha256, tally] of tallies) labels.set(sha256, { value: upperMedianDifficulty(tally), votes: Object.values(tally).reduce((sum, n) => sum + n, 0) });
-  return labels;
+  const byVersion = new Map<string, Tally>(sha256s.map((sha256): [string, Tally] => [sha256, { easy: 0, normal: 0, hard: 0, expert: 0 }]));
+  for (const row of results) byVersion.get(row.sha256)![row.difficulty] = row.votes;
+  return byVersion;
+}
+
+const communityOf = (tally: Tally): Community => ({ value: upperMedianDifficulty(tally), votes: Object.values(tally).reduce((sum, n) => sum + n, 0) });
+
+/** Each version's community label and voter count. */
+export async function communityLabels(env: Env, sha256s: string[]): Promise<Map<string, Community>> {
+  return new Map([...(await tallies(env, sha256s))].map(([sha256, tally]) => [sha256, communityOf(tally)]));
 }
 
 // Starters are the non-banned players with counted attempts on the version; finishers are those who cleared it.
@@ -105,7 +110,12 @@ export async function getFeedback(request: Request, env: Env, params: Record<str
   const sha256 = sha256Of(new URL(request.url).searchParams.get("sha256"));
   const level = await visibleLevel(env, params.level);
   const version = await versionOf(env, level.id, sha256);
-  const community = (await communityLabels(env, [sha256])).get(sha256)!;
+  const votes = (await tallies(env, [sha256])).get(sha256)!;
+  const model = await env.DB.prepare(
+    "SELECT rated, rated_high, p10_low, p10_high, curve, not_cleared_20, audience, starters, clears FROM version_stats WHERE sha256 = ?",
+  )
+    .bind(sha256)
+    .first<{ curve: string }>();
   const stats = await statsOf(env, sha256);
   const mine = (await env.DB.prepare(
     `SELECT EXISTS (SELECT 1 FROM likes WHERE player = ?1 AND level = ?2) AS liked,
@@ -119,7 +129,19 @@ export async function getFeedback(request: Request, env: Env, params: Record<str
     level_id: level.id,
     sha256,
     reviewed_difficulty: version.reviewed_difficulty,
-    community_difficulty: community,
+    community_difficulty: communityOf(votes),
+    // The model's fields wait for the cron's row. Without one, starters and clears are null (not 0), so a client can tell "no row" from "nobody started" and use the live stats instead.
+    rated: null,
+    rated_high: null,
+    p10_low: null,
+    p10_high: null,
+    audience: null,
+    not_cleared_20: 0,
+    starters: null,
+    clears: null,
+    ...model,
+    curve: model && JSON.parse(model.curve),
+    votes,
     stats,
     you: {
       liked: mine.liked === 1,

@@ -1,3 +1,5 @@
+import { isDifficulty, MIN_VOTERS, SCALE } from "./core/difficulty";
+import { type History, type Label, rate } from "./core/rating";
 import type { Env } from "./env";
 import { communityLabels } from "./feedback";
 import { getHeadCommit, openIssue } from "./github";
@@ -60,22 +62,37 @@ function parseSketch(text: string | null): object | null {
   }
 }
 
+/** The row's chip label includes ?1: Rated (a range matches both bands), else Reviewed, else Voted. The Voted branch is `upperMedianDifficulty` in SQL: ?2 is the label's rank, and the vote at index total / 2 (integer division) has that label when at most total / 2 votes sit below it and more than total / 2 sit at or below it. */
+const CHIP_MATCHES = `(?1 IS NULL OR CASE
+  WHEN vs.rated IS NOT NULL THEN ?1 IN (vs.rated, COALESCE(vs.rated_high, vs.rated))
+  WHEN v.reviewed_difficulty IS NOT NULL THEN v.reviewed_difficulty = ?1
+  ELSE EXISTS (SELECT 1 FROM (
+    SELECT COUNT(*) AS total, COALESCE(SUM(rank < ?2), 0) AS below, COALESCE(SUM(rank <= ?2), 0) AS upto FROM (
+      SELECT CASE d.difficulty ${SCALE.map((label, rank) => `WHEN '${label}' THEN ${rank}`).join(" ")} END AS rank
+      FROM difficulty_votes d JOIN players dp ON dp.id = d.player WHERE d.sha256 = v.sha256 AND dp.banned = 0))
+    WHERE total >= ${MIN_VOTERS} AND below <= total / 2 AND upto > total / 2)
+  END)`;
+
 export async function getLevels(request: Request, env: Env): Promise<Response> {
   await requirePlayer(request, env);
   const query = new URL(request.url).searchParams;
-  const sort = query.get("sort") ?? "top";
+  const sort = query.get("sort") ?? "popular";
   const page = query.get("page") ?? "0";
-  if (sort !== "top" && sort !== "new") throw new HttpError(400, "sort must be top or new.");
+  const difficulty = query.get("difficulty");
+  // `top` is the older name of `popular`.
+  if (sort !== "popular" && sort !== "top" && sort !== "new") throw new HttpError(400, "sort must be popular or new.");
   if (!/^\d{1,6}$/.test(page)) throw new HttpError(400, "page must be a non-negative integer.");
-  const order = sort === "top" ? "likes DESC, players DESC, l.id" : "v.approved DESC, l.id";
+  if (difficulty !== null && !isDifficulty(difficulty)) throw new HttpError(400, "difficulty must be easy, normal, hard or expert.");
+  const order = sort === "new" ? "v.approved DESC, l.id" : "likes DESC, players DESC, l.id";
   const { results } = await env.DB.prepare(
     `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256, v.reviewed_difficulty, v.sketch, v.par,
+       vs.rated, vs.rated_high, COALESCE(vs.starters, 0) AS starters,
        (SELECT COUNT(*) FROM likes k JOIN players kp ON kp.id = k.player WHERE k.level = l.id AND kp.banned = 0) AS likes,
        (SELECT COUNT(DISTINCT s.player) FROM scores s JOIN versions w ON w.sha256 = s.sha256 JOIN players sp ON sp.id = s.player WHERE w.level = l.id AND sp.banned = 0) AS players
-     FROM levels l LEFT JOIN players p ON p.id = l.owner JOIN versions v ON v.level = l.id AND v.version = l.latest
-     WHERE ${VISIBLE} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ?`,
+     FROM levels l LEFT JOIN players p ON p.id = l.owner JOIN versions v ON v.level = l.id AND v.version = l.latest LEFT JOIN version_stats vs ON vs.sha256 = v.sha256
+     WHERE ${VISIBLE} AND ${CHIP_MATCHES} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ?3`,
   )
-    .bind(Number(page) * PAGE_SIZE)
+    .bind(difficulty, difficulty === null ? null : SCALE.indexOf(difficulty), Number(page) * PAGE_SIZE)
     .all<{ sha256: string; sketch: string | null; par: number | null }>();
   const community = await communityLabels(env, results.map((row) => row.sha256));
   return Response.json(results.map(({ sketch, ...row }) => ({ ...row, sketch: parseSketch(sketch), community_difficulty: community.get(row.sha256)! })));
@@ -165,6 +182,29 @@ async function recomputeRanking(env: Env): Promise<void> {
   ]);
 }
 
+/** Replaces `version_stats` from the summaries of non-banned players on the approved versions of visible levels, keeping each label the stability rule holds. */
+export async function recomputeRatings(env: Env): Promise<void> {
+  const { results } = await env.DB.prepare(
+    `SELECT s.player, v.level, s.sha256, s.attempts, s.first_clear_ms IS NOT NULL AS cleared, COALESCE(s.last_ms, 0) AS lastMs
+     FROM play_summaries s JOIN players p ON p.id = s.player JOIN versions v ON v.sha256 = s.sha256 JOIN levels l ON l.id = v.level
+     WHERE p.banned = 0 AND ${VISIBLE}`,
+  ).all<Omit<History, "cleared"> & { cleared: number }>();
+  const histories = results.map((row): History => ({ ...row, cleared: row.cleared === 1 }));
+  const old = await env.DB.prepare("SELECT sha256, rated, rated_high FROM version_stats").all<{ sha256: string; rated: Label | null; rated_high: Label | null }>();
+  const previous = new Map(old.results.map((row) => [row.sha256, { rated: row.rated, ratedHigh: row.rated_high }]));
+  const time = Date.now();
+  const { versions, fitted } = rate(histories, previous, time);
+  if (!fitted) console.error("cron: the rating fit did not converge or its uncertainty is unusable; counts and curves are still written");
+  await env.DB.batch([
+    env.DB.prepare("DELETE FROM version_stats"),
+    ...versions.map((v) =>
+      env.DB.prepare("INSERT INTO version_stats (sha256, starters, clears, not_cleared_20, curve, beta, rating_sd, p10_low, p10_high, rated, rated_high, audience, computed_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").bind(
+        v.sha256, v.starters, v.clears, v.notCleared20, JSON.stringify(v.curve), v.beta, v.ratingSd, v.p10Low, v.p10High, v.rated, v.ratedHigh, v.audience, time,
+      ),
+    ),
+  ]);
+}
+
 /** Deletes R2 demos that no score row points to, skipping recent ones. Resumes after the key the previous run stopped at and wraps to the start once the listing ends. */
 export async function sweepDemos(env: Env, pageSize = SWEEP_PAGE): Promise<void> {
   const saved = await env.DB.prepare("SELECT last_key FROM sweep WHERE id = 1").first<{ last_key: string }>();
@@ -222,6 +262,7 @@ async function step(name: string, run: () => Promise<unknown>): Promise<void> {
 export async function runCron(env: Env, fetchFn: typeof fetch = fetch): Promise<void> {
   const time = now();
   await step("ranking", () => recomputeRanking(env));
+  await step("ratings", () => recomputeRatings(env));
   await step("cleanup", () =>
     env.DB.batch([
       // Per-minute counters ('score', 'plays') and per-day ones ('submit', 'report'); the action name says which unit the window is in.

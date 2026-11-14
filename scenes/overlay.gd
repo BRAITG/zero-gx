@@ -7,20 +7,22 @@ const WIDTH := 1000.0
 
 ## Add rows to this.
 var body: VBoxContainer
+## The scrolling area around `body`.
+var scroll: ScrollContainer
 
 var _close: Button
 var _prior_focus: Control  # what had focus before the overlay opened
 var _focus_fallback: Node
 
 
-## Shows a new overlay titled `title` on its own top layer under `parent`, with focus on Close.
-static func open(parent: Node, title: String, allow_monetization: bool = false) -> Overlay:
+## Shows a new overlay titled `title` on its own top layer under `parent`, with focus on Close. An `opaque` overlay hides what is behind it completely.
+static func open(parent: Node, title: String, allow_monetization: bool = false, opaque: bool = false) -> Overlay:
 	var layer := CanvasLayer.new()
 	layer.layer = 10
 	var overlay := Overlay.new()
 	overlay._prior_focus = parent.get_viewport().gui_get_focus_owner()
 	overlay._focus_fallback = parent
-	overlay._build(title)
+	overlay._build(title, opaque)
 	layer.add_child(overlay)
 	parent.add_child(layer)
 	Monetization.set_surface(overlay, allow_monetization)
@@ -90,11 +92,11 @@ func heading(text: String) -> Label:
 	return label
 
 
-func _build(title: String) -> void:
+func _build(title: String, opaque: bool) -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	var backdrop := ColorRect.new()
-	backdrop.color = Color(0.02, 0.025, 0.05, 0.96)
+	backdrop.color = Color(0.02, 0.025, 0.05, 1.0 if opaque else 0.96)
 	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(backdrop)
@@ -118,8 +120,10 @@ func _build(title: String) -> void:
 	heading_label.text = title
 	heading_label.add_theme_font_override("font", Style.display_font)
 	heading_label.add_theme_font_size_override("font_size", 36)
+	heading_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS  # a long level title must not push past the column
 	top.add_child(heading_label)
-	var scroll := ScrollContainer.new()
+	scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true  # keys and pads reach the rows below the fold

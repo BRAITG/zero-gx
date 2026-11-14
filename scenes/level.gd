@@ -173,13 +173,13 @@ func _notification(what: int) -> void:
 			sheets.back().close()
 
 
-## Rate level on the result card: the shared details and rating sheet of the version this run played, without Play.
+## Rate level on the result card: the shared details sheet of the version this run played, without Play, scrolled to the player's own section.
 func _rate() -> void:
 	var sha := _community_sha()
 	var info := Community.level_info(sha) if sha != "" else {}
 	if info.is_empty() or not find_children("*", "Overlay", true, false).is_empty():
 		return
-	CommunityLevelDetails.open(self, {"level_id": info.level_id, "sha256": sha, "latest": info.version, "title": display_name()})
+	CommunityLevelDetails.open(self, {"level_id": info.level_id, "sha256": sha, "latest": info.version, "title": display_name(), "par": par}, Callable(), true)
 
 
 

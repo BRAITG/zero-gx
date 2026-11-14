@@ -191,6 +191,15 @@ func test_body_limits_keep_each_kind_in_its_role() -> void:
 	check(LevelFormat.validate(fine).is_empty(), "presets must pass: %s" % LevelFormat.validate(fine))
 
 
+func test_messages_name_each_body_by_kind() -> void:
+	var second_planet := with("bodies", [{"kind": "planet", "position": [2000, 0]}, {"kind": "planet", "position": [0, 0]}])
+	check(LevelFormat.validate(second_planet).has("the ship starts inside planet 2"), "a ship inside the second planet must name it: %s" % [LevelFormat.validate(second_planet)])
+	var light_star := with("bodies", [{"kind": "star", "position": [9000, 0], "radius": 1000, "strength": 100}])
+	check(Array(LevelFormat.validate(light_star)).any(func(e: String) -> bool: return e.begins_with("star 1: a star's total pull must be")), "a star out of range must be named by its kind: %s" % [LevelFormat.validate(light_star)])
+	var unknown := with("bodies", [{"kind": "planet", "position": [2000, 0]}, {"kind": "moon", "position": [0, 0]}])
+	check(LevelFormat.validate(unknown).has("body 2: unknown kind"), "an unknown body kind must be numbered from 1: %s" % [LevelFormat.validate(unknown)])
+
+
 func test_json_layout_is_stable() -> void:
 	var text := LevelFormat.to_json({"b": 2.0, "a": [1.5, 3.0], "c": {"z": true, "y": "x"}})
 	check(text == '{\n  "a": [\n    1.5,\n    3\n  ],\n  "b": 2,\n  "c": {\n    "y": "x",\n    "z": true\n  }\n}\n', "layout: %s" % text)
