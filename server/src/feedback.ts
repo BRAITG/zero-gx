@@ -1,9 +1,9 @@
 import { type Difficulty, isDifficulty, upperMedianDifficulty } from "./core/difficulty";
 import type { Env } from "./env";
 import { HttpError, readJson } from "./http";
-import { VISIBLE, visibleLevel } from "./levels";
-import { playEligibility, SHA256, VERSION_ELIGIBLE } from "./plays";
-import { requirePlayer } from "./session";
+import { levelQuery, VISIBLE, visibleLevel } from "./levels";
+import { eligibilityOf, eligibilityQuery, type EligibilityRow, playEligibility, SHA256, VERSION_ELIGIBLE } from "./plays";
+import { PLAYER_ROW, type Player, playerFromRow, requirePlayer, sessionPlayerId } from "./session";
 
 /** Starters a version needs before its ratios and median are shown; below it, only the counts. */
 const MIN_STARTERS = 10;
@@ -41,24 +41,30 @@ const VOTE_UPSERT = `INSERT INTO difficulty_votes (player, sha256, difficulty)
   ON CONFLICT (player, sha256) DO UPDATE SET difficulty = excluded.difficulty
   RETURNING difficulty`;
 
-/** Each version's vote counts. Banned voters are left out at query time; deleted ones have no rows. */
-async function tallies(env: Env, sha256s: string[]): Promise<Map<string, Tally>> {
-  const { results } = await env.DB.prepare(
+interface TallyRow {
+  sha256: string;
+  difficulty: Difficulty;
+  votes: number;
+}
+
+/** Each version's vote counts for the versions `versions` selects (a one-column sha256 query). Banned voters are left out at query time; deleted ones have no rows. */
+export const tallyQuery = (env: Env, versions: string): D1PreparedStatement =>
+  env.DB.prepare(
     `SELECT v.sha256, v.difficulty, COUNT(*) AS votes FROM difficulty_votes v JOIN players p ON p.id = v.player
-     WHERE p.banned = 0 AND v.sha256 IN (SELECT value FROM json_each(?)) GROUP BY v.sha256, v.difficulty`,
-  )
-    .bind(JSON.stringify(sha256s))
-    .all<{ sha256: string; difficulty: Difficulty; votes: number }>();
+     WHERE p.banned = 0 AND v.sha256 IN (${versions}) GROUP BY v.sha256, v.difficulty`,
+  );
+
+function tallies(sha256s: string[], rows: TallyRow[]): Map<string, Tally> {
   const byVersion = new Map<string, Tally>(sha256s.map((sha256): [string, Tally] => [sha256, { easy: 0, normal: 0, hard: 0, expert: 0 }]));
-  for (const row of results) byVersion.get(row.sha256)![row.difficulty] = row.votes;
+  for (const row of rows) byVersion.get(row.sha256)![row.difficulty] = row.votes;
   return byVersion;
 }
 
 const communityOf = (tally: Tally): Community => ({ value: upperMedianDifficulty(tally), votes: Object.values(tally).reduce((sum, n) => sum + n, 0) });
 
-/** Each version's community label and voter count. */
-export async function communityLabels(env: Env, sha256s: string[]): Promise<Map<string, Community>> {
-  return new Map([...(await tallies(env, sha256s))].map(([sha256, tally]) => [sha256, communityOf(tally)]));
+/** Each version's community label and voter count, from the rows of its `tallyQuery`. */
+export function communityLabels(sha256s: string[], rows: TallyRow[]): Map<string, Community> {
+  return new Map([...tallies(sha256s, rows)].map(([sha256, tally]) => [sha256, communityOf(tally)]));
 }
 
 // Starters are the non-banned players with counted attempts on the version; finishers are those who cleared it.
@@ -88,8 +94,7 @@ interface StatRow {
   unbeaten_20: number;
 }
 
-async function statsOf(env: Env, sha256: string) {
-  const row = (await env.DB.prepare(STATS).bind(sha256).first<StatRow>())!;
+function statsOf(row: StatRow) {
   const ratios = row.started >= MIN_STARTERS;
   return {
     players_started: row.started,
@@ -106,25 +111,50 @@ async function statsOf(env: Env, sha256: string) {
 
 /** `GET /levels/:level/feedback?sha256=`: the version's labels and statistics, and only the caller's own state. */
 export async function getFeedback(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
-  const player = await requirePlayer(request, env);
-  const sha256 = sha256Of(new URL(request.url).searchParams.get("sha256"));
-  const level = await visibleLevel(env, params.level);
-  const version = await versionOf(env, level.id, sha256);
-  const votes = (await tallies(env, [sha256])).get(sha256)!;
-  const model = await env.DB.prepare(
-    "SELECT rated, rated_high, p10_low, p10_high, curve, not_cleared_20, audience, starters, clears FROM version_stats WHERE sha256 = ?",
-  )
-    .bind(sha256)
-    .first<{ curve: string }>();
-  const stats = await statsOf(env, sha256);
-  const mine = (await env.DB.prepare(
-    `SELECT EXISTS (SELECT 1 FROM likes WHERE player = ?1 AND level = ?2) AS liked,
-       (SELECT difficulty FROM difficulty_votes WHERE player = ?1 AND sha256 = ?3) AS difficulty`,
-  )
-    .bind(player.id, level.id, sha256)
-    .first<{ liked: number; difficulty: Difficulty | null }>())!;
-  const onVersion = await playEligibility(env, player.id, level.id, sha256);
-  const onStage = await playEligibility(env, player.id, level.id);
+  const playerId = await sessionPlayerId(request, env);
+  let sha256: string;
+  try {
+    sha256 = sha256Of(new URL(request.url).searchParams.get("sha256"));
+  } catch (error) {
+    await requirePlayer(request, env); // a banned or erased caller hears 403/401 before 400
+    throw error;
+  }
+  const [players, levels, versions, voteRows, models, statRows, mines, onVersionRows, onStageRows] = (
+    await env.DB.batch([
+      env.DB.prepare(PLAYER_ROW).bind(playerId),
+      levelQuery(env, params.level),
+      env.DB.prepare("SELECT reviewed_difficulty FROM versions WHERE level = ? AND sha256 = ?").bind(params.level ?? null, sha256),
+      tallyQuery(env, "SELECT value FROM json_each(?)").bind(JSON.stringify([sha256])),
+      env.DB.prepare("SELECT rated, rated_high, p10_low, p10_high, curve, not_cleared_20, audience, starters, clears FROM version_stats WHERE sha256 = ?").bind(sha256),
+      env.DB.prepare(STATS).bind(sha256),
+      env.DB.prepare(
+        `SELECT EXISTS (SELECT 1 FROM likes WHERE player = ?1 AND level = ?2) AS liked,
+           (SELECT difficulty FROM difficulty_votes WHERE player = ?1 AND sha256 = ?3) AS difficulty`,
+      ).bind(playerId, params.level ?? null, sha256),
+      eligibilityQuery(env, playerId, params.level ?? "", sha256),
+      eligibilityQuery(env, playerId, params.level ?? ""),
+    ])
+  ).map((result) => result.results) as [
+    Player[],
+    { id: string }[],
+    { reviewed_difficulty: Difficulty | null }[],
+    TallyRow[],
+    { curve: string }[],
+    StatRow[],
+    { liked: number; difficulty: Difficulty | null }[],
+    EligibilityRow[],
+    EligibilityRow[],
+  ];
+  playerFromRow(players[0]);
+  const level = levels[0];
+  const version = versions[0];
+  if (!level || !version) throw new HttpError(404, "Not found.");
+  const votes = tallies([sha256], voteRows).get(sha256)!;
+  const model = models[0] ?? null; // null, as `first()` gave, so `curve` stays null
+  const stats = statsOf(statRows[0]!);
+  const mine = mines[0]!;
+  const onVersion = eligibilityOf(onVersionRows[0]!);
+  const onStage = eligibilityOf(onStageRows[0]!);
   return Response.json({
     level_id: level.id,
     sha256,

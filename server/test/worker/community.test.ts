@@ -6,6 +6,7 @@ import { expireDemos, getIndex, postReport, recomputeRatings, runCron, sweepDemo
 import type { Env } from "../../src/env";
 import { signSession } from "../../src/session";
 import worker from "../../src/worker";
+import { countingDB } from "./round-trips";
 
 const pem = (label: string, der: ArrayBuffer) => `-----BEGIN ${label}-----\n${btoa(String.fromCharCode(...new Uint8Array(der)))}\n-----END ${label}-----`;
 const keyPair = await crypto.subtle.generateKey({ name: "RSASSA-PKCS1-v1_5", modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: "SHA-256" }, true, ["sign", "verify"]);
@@ -704,5 +705,17 @@ describe("demo expiry", () => {
     await env.DB.prepare("INSERT INTO scores VALUES (?, 'p_viewer0000000000', 5, 1, 1, 1, '', 1)").bind(hash("d4")).run();
     const response = await call("p_viewer0000000000", "GET", `/boards/${hash("d4")}`);
     expect(((await response.json()) as { rows: { demo: string | null }[] }).rows[0]!.demo).toBeNull();
+  });
+});
+
+describe("round trips", () => {
+  it("GET /levels asks the database once", async () => {
+    await seedPlayer("p_a");
+    await seedLevel("lvl_aaaaaaaaaa", "p_a", [300]);
+    const { db, trips } = countingDB(env.DB);
+    const response = await worker.fetch(new Request("https://example.com/levels", { headers: { Authorization: `Bearer ${await tokenOf("p_a")}` } }), { ...testEnv, DB: db });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toHaveLength(1);
+    expect(trips()).toBe(1);
   });
 });

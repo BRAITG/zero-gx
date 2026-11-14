@@ -11,9 +11,11 @@ interface LevelRow {
   latest: number;
 }
 
+export const levelQuery = (env: Env, id: string | undefined): D1PreparedStatement => env.DB.prepare(`SELECT l.id, l.latest FROM levels l WHERE l.id = ? AND ${VISIBLE}`).bind(id ?? null);
+
 /** A level that exists and is not hidden, else 404. */
 export async function visibleLevel(env: Env, id: string | undefined): Promise<LevelRow> {
-  const level = LEVEL_ID.test(id ?? "") ? await env.DB.prepare(`SELECT l.id, l.latest FROM levels l WHERE l.id = ? AND ${VISIBLE}`).bind(id).first<LevelRow>() : null;
+  const level = LEVEL_ID.test(id ?? "") ? await levelQuery(env, id).first<LevelRow>() : null;
   if (!level) throw new HttpError(404, "Not found.");
   return level;
 }

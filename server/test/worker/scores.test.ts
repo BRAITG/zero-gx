@@ -5,6 +5,7 @@ import type { Env } from "../../src/env";
 import { boundNonce } from "../../src/session";
 import { postScore } from "../../src/scores";
 import worker from "../../src/worker";
+import { countingDB } from "./round-trips";
 
 const testEnv: Env = { ...env, ALLOW_TEST_VERIFIER: "1" };
 const bytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
@@ -403,5 +404,15 @@ describe("POST /admin/official", () => {
       { release: "r2" },
     ];
     for (const body of bad) expect((await admin(body)).status, JSON.stringify(body).slice(0, 80)).toBe(400);
+  });
+});
+
+describe("round trips", () => {
+  it("GET /boards/<sha256> asks the database once", async () => {
+    const { token } = await signIn("b-rt", "Ola");
+    const { db, trips } = countingDB(env.DB);
+    const response = await worker.fetch(new Request(`https://example.com/boards/${SHA_01}`, { headers: { Authorization: `Bearer ${token}` } }), { ...testEnv, DB: db });
+    expect(response.status).toBe(200);
+    expect(trips()).toBe(1);
   });
 });

@@ -3,7 +3,7 @@ import { checkDemo, scoreDemo } from "./core/check";
 import { sha256Hex } from "./core/level";
 import type { Env } from "./env";
 import { HttpError, readBytes, readJson } from "./http";
-import { requireIntegrity, requirePlayer } from "./session";
+import { PLAYER_ROW, type Player, playerFromRow, requireIntegrity, requirePlayer, sessionPlayerId } from "./session";
 import { base64url, randomId } from "./util";
 
 const SCORES_PER_MINUTE = 30;
@@ -20,21 +20,34 @@ interface LevelRef {
   url: string;
 }
 
-/** The official or visible community level with this hash, or null. */
-async function findLevel(env: Env, sha256: string): Promise<LevelRef | null> {
-  const official = await env.DB.prepare("SELECT name, release FROM official_levels WHERE sha256 = ?").bind(sha256).first<{ name: string; release: string }>();
+const OFFICIAL = "SELECT name, release FROM official_levels WHERE sha256 = ?";
+const COMMUNITY = `SELECT v.level, v.version FROM versions v JOIN levels l ON l.id = v.level
+  WHERE v.sha256 = ? AND l.hidden = 0 AND v.level NOT IN (SELECT level FROM hidden_levels)`;
+
+interface OfficialRow {
+  name: string;
+  release: string;
+}
+
+interface CommunityRow {
+  level: string;
+  version: number;
+}
+
+/** The level of the `OFFICIAL` and `COMMUNITY` rows; official wins. */
+function levelRef(env: Env, official?: OfficialRow | null, community?: CommunityRow | null): LevelRef | null {
   if (official) {
     return { kind: "official", name: official.name, url: `https://raw.githubusercontent.com/BRAITG/zero-gx/${official.release}/levels/${official.name}.json` };
   }
-  const community = await env.DB.prepare(
-    `SELECT v.level, v.version FROM versions v JOIN levels l ON l.id = v.level
-     WHERE v.sha256 = ? AND l.hidden = 0 AND v.level NOT IN (SELECT level FROM hidden_levels)`,
-  )
-    .bind(sha256)
-    .first<{ level: string; version: number }>();
   if (!community) return null;
   const name = `${community.level}/v${community.version}`;
   return { kind: "community", name, url: `https://raw.githubusercontent.com/${env.LEVELS_REPO}/main/levels/${community.level}/v${community.version}.json` };
+}
+
+/** The official or visible community level with this hash, or null. */
+async function findLevel(env: Env, sha256: string): Promise<LevelRef | null> {
+  const official = await env.DB.prepare(OFFICIAL).bind(sha256).first<OfficialRow>();
+  return levelRef(env, official, official ? null : await env.DB.prepare(COMMUNITY).bind(sha256).first<CommunityRow>());
 }
 
 /** The level file's bytes: from the R2 cache, else fetched, hash-checked and cached. */
@@ -125,15 +138,21 @@ interface BoardRow {
 const boardEntry = ({ id, name, ...rest }: BoardRow) => ({ rank: rest.rank, player: { id, name }, points: rest.points, fuel: rest.fuel, hull: rest.hull, seconds: rest.seconds, demo: rest.demo || null });
 
 export async function getBoard(request: Request, env: Env, params: Record<string, string>): Promise<Response> {
-  const player = await requirePlayer(request, env);
+  const playerId = await sessionPlayerId(request, env);
   const sha256 = params.sha256!;
-  const level = SHA256.test(sha256) ? await findLevel(env, sha256) : null;
+  const [players, official, community, top, mine] = (
+    await env.DB.batch([
+      env.DB.prepare(PLAYER_ROW).bind(playerId),
+      env.DB.prepare(OFFICIAL).bind(sha256),
+      env.DB.prepare(COMMUNITY).bind(sha256),
+      env.DB.prepare(`${BOARD_ROW} ORDER BY s.points DESC, s.posted ASC, s.player ASC LIMIT ${BOARD_SIZE}`).bind(sha256),
+      env.DB.prepare(`${BOARD_ROW} AND s.player = ?`).bind(sha256, playerId),
+    ])
+  ).map((result) => result.results) as [Player[], OfficialRow[], CommunityRow[], BoardRow[], BoardRow[]];
+  playerFromRow(players[0]);
+  const level = SHA256.test(sha256) ? levelRef(env, official[0], community[0]) : null;
   if (!level) throw notFound();
-  const [top, mine] = await env.DB.batch<BoardRow>([
-    env.DB.prepare(`${BOARD_ROW} ORDER BY s.points DESC, s.posted ASC, s.player ASC LIMIT ${BOARD_SIZE}`).bind(sha256),
-    env.DB.prepare(`${BOARD_ROW} AND s.player = ?`).bind(sha256, player.id),
-  ]);
-  return Response.json({ level: { kind: level.kind, name: level.name }, rows: top!.results.map(boardEntry), you: mine!.results[0] ? boardEntry(mine!.results[0]) : null });
+  return Response.json({ level: { kind: level.kind, name: level.name }, rows: top.map(boardEntry), you: mine[0] ? boardEntry(mine[0]) : null });
 }
 
 export async function getDemo(request: Request, env: Env, params: Record<string, string>): Promise<Response> {

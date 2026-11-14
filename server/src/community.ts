@@ -1,12 +1,12 @@
-import { isDifficulty, MIN_VOTERS, SCALE } from "./core/difficulty";
+import { type Difficulty, isDifficulty, MIN_VOTERS, SCALE } from "./core/difficulty";
 import { type History, type Label, rate } from "./core/rating";
 import type { Env } from "./env";
-import { communityLabels } from "./feedback";
+import { communityLabels, tallyQuery } from "./feedback";
 import { getHeadCommit, openIssue } from "./github";
 import { HttpError, readJson } from "./http";
 import { VISIBLE, visibleLevel } from "./levels";
 import { playEligibility, STAGE_ELIGIBLE } from "./plays";
-import { DELETED_AUTHOR, requirePlayer } from "./session";
+import { DELETED_AUTHOR, PLAYER_ROW, type Player, playerFromRow, requirePlayer, sessionPlayerId } from "./session";
 import { rebuildIndex } from "./submissions";
 
 const PAGE_SIZE = 50;
@@ -74,27 +74,38 @@ const CHIP_MATCHES = `(?1 IS NULL OR CASE
   END)`;
 
 export async function getLevels(request: Request, env: Env): Promise<Response> {
-  await requirePlayer(request, env);
+  const playerId = await sessionPlayerId(request, env);
   const query = new URL(request.url).searchParams;
   const sort = query.get("sort") ?? "popular";
   const page = query.get("page") ?? "0";
   const difficulty = query.get("difficulty");
-  // `top` is the older name of `popular`.
-  if (sort !== "popular" && sort !== "top" && sort !== "new") throw new HttpError(400, "sort must be popular or new.");
-  if (!/^\d{1,6}$/.test(page)) throw new HttpError(400, "page must be a non-negative integer.");
-  if (difficulty !== null && !isDifficulty(difficulty)) throw new HttpError(400, "difficulty must be easy, normal, hard or expert.");
+  const invalid =
+    // `top` is the older name of `popular`.
+    sort !== "popular" && sort !== "top" && sort !== "new" ? "sort must be popular or new."
+    : !/^\d{1,6}$/.test(page) ? "page must be a non-negative integer."
+    : difficulty !== null && !isDifficulty(difficulty) ? "difficulty must be easy, normal, hard or expert."
+    : null;
+  if (invalid) {
+    await requirePlayer(request, env); // a banned or erased caller hears 403/401 before 400
+    throw new HttpError(400, invalid);
+  }
   const order = sort === "new" ? "v.approved DESC, l.id" : "likes DESC, players DESC, l.id";
-  const { results } = await env.DB.prepare(
-    `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256, v.reviewed_difficulty, v.sketch, v.par,
+  const pageSql = `SELECT l.id AS level_id, l.title, COALESCE(p.name, '${DELETED_AUTHOR}') AS author, l.latest, v.sha256, v.reviewed_difficulty, v.sketch, v.par,
        vs.rated, vs.rated_high, COALESCE(vs.starters, 0) AS starters,
        (SELECT COUNT(*) FROM likes k JOIN players kp ON kp.id = k.player WHERE k.level = l.id AND kp.banned = 0) AS likes,
        (SELECT COUNT(DISTINCT s.player) FROM scores s JOIN versions w ON w.sha256 = s.sha256 JOIN players sp ON sp.id = s.player WHERE w.level = l.id AND sp.banned = 0) AS players
      FROM levels l LEFT JOIN players p ON p.id = l.owner JOIN versions v ON v.level = l.id AND v.version = l.latest LEFT JOIN version_stats vs ON vs.sha256 = v.sha256
-     WHERE ${VISIBLE} AND ${CHIP_MATCHES} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ?3`,
-  )
-    .bind(difficulty, difficulty === null ? null : SCALE.indexOf(difficulty), Number(page) * PAGE_SIZE)
-    .all<{ sha256: string; sketch: string | null; par: number | null }>();
-  const community = await communityLabels(env, results.map((row) => row.sha256));
+     WHERE ${VISIBLE} AND ${CHIP_MATCHES} ORDER BY ${order} LIMIT ${PAGE_SIZE} OFFSET ?3`;
+  const binds = [difficulty, difficulty === null ? null : SCALE.indexOf(difficulty as Difficulty), Number(page) * PAGE_SIZE];
+  // The tallies select the page's versions again in the same batch, so they match the rows.
+  const [players, rows, votes] = await env.DB.batch([
+    env.DB.prepare(PLAYER_ROW).bind(playerId),
+    env.DB.prepare(pageSql).bind(...binds),
+    tallyQuery(env, `SELECT sha256 FROM (${pageSql})`).bind(...binds),
+  ]);
+  playerFromRow(players!.results[0] as Player | undefined);
+  const results = rows!.results as { sha256: string; sketch: string | null; par: number | null }[];
+  const community = communityLabels(results.map((row) => row.sha256), votes!.results as Parameters<typeof communityLabels>[1]);
   return Response.json(results.map(({ sketch, ...row }) => ({ ...row, sketch: parseSketch(sketch), community_difficulty: community.get(row.sha256)! })));
 }
 

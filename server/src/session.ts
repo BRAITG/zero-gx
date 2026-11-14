@@ -56,14 +56,27 @@ async function verifySession(env: Env, token: string): Promise<string | null> {
   }
 }
 
-/** The signed-in player from `Authorization: Bearer <token>`; 401 when missing, invalid or expired, 403 when banned unless `allowBanned`. */
-export async function requirePlayer(request: Request, env: Env, allowBanned = false): Promise<Player> {
+/** The player id of the `Authorization: Bearer <token>` session (HMAC check, no database); 401 when missing, invalid or expired. */
+export async function sessionPlayerId(request: Request, env: Env): Promise<string> {
   const token = request.headers.get("Authorization")?.match(/^Bearer (\S+)$/)?.[1];
   const id = token ? await verifySession(env, token) : null;
-  const player = id ? await env.DB.prepare("SELECT * FROM players WHERE id = ?").bind(id).first<Player>() : null;
+  if (!id) throw new HttpError(401, "Sign in again.");
+  return id;
+}
+
+export const PLAYER_ROW = "SELECT * FROM players WHERE id = ?";
+
+/** The player of a `PLAYER_ROW` result: 401 when the row is gone, 403 when banned unless `allowBanned`. */
+export function playerFromRow(player: Player | null | undefined, allowBanned = false): Player {
   if (!player) throw new HttpError(401, "Sign in again.");
   if (player.banned && !allowBanned) throw new HttpError(403, "This player is banned.");
   return player;
+}
+
+/** The signed-in player from `Authorization: Bearer <token>`; 401 when missing, invalid or expired, 403 when banned unless `allowBanned`. */
+export async function requirePlayer(request: Request, env: Env, allowBanned = false): Promise<Player> {
+  const id = await sessionPlayerId(request, env);
+  return playerFromRow(await env.DB.prepare(PLAYER_ROW).bind(id).first<Player>(), allowBanned);
 }
 
 /**

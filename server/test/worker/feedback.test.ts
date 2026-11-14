@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { Env } from "../../src/env";
 import { signSession } from "../../src/session";
 import worker from "../../src/worker";
+import { countingDB } from "./round-trips";
 
 const testEnv: Env = { ...env, ALLOW_TEST_VERIFIER: "1" };
 
@@ -558,5 +559,16 @@ describe("concurrent deletion", () => {
     expect(response.status).toBeGreaterThanOrEqual(400);
     expect(response.status).toBeLessThan(500);
     expect(await rows("SELECT player FROM difficulty_votes WHERE player = ?", "p_r")).toEqual([]);
+  });
+});
+
+describe("round trips", () => {
+  it("GET feedback asks the database once", async () => {
+    await seedPlayer("p_r");
+    await seedStage(A, [A1]);
+    const { db, trips } = countingDB(env.DB);
+    const response = await call("p_r", "GET", `/levels/${A}/feedback?sha256=${A1}`, undefined, { ...testEnv, DB: db });
+    expect(response.status).toBe(200);
+    expect(trips()).toBe(1);
   });
 });
