@@ -1,6 +1,6 @@
 # Zero-GX Privacy Policy
 
-Last updated: 10 November 2026
+Last updated: 14 November 2026
 
 Zero-GX is made by Andre Brait under the name BRAITG. This policy explains what data the game and its community service handle, who can see it, and how to have it deleted.
 
@@ -111,7 +111,7 @@ You can delete your community account at any time in the game: open Community, c
 
 Community deletion does not erase Google's advertising or purchase records, cancel your purchase, or remove the game's independent ad-free entitlement. Privacy choices and Google's privacy controls apply to Google-held information. Uninstalling removes the game's local cache, not Google's purchase record.
 
-Deleting your community account removes your Google Play Games player ID, your display name, your scores and run recordings, your likes, your reports, your play history and your difficulty ratings from our servers, together with the per-level figures built from them. Run recordings are removed from storage within a day. The app also removes the play history and ratings it holds for that account on your device, including any not yet sent, so unsent activity from a deleted account cannot restore its history under a new account. The play figures for each level are recalculated without the deleted records within 10 minutes.
+Deleting your community account removes your Google Play Games player ID, your display name, your scores and run recordings, your likes, your reports, your play history and your difficulty ratings from our servers. Run recordings are removed from storage within a day. The app also removes the play history and ratings it holds for that account on your device, including any not yet sent, so unsent activity from a deleted account cannot restore its history under a new account. The play figures for each level are recalculated without the deleted records within 10 minutes.
 
 The levels you submitted stay in the game and in the public repository, shown as by "Deleted player". The random Zero-GX player ID stays on them and on the reports you filed, but nothing links it to you any more. The difficulty you suggested for them, and any label a moderator set, stay with each level. Your display name stays in the history of the public level list until we rewrite that history. If you ask, we rewrite it, and we also remove your levels from the repository and its history. Copies that other people made under the level licence, and copies kept by third-party archives, are outside our control.
 
