@@ -234,7 +234,14 @@ func _refresh_boards() -> void:
 		if _board_attempts.has(key) and now - int(_board_attempts[key]) < Community.BOARD_CACHE_SECONDS * 1000:
 			continue
 		_board_attempts[key] = now  # before awaiting: another list can open while this request is held
-		Community.board(sha)
+		_read_automatic_board(sha, key)
+
+
+## Let Community decide freshness (including private-owner age); a cache-only hit spends no network opportunity.
+static func _read_automatic_board(sha: String, key: String) -> void:
+	var board: Dictionary = await Community.board(sha)
+	if board.get("cached", false) and not board.get("offline", false) and not board.has("error"):
+		_board_attempts.erase(key)
 
 
 func _board_identity_changed(_account: String) -> void:

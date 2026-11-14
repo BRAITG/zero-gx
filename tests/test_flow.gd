@@ -1041,13 +1041,7 @@ func test_opening_campaign_refreshes_only_completed_once_per_hash_hour() -> void
 		await frames(2)
 		main.free()
 	check(net.count("GET", "/boards/") == 1 and net.count("GET", "/boards/" + sha) == 1, "opening twice refreshes only the completed current hash once")
-	for file in DirAccess.get_files_at(Community.dir):
-		if file.begins_with("board_") and file.ends_with(".json"):
-			var cached: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Community.dir + file))
-			cached.fetched_at = int(Time.get_unix_time_from_system()) - Community.BOARD_CACHE_SECONDS - 1
-			var saved := FileAccess.open(Community.dir + file, FileAccess.WRITE)
-			saved.store_string(JSON.stringify(cached))
-			saved.close()
+	_campaign_cache_age(sha, Community.BOARD_CACHE_SECONDS + 1, Community.BOARD_CACHE_SECONDS + 1)
 	MAIN._board_attempts["p_me|" + sha] = Time.get_ticks_msec() - Community.BOARD_CACHE_SECONDS * 1000 - 1
 	var reopened := menu(MAIN.Page.OFFICIAL)
 	world.add_child(reopened)
@@ -1248,3 +1242,39 @@ func test_campaign_unknown_owner_uses_public_cache_and_only_explicit_board_signs
 	badge.pressed.emit()
 	await frames(3)
 	check((Community.platform as FakePlatform).sign_ins == 1 and net.count("POST", "/session") == 1, "explicit board action may initiate sign-in")
+
+
+func _campaign_cache_age(sha: String, public_seconds: int, private_seconds: int) -> void:
+	for file in DirAccess.get_files_at(Community.dir):
+		if file.begins_with("board_") and file.ends_with(sha + ".json"):
+			var cached: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Community.dir + file))
+			var age := private_seconds if file.begins_with("board_you_") else public_seconds
+			cached.fetched_at = int(Time.get_unix_time_from_system()) - age
+			var saved := FileAccess.open(Community.dir + file, FileAccess.WRITE)
+			saved.store_string(JSON.stringify(cached))
+			saved.close()
+
+
+func test_campaign_fresh_cache_hit_does_not_delay_private_cache_expiry_refresh() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	await Community.board(sha)
+	_campaign_cache_age(sha, 0, 59 * 60)  # effective freshness is the older owner's private answer
+	net.requests.clear()
+	var fresh := menu(MAIN.Page.OFFICIAL)
+	world.add_child(fresh)
+	await frames(2)
+	check(net.requests.is_empty(), "59-minute-old owner cache reuses the board without network")
+	fresh.free()
+	_campaign_cache_age(sha, 0, Community.BOARD_CACHE_SECONDS + 1)
+	net.answer("GET", "/boards/" + sha, 503, {"error": "Unavailable"})
+	var expired := menu(MAIN.Page.OFFICIAL)
+	world.add_child(expired)
+	await frames(2)
+	check(net.count("GET", "/boards/" + sha) == 1, "private cache expiry refreshes immediately despite the recent public-cache-only opening")
+	expired.free()
+	var failed := menu(MAIN.Page.OFFICIAL)
+	world.add_child(failed)
+	await frames(2)
+	check(net.count("GET", "/boards/" + sha) == 1, "the actual failed network attempt, unlike a cache hit, consumes the automatic cooldown")
