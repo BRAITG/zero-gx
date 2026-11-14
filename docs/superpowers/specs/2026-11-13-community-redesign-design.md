@@ -90,7 +90,7 @@ The required acceptance case is the owner's caveat: an easy level that newcomers
 
 The bands, the 10-attempt budget, the 30-attempt cap, the reference window and the gates are product thresholds kept as named constants in `core/rating.ts`, to be retuned once real data exists.
 
-**Known limits, stated once in the details sheet's help text:** the rating describes the Android Play audience, not desktop players. A player who quits early is counted only for the attempts they made, so a level that drives people away after one try can look easier than it is. Each new version starts Estimating; the previous version's label is not carried over.
+**Known limits, stated once in the details sheet's help text:** the rating describes the Android Play audience, not desktop players. A player who quits early is counted only for the attempts they made, so a level that drives people away after one try can look easier than it is. Once a version has hundreds of starters who each play few levels, its interval is narrower than the stated 90% and its label leans slightly easy. Each new version starts Estimating; the previous version's label is not carried over.
 
 ### Player votes
 
@@ -187,7 +187,7 @@ Privacy wording adds one sentence: play history is also used to estimate each le
   - recovers known skills and difficulties from synthetic histories within stated tolerances;
   - a level played only by weak players rates easier than its raw clear rate suggests;
   - one Newton step is clipped to ±1 (a direct unit test); the regression case of a near-trivial level plus one account with 300 failures, which also plays a second level, converges; and the fit publishes no rating while keeping raw statistics fresh when the pass limit is hit;
-  - `Vⱼ` equals the corresponding entry of a dense inverse of the full joint Hessian on small catalogues; the 90% interval of `θ_ref − βⱼ` covers the true value in 85–95% of 500 simulated catalogues;
+  - `Vⱼ` equals the corresponding entry of a dense inverse of the full joint Hessian on small catalogues. Over 500 simulated catalogues, the 90% interval of `θ_ref − βⱼ` covers the true value in 85–95% of a mid catalogue, where players play 6–12 of 12 levels. A sparse catalogue, where players play 3–6 of 6 levels, measures 83.2% and is held to an 83% floor. The shortfall on sparse and large catalogues is recorded as a known limit;
   - fixtures with known answers: (a) twenty reference players clear levels L1–L3 on attempt 10 while ten other players, who share no level with them, clear L4–L5 on attempt 15 — L1–L3 rate Normal, and L4–L5 stay Estimating because nothing ties their players to the reference; (b) sixty established players clear three levels at once and the target only on attempt 1,000 — rated Expert, not Hard; (c) the owner's caveat in every variant, both alone and inside a catalogue with at least 24 reference players — never harder than Normal, and Estimating or Easy exactly as Gates states;
   - gates hold back small, single-level and same-level-versions cohorts; a gate failure removes a held label at once; a two-band interval yields a range; the stability rule holds a single label and a range near a band edge.
 - Curve and counts against hand-computed cases, including early quitters and one heavy grinder.
