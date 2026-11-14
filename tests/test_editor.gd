@@ -2199,3 +2199,31 @@ func test_property_panel_title_names_thing_and_inlines_desktop_units() -> void:
 		if label.text == "Planet radius (px)":
 			titled = true
 	check(titled, "the desktop panel title names the thing, property and units")
+
+
+func test_radius_and_reach_knobs_stay_on_screen_when_their_ring_shows() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	var ref: Dictionary = e.doc.place("star", Vector2(0, 0))
+	e.doc.data.bodies[ref.index].radius = 3000.0
+	e.doc.data.bodies[ref.index].reach = 8000.0
+	e._refresh()
+	e.select(ref)
+	e._camera.zoom = Vector2.ONE * 1.5
+	e._camera.position = Vector2(-3000, 0)  # the radius ring's left edge: its upper-right and lower-right spots are far off screen
+	await frames(3)
+	var free: Rect2 = e._free_canvas_rect()
+	var slop := LevelDoc.HIT_SLOP / e._camera.zoom.x
+	var knob: Vector2 = e._body_handle_position(ref.index, "radius", slop)
+	check(free.has_point(_screen_at(e, knob)), "the radius knob shows on the visible part of its ring: %s" % _screen_at(e, knob))
+	check(absf(knob.length() - 3000.0) < 1.0, "and stays on the ring: %s" % knob.length())
+	check(e._pick_body_handle(knob, slop).get("role") == "radius", "and can be grabbed there")
+	e._camera.position = Vector2(0, 8000)  # the reach ring's bottom
+	await frames(3)
+	knob = e._body_handle_position(ref.index, "reach", slop)
+	check(free.has_point(_screen_at(e, knob)) and absf(knob.length() - 8000.0) < 1.0, "the reach knob too: %s" % _screen_at(e, knob))
+	e._camera.position = Vector2(2000, -2000)
+	e._camera.zoom = Vector2.ONE * 0.1
+	await frames(3)
+	var preferred: Vector2 = Vector2(1, -1).normalized() * 3000.0
+	check(e._body_handle_position(ref.index, "radius", slop).distance_to(preferred) < 1.0, "a knob whose usual spot shows stays there")

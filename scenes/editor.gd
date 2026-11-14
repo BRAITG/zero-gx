@@ -16,6 +16,8 @@ const LONG_PRESS := 0.5  # s a finger rests on a thing before opening its contex
 const GRID_COLOR := Color(1, 1, 1, 0.06)
 const MAJOR_GRID_COLOR := Color(1, 1, 1, 0.14)
 const FINE_GRID_MIN_PX := 3.0  # screen px between 1 m lines below which they would merge into a fill
+const HANDLE_MARGIN := 32.0  # screen px a radius or reach knob keeps from the view's edges, the top bar and the palette
+const HANDLE_SEARCH_STEPS := 256  # angles tried each way around a ring for a visible knob spot: fine enough for a reach ring at the closest zoom
 const PICKUP_LABELS := {"thrust_up": "Thrust up", "thrust_down": "Thrust down", "boost": "Boost"}
 const WALL_LABELS := {"blue": "Blue", "orange": "Orange", "red": "Red"}
 const WALL_COLORS := {"blue": Barrier.COLORS[Barrier.Kind.BLUE], "orange": Barrier.COLORS[Barrier.Kind.ORANGE], "red": Barrier.COLORS[Barrier.Kind.RED]}
@@ -237,11 +239,33 @@ func _pick_body_handle(world: Vector2, slop: float) -> Dictionary:
 			picked = {"type": "body_handle", "index": body_index, "role": role, "at": at}
 	return picked
 
+## Where a body's radius or reach knob sits: on its ring at the preferred diagonal, or, when that point is off screen or
+## under the top bar or palette, at the visible point of the ring nearest that diagonal, so a ring that shows always
+## shows its knob. A knob being dragged keeps the direction it was grabbed at.
 func _body_handle_position(body_index: int, role: String, slop: float) -> Vector2:
 	var body: Dictionary = doc.data.bodies[body_index]
-	var direction: Vector2 = Vector2(1, -1).normalized() if role == "radius" else Vector2(1, 1).normalized()
+	var center: Vector2 = doc.position_of({"type": "body", "index": body_index})
 	var distance: float = maxf(LevelFormat.body_value(body, role), slop + 1.0 / _camera.zoom.x)
-	return doc.position_of({"type": "body", "index": body_index}) + direction * distance
+	if _active_body_handle.get("index") == body_index and _active_body_handle.get("role") == role and _active_body_handle.has("direction"):
+		return center + _active_body_handle.direction * distance
+	var preferred: float = Vector2(1, -1).angle() if role == "radius" else Vector2(1, 1).angle()
+	var visible := _handle_area()
+	if visible.has_point(center + Vector2.from_angle(preferred) * distance):
+		return center + Vector2.from_angle(preferred) * distance
+	for step in HANDLE_SEARCH_STEPS:  # outward from the preferred angle, both ways: the first visible point is the nearest
+		var turn := PI * (step + 1) / HANDLE_SEARCH_STEPS
+		for angle: float in [preferred + turn, preferred - turn]:
+			var at: Vector2 = center + Vector2.from_angle(angle) * distance
+			if visible.has_point(at):
+				return at
+	return center + Vector2.from_angle(preferred) * distance  # the ring is not on screen at all
+
+
+## The world area where a knob can be seen and grabbed: the free canvas between the editor's bars, less a margin.
+func _handle_area() -> Rect2:
+	var area := _free_canvas_rect().grow(-HANDLE_MARGIN)
+	return Rect2(_to_world(area.position), Vector2.ZERO).expand(_to_world(area.end))
+
 
 func _pick_wall_handle(world: Vector2, slop: float) -> Dictionary:
 	if selection.get("type", "") not in ["wall", "wall_point"]:
@@ -315,6 +339,7 @@ func press(world: Vector2, mouse: bool = false) -> void:
 			_active_body_handle["value"] = LevelFormat.body_value(body, _press_ref.role)
 			_active_body_handle["distance"] = doc.position_of(body_ref).distance_to(world)
 			_active_body_handle["total_pull"] = LevelFormat.total_pull(body)
+			_active_body_handle["direction"] = (_press_ref.at - doc.position_of(body_ref)).normalized()  # the knob stays where it was grabbed while dragged
 			doc.begin_edit()
 		elif _press_ref.get("type", "") == "wall_handle":
 			_insert_wall_point(_press_ref.index, _press_ref.after, _wall_segment_midpoint(_press_ref.index, _press_ref.after))
