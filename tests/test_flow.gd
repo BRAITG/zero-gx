@@ -717,6 +717,7 @@ func test_official_focus_advances_to_unfinished_level() -> void:
 ## Result integration uses real recorder, durable outbox and HUD; only the device/network are faked.
 func _result_setup(owner := "p_me") -> FakeTransport:
 	Community.use_defaults()
+	MAIN._board_attempts.clear()
 	Community.history_path = "user://test_results/history.json"
 	_wipe_results("user://test_results")
 	var net := FakeTransport.new()
@@ -1047,6 +1048,7 @@ func test_opening_campaign_refreshes_only_completed_once_per_hash_hour() -> void
 			var saved := FileAccess.open(Community.dir + file, FileAccess.WRITE)
 			saved.store_string(JSON.stringify(cached))
 			saved.close()
+	MAIN._board_attempts["p_me|" + sha] = Time.get_ticks_msec() - Community.BOARD_CACHE_SECONDS * 1000 - 1
 	var reopened := menu(MAIN.Page.OFFICIAL)
 	world.add_child(reopened)
 	await frames(2)
@@ -1130,14 +1132,15 @@ func test_campaign_identity_change_invalidates_private_badge_immediately() -> vo
 	check(net.count("POST", "/session") == 0, "identity cancellation never signs back in")
 
 
-func test_campaign_first_sign_in_still_reads_each_completed_hash_only_once() -> void:
+func test_campaign_unknown_owner_open_is_cache_only_without_sign_in_or_network() -> void:
 	var net := _result_setup("")
-	net.answer("POST", "/session", 200, {"token": "tok", "player": {"id": "p_me", "name": "My Pilot"}})
 	_campaign_best(_campaign_sha())
 	var main := menu(MAIN.Page.OFFICIAL)
 	world.add_child(main)
 	await frames(3)
-	check(net.count("GET", "/boards/") == 1, "identity learned during the opening read must not start a duplicate board refresh")
+	check(net.requests.is_empty(), "unknown-owner Official opening sends no nonce, session or board request")
+	check((Community.platform as FakePlatform).sign_ins == 0, "unknown-owner Official opening never launches platform sign-in")
+	check(not _campaign_badge(main).visible, "without cache the unknown owner sees no badge")
 
 
 func test_campaign_long_title_and_badge_fit_above_reserved_footer() -> void:
@@ -1158,3 +1161,90 @@ func test_campaign_long_title_and_badge_fit_above_reserved_footer() -> void:
 	check(frame.get_global_rect().encloses(scroll.get_global_rect()), "campaign scroll stays inside the footer-reserved frame")
 	check(main._column.global_position.y >= frame.global_position.y, "the title is not pushed above the screen")
 	check(row.get_global_rect().encloses(_campaign_badge(main).get_global_rect()), "badge stays inside the long-title row")
+
+
+func test_campaign_failed_auto_refresh_is_hourly_but_manual_board_bypasses_cooldown() -> void:
+	for status in [503, 0]:
+		var net := _result_setup()
+		var sha := _campaign_sha()
+		for file in DirAccess.get_files_at(Community.dir):
+			if file.begins_with("board_") and file.ends_with(sha + ".json"):
+				DirAccess.remove_absolute(Community.dir + file)
+		_campaign_best(sha)
+		net.answer("GET", "/boards/" + sha, status, {"error": "Unavailable"})
+		for i in 2:
+			var main := menu(MAIN.Page.OFFICIAL)
+			world.add_child(main)
+			await frames(2)
+			main.free()
+		check(net.count("GET", "/boards/" + sha) == 1, "%d: failed automatic attempt counts toward the hourly limit" % status)
+		MAIN._board_attempts["p_me|" + sha] = Time.get_ticks_msec() - Community.BOARD_CACHE_SECONDS * 1000 - 1
+		net.answer("GET", "/boards/" + sha, status, {"error": "Unavailable"})
+		var later := menu(MAIN.Page.OFFICIAL)
+		world.add_child(later)
+		await frames(2)
+		check(net.count("GET", "/boards/" + sha) == 2, "%d: automatic refresh tries again after one hour" % status)
+		var sheet := Leaderboard.open(later, sha, "Launch", 700)
+		await frames(2)
+		check(net.count("GET", "/boards/" + sha) == 3, "%d: explicit board opening is not blocked by automatic cooldown" % status)
+		var refresh := sheet.find_child("RefreshBoard", true, false) as Button
+		refresh.pressed.emit()
+		await frames(2)
+		check(net.count("GET", "/boards/" + sha) == 4, "%d: explicit Refresh always bypasses the automatic cooldown" % status)
+		later.free()
+
+
+func test_campaign_automatic_cooldown_is_scoped_to_owner_and_preserved_on_return() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	net.answer("GET", "/boards/" + sha, 503, {"error": "Unavailable"})
+	var first := menu(MAIN.Page.OFFICIAL)
+	world.add_child(first)
+	await frames(2)
+	first.free()
+	_result_owner("p_other")
+	var second := menu(MAIN.Page.OFFICIAL)
+	world.add_child(second)
+	await frames(2)
+	second.free()
+	check(net.count("GET", "/boards/" + sha) == 2, "another owner has an independent automatic attempt")
+	_result_owner("p_me")
+	var returned := menu(MAIN.Page.OFFICIAL)
+	world.add_child(returned)
+	await frames(2)
+	check(net.count("GET", "/boards/" + sha) == 2, "switching back does not reset the first owner's failed-attempt cooldown")
+
+
+func test_campaign_known_owner_expired_session_may_reauthenticate() -> void:
+	var net := _result_setup()
+	_campaign_best(_campaign_sha())
+	var session := ConfigFile.new()
+	session.load(Community.session_path)
+	session.set_value("session", "expires", 0)
+	session.save(Community.session_path)
+	net.answer("POST", "/session", 200, {"token": "fresh", "player": {"id": "p_me", "name": "My Pilot"}})
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(3)
+	check((Community.platform as FakePlatform).sign_ins == 1 and net.count("POST", "/session") == 1, "known-owner expired session retains the client's same-owner reauthentication policy")
+	check(net.count("GET", "/boards/") == 1, "known-owner opening refreshes the completed board once")
+
+
+func test_campaign_unknown_owner_uses_public_cache_and_only_explicit_board_signs_in() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	await Community.board(sha)
+	_result_owner("")
+	net.requests.clear()
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(2)
+	check(net.requests.is_empty() and (Community.platform as FakePlatform).sign_ins == 0, "unknown owner sees public cached standing without any automatic sign-in/network")
+	var badge := _campaign_badge(main)
+	check(badge.visible and badge.text.begins_with("~top "), "unknown owner can use the cached public distribution, never the prior private rank")
+	net.answer("POST", "/session", 200, {"token": "fresh", "player": {"id": "p_me", "name": "My Pilot"}})
+	badge.pressed.emit()
+	await frames(3)
+	check((Community.platform as FakePlatform).sign_ins == 1 and net.count("POST", "/session") == 1, "explicit board action may initiate sign-in")

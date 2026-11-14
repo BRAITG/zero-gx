@@ -24,6 +24,7 @@ var _levels: VBoxContainer  # the stage rows of OFFICIAL or TRAINING
 var _board_badges := {}  # current bundled hash → its existing row's button
 ## Set once per run: the menu scene is entered again on every return to it.
 static var _sized := false
+static var _board_attempts := {}  # owner|hash → monotonic milliseconds; survives list recreation, including failed reads
 
 
 func _ready() -> void:
@@ -220,9 +221,19 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 			_update_badge(sha)
 	return button
 
-## Opening a list is the refresh opportunity; Community owns the per-hash/owner one-hour age and coalescing.
+## Automatic reads never discover an identity; failures also consume this process's per-owner/hash hourly opportunity.
 func _refresh_boards() -> void:
+	var owner := Community.player_id()
+	if owner == "":
+		return
+	var now := Time.get_ticks_msec()
 	for sha: String in _board_badges:
+		if Community.player_id() != owner:
+			return
+		var key := owner + "|" + sha
+		if _board_attempts.has(key) and now - int(_board_attempts[key]) < Community.BOARD_CACHE_SECONDS * 1000:
+			continue
+		_board_attempts[key] = now  # before awaiting: another list can open while this request is held
 		Community.board(sha)
 
 
