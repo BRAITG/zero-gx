@@ -3,7 +3,7 @@ extends "res://tests/test_case.gd"
 
 const LEVEL_ID := "lvl_abcdefghij"
 const SESSION := {"token": "tok1", "player": {"id": "p_1", "name": "Pilot"}}
-const DELETE_WARNING := "This removes your scores, likes, reports and your name from Zero-GX's servers. Levels you shared stay, shown as by Deleted player."
+const DELETE_WARNING := "This removes your scores, likes, reports, play history, difficulty ratings and your name from Zero-GX's servers. Levels you shared stay, shown as by Deleted player."
 const MAIN := preload("res://scenes/main.gd")
 
 var pilot := FakePlatform.new()

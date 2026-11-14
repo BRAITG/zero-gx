@@ -265,7 +265,7 @@ func _open_settings() -> void:
 
 func _confirm_delete() -> void:
 	var o := Overlay.open(self, "Delete community account?")
-	o.paragraph("This removes your scores, likes, reports and your name from Zero-GX's servers. Levels you shared stay, shown as by Deleted player.")
+	o.paragraph("This removes your scores, likes, reports, play history, difficulty ratings and your name from Zero-GX's servers. Levels you shared stay, shown as by Deleted player.")
 	_button(o.body, "Delete account", _delete_account.bind(o), "Deleting…")
 
 

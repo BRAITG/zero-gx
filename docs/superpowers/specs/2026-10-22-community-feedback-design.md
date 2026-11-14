@@ -1,5 +1,7 @@
 # Community Feedback and Difficulty Design
 
+Superseded in part by [2026-11-13-community-redesign-design.md](2026-11-13-community-redesign-design.md).
+
 ## Goal and scope
 
 Help players decide which community stages to try and help authors understand how challenging their stages are. Add stage-wide likes, version-specific reviewed and player difficulty, and observed play statistics. The play history measures learning up to the first clear, not subsequent score-chasing.
