@@ -712,3 +712,262 @@ func test_official_focus_advances_to_unfinished_level() -> void:
 	world.add_child(main)
 	next = focused()
 	check(next is Button and row_title(next).begins_with("Level 03"), "unlocking all must not suggest replaying a finished stage")
+
+
+## Result integration uses real recorder, durable outbox and HUD; only the device/network are faked.
+func _result_setup(owner := "p_me") -> FakeTransport:
+	Community.use_defaults()
+	Community.history_path = "user://test_results/history.json"
+	_wipe_results("user://test_results")
+	var net := FakeTransport.new()
+	world.add_child(net)
+	Community.transport = net
+	Community.platform = FakePlatform.new()
+	_result_owner(owner)
+	net.answer("GET", "/nonce", 200, {"nonce": "results"})
+	net.hold("POST", "/scores")
+	net.respond("GET", "/boards/", func(_request: Dictionary) -> Dictionary:
+		return {"status": 200, "body": _result_payload()})
+	return net
+
+
+func _result_owner(owner: String) -> void:
+	var file := ConfigFile.new()
+	if owner != "":
+		file.set_value("player", "id", owner)
+		file.set_value("session", "token", "token")
+		file.set_value("session", "expires", int(Time.get_unix_time_from_system()) + 1000)
+	check(file.save(Community.session_path) == OK, "isolated result session saves")
+
+
+func _wipe_results(folder: String) -> void:
+	if not DirAccess.dir_exists_absolute(folder):
+		return
+	for sub in DirAccess.get_directories_at(folder):
+		_wipe_results(folder.path_join(sub))
+		DirAccess.remove_absolute(folder.path_join(sub))
+	for file in DirAccess.get_files_at(folder):
+		DirAccess.remove_absolute(folder.path_join(file))
+
+
+func _result_level(id := "level_01", testing := false, publishing := false) -> Level:
+	var lvl := Progress.build("level_01")
+	lvl.level_id = Community.STAGE_PREFIX + lvl.level_sha256 if id == "community" else id
+	lvl.testing = testing
+	lvl.publishing = publishing
+	world.add_child(lvl)
+	return lvl
+
+
+func _result_payload() -> Dictionary:
+	var rows := []
+	for i in 20:
+		rows.append({"rank": i + 1, "player": {"id": "pilot_%d" % i, "name": "Pilot %02d" % (i + 1)}, "points": 3000 - i * 50, "seconds": 12.5 + i})
+	return {"level": {"kind": "official", "name": "Launch"}, "rows": rows, "you": {"rank": 25, "player": {"id": "p_me", "name": "My Pilot"}, "points": 700, "seconds": 30.25}, "count": 30, "quantiles": range(0, 3100, 150)}
+
+
+func _result_disk() -> CommunityScores:
+	var scores := CommunityScores.new()
+	scores.path = Community.history_path.get_basename() + "_scores.json"
+	check(scores.load_file() == OK, "result outbox reloads")
+	return scores
+
+
+func test_results_enqueue_only_signed_in_play_new_best_wins() -> void:
+	for case in ["campaign", "community", "training", "test", "publish", "draft", "loss", "not_best", "desktop", "signed_out", "unknown_owner", "replay"]:
+		Progress.reset()
+		var net := _result_setup("" if case == "signed_out" else "p_me")
+		if case == "desktop":
+			(Community.platform as FakePlatform).is_available = false
+		if case == "unknown_owner":
+			var session := ConfigFile.new()
+			session.set_value("session", "token", "token")
+			session.set_value("session", "expires", int(Time.get_unix_time_from_system()) + 1000)
+			session.save(Community.session_path)
+		var id: String = {"community": "community", "training": "tutorial_1", "draft": "user_draft"}.get(case, "level_01")
+		if case == "not_best":
+			Progress.record_win("level_01", 99999, 0.0)
+		var lvl := _result_level(id, case == "test" or case == "publish", case == "publish")
+		if case == "replay":
+			lvl.process_mode = Node.PROCESS_MODE_DISABLED
+		lvl.finish(case != "loss")
+		var entries := _result_disk().entries("p_me")
+		var eligible: bool = case == "campaign" or case == "community"
+		check(entries.size() == (1 if eligible else 0), "%s: only signed-in Play new-best real wins enqueue" % case)
+		if eligible and not entries.is_empty():
+			var run := Demo.decode(_result_disk().snapshot("p_me", lvl.level_sha256, entries[0].revision))
+			check(run != null and run.events().back()[1] == Demo.Event.GOAL_REACHED and run.events().back()[0] == run.frame_count(), "%s: queue contains the finalized winning recorder" % case)
+		if case in ["desktop", "signed_out", "unknown_owner", "training", "test", "publish", "draft", "loss", "replay"]:
+			check(net.requests.is_empty(), "%s: no automatic leaderboard request" % case)
+		check((Community.platform as FakePlatform).sign_ins == 0, "%s: a result never signs in" % case)
+		lvl.free()
+
+
+func test_result_queues_its_finalized_memory_demo_when_best_demo_save_fails() -> void:
+	_result_setup()
+	var old_dir := Progress.demos_dir
+	Progress.demos_dir = "user://test_results/blocked/"
+	DirAccess.make_dir_recursive_absolute(Progress.demos_dir + "level_01.demo.gz")
+	var blocker := FileAccess.open(Progress.demos_dir + "level_01.demo.gz/occupied", FileAccess.WRITE)
+	blocker.store_string("keep directory nonempty")
+	blocker.close()
+	var lvl := _result_level()
+	lvl.ship.fuel = 31.0
+	lvl.finish(true)
+	check(Progress.best_demo("level_01") == null, "best-demo path cannot be saved")
+	var disk := _result_disk()
+	var queued := disk.entry("p_me", lvl.level_sha256)
+	check(not queued.is_empty(), "valid finalized memory replay can queue despite best-demo save failure")
+	if not queued.is_empty():
+		var bytes := disk.snapshot("p_me", lvl.level_sha256, queued.revision)
+		var run := Demo.decode(bytes)
+		check(run != null and run.ship_at(run.frame_count() - 1).fuel == 31.0 and run.events().back()[1] == Demo.Event.GOAL_REACHED, "durable queue owns this new run, never a prior Progress replay")
+		lvl.demo.level_sha256 = "b".repeat(64)
+		check(disk.snapshot("p_me", lvl.level_sha256, queued.revision) == bytes, "later in-memory mutations cannot change durable bytes")
+	Progress.demos_dir = old_dir
+
+
+func test_result_posting_is_immediate_and_exact_rank_is_for_remote_stored_best() -> void:
+	var net := _result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	check(lvl.hud._result.visible and lvl.hud.result_text().contains("Posting"), "result shows without awaiting the held upload")
+	check(net.count("POST", "/scores") == 1, "score sync starts without waiting for the board")
+	net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": false})
+	net.release_hold("POST", "/scores")
+	var text := lvl.hud.result_text()
+	check(text.contains("Your ranked best") and text.contains("Rank #7") and text.contains("900 points"), "best:false rank is labelled as the remote stored best")
+	check(text.contains("Estimate:") and not text.contains("Rank #25"), "higher local score remains estimated and bounded by the new remote rank")
+	check(button_starting(lvl.hud, "Board").is_visible_in_tree(), "eligible win offers Board")
+	check(lvl.hud.find_child("LeaderboardPreview", true, false) != null, "eligible result hosts the shared top-five preview")
+
+
+func test_result_pending_and_queue_save_error_are_visible_without_claiming_exact_rank() -> void:
+	var net := _result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	net.answer("POST", "/scores", 0)
+	net.release_hold("POST", "/scores")
+	check(lvl.hud.result_text().contains("Will post when online") and lvl.hud.result_text().contains("Estimate:"), "offline post retains pending and honest local estimate")
+	lvl.free()
+	Progress.reset()
+	_result_setup()
+	DirAccess.make_dir_recursive_absolute(Community.history_path.get_basename() + "_scores.json.tmp")
+	lvl = _result_level()
+	lvl.finish(true)
+	check(lvl.hud.result_text().contains("could not be queued") and not lvl.hud.result_text().contains("Posting") and not lvl.hud.result_text().contains("Will post when online"), "failed durable enqueue is visible, never falsely queued")
+
+
+func test_result_ignores_wrong_owner_hash_revision_and_superseding_same_hash() -> void:
+	var net := _result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	var state := Community.score_state(lvl.level_sha256)
+	var before := lvl.hud.result_text()
+	var posted := {"state": "posted", "rank": 1, "points": 9999, "best": true}
+	Community.score_result.emit("other", lvl.level_sha256, state.revision, posted)
+	Community.score_result.emit("p_me", "b".repeat(64), state.revision, posted)
+	Community.score_result.emit("p_me", lvl.level_sha256, state.revision + 1, posted)
+	check(lvl.hud.result_text() == before, "wrong owner/hash/revision cannot change live result")
+	check(Community.queue_score(lvl.level_id, lvl.demo) == "", "new same-hash revision is durable")
+	Community.score_result.emit("p_me", lvl.level_sha256, state.revision, posted)
+	check(lvl.hud.result_text() == before, "superseded revision cannot overwrite the result")
+	_result_owner("p_other")
+	Community.identity_changed.emit("p_other")
+	check(not lvl.hud.result_text().contains("Posting") and not lvl.hud.result_text().contains("Rank #25"), "owner switch immediately clears prior private status")
+	before = lvl.hud.result_text()
+	Community.score_result.emit("p_me", lvl.level_sha256, state.revision, posted)
+	net.answer("POST", "/scores", 200, {"rank": 1, "points": 9999, "best": true})
+	net.release_hold("POST", "/scores")
+	check(lvl.hud.result_text() == before, "held previous-owner upload cannot restore private standing after an owner switch")
+
+
+func test_result_closed_during_held_score_and_board_only_updates_cache() -> void:
+	var net := _result_setup()
+	net.hold("GET", "/boards/")
+	var lvl := _result_level()
+	var sha := lvl.level_sha256
+	lvl.finish(true)
+	lvl.queue_free()
+	await frames(2)
+	net.answer("POST", "/scores", 200, {"rank": 7, "points": 2000, "best": true})
+	net.release_hold("POST", "/scores")
+	net.release_hold("GET", "/boards/")
+	await frames(2)
+	check(not is_instance_valid(lvl) and Community.cached_board(sha).get("count") == 30, "late requests update cache, never freed result controls")
+
+
+func test_result_matching_posted_score_becomes_exact_and_board_restores_focus() -> void:
+	var net := _result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	var points := Progress.best_points(lvl.level_id)
+	net.answer("POST", "/scores", 200, {"rank": 3, "points": points, "best": true})
+	net.release_hold("POST", "/scores")
+	check(lvl.hud.result_text().contains("Your ranked best · Rank #3 of 30") and not lvl.hud.result_text().contains("Estimate:"), "matching local and stored best displays exact standing")
+	var board := button_starting(lvl.hud, "Board")
+	board.grab_focus()
+	board.pressed.emit()
+	var sheets := lvl.find_children("*", "Overlay", true, false)
+	check(sheets.size() == 1, "Board opens the shared full sheet")
+	if not sheets.is_empty():
+		sheets[0].close()
+		await frames(2)
+		check(board.has_focus(), "closing Board restores the existing result action")
+
+
+func test_result_invalid_finalized_demo_never_falls_back_to_prior_best_replay() -> void:
+	_result_setup()
+	var lvl := _result_level()
+	var prior := Demo.new()
+	prior.level_sha256 = lvl.level_sha256
+	prior.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 1.0, "hull": 1.0}, {})
+	prior.add_event(Demo.Event.GOAL_REACHED)
+	Progress.save_best_demo(lvl.level_id, prior)
+	check(Progress.best_demo(lvl.level_id) != null, "prior best replay exists")
+	lvl.demo.truncated = true
+	lvl.finish(true)
+	check(_result_disk().entries("p_me").is_empty() and lvl.hud.result_text().contains("cannot be posted"), "invalid new recording never uploads the previous best replay")
+
+
+func test_result_preview_and_actions_fit_logical_viewport_with_ad_footer() -> void:
+	var old_size := tree.root.size
+	tree.root.size = Vector2i(1280, 720)
+	await frames(2)
+	_result_setup()
+	Monetization.platform = load("res://tests/support/fake_monetization_platform.gd").new()
+	Monetization.start()
+	var lvl := _result_level()
+	lvl.finish(true)
+	lvl.hud._rate.show()  # the densest legitimate result also offers community rating
+	await frames(3)
+	var available := lvl.hud._result_frame.get_global_rect()
+	check(Monetization.footer_height > 0 and available.encloses(lvl.hud._result.get_global_rect()), "result preview and breakdown fit above the reserved footer: %s in %s" % [lvl.hud._result.get_global_rect(), available])
+	for button: Button in lvl.hud._result.find_children("*", "Button", true, false):
+		if button.is_visible_in_tree():
+			check(available.encloses(button.get_global_rect()), "%s remains visible above footer" % button.text)
+	lvl.free()
+	Monetization.use_defaults()
+	tree.root.size = old_size
+
+
+func test_result_post_after_held_board_forces_fresh_preview_without_regressing_standing() -> void:
+	var net := _result_setup()
+	net.hold("GET", "/boards/")
+	var lvl := _result_level()
+	lvl.finish(true)
+	var points := Progress.best_points(lvl.level_id)
+	net.answer("POST", "/scores", 200, {"rank": 3, "points": points, "best": true})
+	net.release_hold("POST", "/scores")
+	check(lvl.hud.result_text().contains("Rank #3") and not lvl.hud.result_text().contains(" of 30"), "POST standing appears immediately without inventing a still-unknown population")
+	net.hold("GET", "/boards/")
+	net.release_hold("GET", "/boards/")
+	check(net.count("GET", "/boards/") == 2 and lvl.hud.result_text().contains("Rank #3 of 30"), "old board completion schedules a forced post-upload read without regressing exact standing")
+	var fresh := _result_payload()
+	fresh.you.rank = 3
+	fresh.you.points = points
+	net.answer("GET", "/boards/", 200, fresh)
+	net.release_hold("GET", "/boards/")
+	var preview := lvl.hud.find_child("LeaderboardPreview", true, false)
+	var text := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
+	check(text.contains("Rank #3 of 30") and not text.contains("Rank #25"), "fresh own row replaces the pre-upload preview")

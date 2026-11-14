@@ -278,3 +278,16 @@ func test_latest_post_while_first_board_read_is_held_forces_second_read_and_upda
 	Community.score_result.emit("p_me", SHA, revision + 1, {"state": "queued"})
 	await frames(2)
 	check(net.count("GET", ROUTE) == 2 and _texts(sheet) == text, "stale owner/hash/revision and non-posted answers cannot fetch or alter the displayed standing")
+
+
+func test_standing_formatter_shares_exact_bounds_cache_and_owner_rules_with_preview() -> void:
+	_fake()
+	var board := _tied_payload()
+	board.owner = "p_me"
+	board.cached = true
+	var script: GDScript = load(SHEET)
+	check(script.standing(board, 900) == "Estimate: would rank #21 or better (cached)", "results use the same exact-own bound as preview")
+	check(script.standing(board, 700) == "Your ranked best · Rank #21 of 1000 (cached)", "matching local best receives the exact cached label")
+	board.owner = "other"
+	check(not script.standing(board, 900).contains("#21 or better"), "another owner's exact row never bounds the estimate")
+	check(script.standing({}, 900) == "Estimate unavailable", "missing public distribution never invents a rank")

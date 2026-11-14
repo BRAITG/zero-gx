@@ -29,6 +29,14 @@ static func preview(parent: Control, board: Dictionary, local_points: int) -> vo
 	content.add_theme_constant_override("separation", 12)
 	parent.add_child(content)
 	_fill(content, board, local_points, 5)
+	# The result card shares the rows, but needs the entire top five and own best above its actions.
+	for label: Label in content.find_children("*", "Label", true, false):
+		label.add_theme_font_size_override("font_size", 18)
+	for box: VBoxContainer in [content] + content.find_children("*", "VBoxContainer", true, false):
+		box.add_theme_constant_override("separation", 4)
+	var own := content.get_node_or_null("OwnStanding") as PanelContainer
+	if own != null:
+		own.get_theme_stylebox("panel").set_content_margin_all(8)
 
 
 func _open(parent: Node, sha256: String, title: String, local_points: int) -> Overlay:
@@ -163,26 +171,40 @@ static func _own(parent: Control, board: Dictionary, local_points: int) -> void:
 	box.add_theme_constant_override("separation", 8)
 	panel.add_child(box)
 	_label(box, "You", 28, Style.ACCENT)
-	var you: Variant = board.get("you")
-	if you is Dictionary and (not board.has("owner") or board.owner != Community.player_id() or you.get("player", {}).get("id") != board.owner):
-		you = null
+	var you: Variant = _you(board)
 	if local_points >= 0 and (not you is Dictionary or local_points != you.points):
 		_label(box, "Local best · %d points" % local_points, 22)
-		var text: String
-		if you is Dictionary and local_points > you.points:
-			# This version's exact own row bounds a better score more tightly than lossy quantiles can.
-			text = "Estimate: would rank #%d or better%s" % [you.rank, " (cached)" if board.get("cached", false) or board.get("offline", false) else ""]
-		else:
-			var rows: Array = board.get("rows", [])
-			var lowest: Variant = rows[19].points if rows.size() >= 20 else null
-			text = RankEstimate.estimate(local_points, int(board.get("count", -1)), board.get("quantiles", []), lowest).text
-		_label(box, text if text != "" else "Estimate unavailable", 22, Style.INK_DIM)
+		_label(box, standing(board, local_points), 22, Style.INK_DIM)
 	if you is Dictionary:
-		var population := " of %d" % board.count if board.get("count", -1) >= you.rank else ""
-		_label(box, "Your ranked best · Rank #%d%s%s" % [you.rank, population, " (cached)" if board.get("cached", false) or board.get("offline", false) else ""], 22)
+		_label(box, standing(board, -1), 22)
 		_ranked_row(box, you)
 	elif local_points < 0:
 		_label(box, "Not played yet", 22, Style.INK_DIM)
+
+
+## The same honest local estimate / exact remote-best label on results, previews and campaign rows.
+static func standing(board: Dictionary, local_points: int) -> String:
+	var you: Variant = _you(board)
+	var cached := " (cached)" if board.get("cached", false) or board.get("offline", false) else ""
+	if local_points >= 0 and (not you is Dictionary or local_points != you.points):
+		if you is Dictionary and local_points > you.points:
+			# A known lower own score bounds a better score more tightly than lossy quantiles.
+			return "Estimate: would rank #%d or better%s" % [you.rank, cached]
+		var rows: Array = board.get("rows", [])
+		var lowest: Variant = rows[19].points if rows.size() >= 20 else null
+		var text: String = RankEstimate.estimate(local_points, int(board.get("count", -1)), board.get("quantiles", []), lowest).text
+		return text + cached if text != "" else "Estimate unavailable"
+	if you is Dictionary:
+		var population := " of %d" % board.count if board.get("count", -1) >= you.rank else ""
+		return "Your ranked best · Rank #%d%s%s" % [you.rank, population, cached]
+	return "Not played yet" if local_points < 0 else "Estimate unavailable"
+
+
+static func _you(board: Dictionary) -> Variant:
+	var you: Variant = board.get("you")
+	if you is Dictionary and board.get("owner", "") == Community.player_id() and you.get("player", {}).get("id") == board.get("owner"):
+		return you
+	return null
 
 
 static func _ranked_row(parent: Control, row: Dictionary) -> void:
