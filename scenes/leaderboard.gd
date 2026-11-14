@@ -29,11 +29,11 @@ static func preview(parent: Control, board: Dictionary, local_points: int) -> vo
 	content.add_theme_constant_override("separation", 12)
 	parent.add_child(content)
 	_fill(content, board, local_points, 5)
-	# The result card shares the rows, but needs the entire top five and own best above its actions.
+	# Keep preview rows readable on a phone; headings retain their larger size.
 	for label: Label in content.find_children("*", "Label", true, false):
-		label.add_theme_font_size_override("font_size", 18)
+		label.add_theme_font_size_override("font_size", maxi(24, label.get_theme_font_size("font_size")))
 	for box: VBoxContainer in [content] + content.find_children("*", "VBoxContainer", true, false):
-		box.add_theme_constant_override("separation", 4)
+		box.add_theme_constant_override("separation", 6)
 	var own := content.get_node_or_null("OwnStanding") as PanelContainer
 	if own != null:
 		own.get_theme_stylebox("panel").set_content_margin_all(8)
@@ -174,9 +174,11 @@ static func _own(parent: Control, board: Dictionary, local_points: int) -> void:
 	var you: Variant = _you(board)
 	if local_points >= 0 and (not you is Dictionary or local_points != you.points):
 		_label(box, "Local best · %d points" % local_points, 22)
-		_label(box, standing(board, local_points), 22, Style.INK_DIM)
+		var estimate := standing(board, local_points).trim_suffix(" (cached)")
+		if estimate != "No ranked runs yet":  # the empty-state line above already explains this
+			_label(box, estimate, 22, Style.INK_DIM)
 	if you is Dictionary:
-		_label(box, standing(board, -1), 22)
+		_label(box, standing(board, -1).trim_suffix(" (cached)"), 22)
 		_ranked_row(box, you)
 	elif local_points < 0:
 		_label(box, "Not played yet", 22, Style.INK_DIM)

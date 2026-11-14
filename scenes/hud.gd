@@ -184,6 +184,8 @@ func _ready() -> void:
 	column.add_child(body)
 	_score = VBoxContainer.new()
 	_score.add_theme_constant_override("separation", 6)
+	_score.alignment = BoxContainer.ALIGNMENT_CENTER
+	_score.custom_minimum_size.x = 340
 	body.add_child(_score)
 	_total = Label.new()
 	_total.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -223,7 +225,6 @@ func _ready() -> void:
 	_standing.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_standing.custom_minimum_size.x = 340
 	_standing.hide()
-	_score.add_child(_standing)
 	_board_scroll = ScrollContainer.new()
 	_board_scroll.custom_minimum_size = Vector2(700, 440)
 	_board_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -232,6 +233,7 @@ func _ready() -> void:
 	_board_preview = VBoxContainer.new()
 	_board_preview.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_board_scroll.add_child(_board_preview)
+	_board_preview.add_child(_standing)
 	_detail = Label.new()
 	_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_detail.add_theme_font_size_override("font_size", 24)
@@ -415,6 +417,10 @@ func result_text() -> String:
 		lines.append(_detail.text)
 	if _standing.visible:
 		lines.append(_standing.text)
+	if _board_scroll.visible:
+		for label: Label in _board_preview.find_children("*", "Label", true, false):
+			if label != _standing and label.is_visible_in_tree():
+				lines.append(label.text)
 	return "\n".join(lines)
 
 

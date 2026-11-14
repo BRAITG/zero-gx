@@ -851,7 +851,7 @@ func test_result_posting_is_immediate_and_exact_rank_is_for_remote_stored_best()
 	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
 	net.release_hold("POST", "/scores")
 	var text := lvl.hud.result_text()
-	check(text.contains("Your ranked best") and text.contains("Rank #2") and text.contains("9000 points"), "best:false uses the stored score from the board, not the submitted points")
+	check(text.contains("Your ranked best") and text.contains("Rank #2") and text.contains("9000"), "best:false uses the stored score from the board, not the submitted points")
 	check(text.contains("Estimate:") and not text.contains("Rank #25"), "lower local score remains estimated separately from the higher remote best")
 	check(button_starting(lvl.hud, "Board").is_visible_in_tree(), "eligible win offers Board")
 	check(lvl.hud.find_child("LeaderboardPreview", true, false) != null, "eligible result hosts the shared top-five preview")
@@ -866,7 +866,7 @@ func test_final_fix_best_false_failed_refresh_keeps_local_estimate_and_cached_re
 	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
 	net.release_hold("POST", "/scores")
 	var text := lvl.hud.result_text()
-	check(text.contains("Estimate:") and text.contains("9000 points") and text.contains("Rank #2 of 30 (cached)"), "POST submitted points cannot inherit the stored best's rank when refresh fails")
+	check(text.contains("Estimate:") and text.contains("9000") and text.contains("Rank #2 of 30") and text.contains("Offline · cached standings"), "POST submitted points cannot inherit the stored best's rank when refresh fails")
 	var preview := lvl.hud.find_child("LeaderboardPreview", true, false)
 	var labels := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
 	check(labels.contains("Local best · 1800 points") and labels.contains("9000"), "preview retains separate local and cached remote scores")
@@ -881,7 +881,7 @@ func test_final_fix_best_false_without_board_never_fabricates_an_exact_local_ran
 	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
 	net.release_hold("POST", "/scores")
 	var text := lvl.hud.result_text()
-	check(text.contains("Estimate unavailable") and not text.contains("Your ranked best") and not text.contains("Rank #2"), "without a stored score the lower local completion stays unverified")
+	check(text.contains("Standings unavailable") and not text.contains("Your ranked best") and not text.contains("Rank #2"), "without a stored score the board remains unavailable, never an exact local rank")
 
 
 func test_final_fix_result_uses_current_completion_not_old_hash_historical_best() -> void:
@@ -908,14 +908,14 @@ func test_result_pending_and_queue_save_error_are_visible_without_claiming_exact
 	lvl.finish(true)
 	net.answer("POST", "/scores", 0)
 	net.release_hold("POST", "/scores")
-	check(lvl.hud.result_text().contains("Will post when online") and lvl.hud.result_text().contains("Estimate:"), "offline post retains pending and honest local estimate")
+	check(lvl.hud.result_text().contains("Saved on this device") and lvl.hud.result_text().contains("Estimate:") and _result_disk().entries("p_me").size() == 1, "offline post quietly preserves the pending run and honest local estimate")
 	lvl.free()
 	Progress.reset()
 	_result_setup()
 	DirAccess.make_dir_recursive_absolute(Community.history_path.get_basename() + "_scores.json.tmp")
 	lvl = _result_level()
 	lvl.finish(true)
-	check(lvl.hud.result_text().contains("could not be queued") and not lvl.hud.result_text().contains("Posting") and not lvl.hud.result_text().contains("Will post when online"), "failed durable enqueue is visible, never falsely queued")
+	check(lvl.hud.result_text().contains("could not be queued") and not lvl.hud.result_text().contains("Saved on this device"), "failed durable enqueue is visible, never falsely queued")
 
 
 func test_result_ignores_wrong_owner_hash_revision_and_superseding_same_hash() -> void:
@@ -1333,3 +1333,40 @@ func test_campaign_fresh_cache_hit_does_not_delay_private_cache_expiry_refresh()
 	world.add_child(failed)
 	await frames(2)
 	check(net.count("GET", "/boards/" + sha) == 1, "the actual failed network attempt, unlike a cache hit, consumes the automatic cooldown")
+
+
+func test_result_centers_the_personal_score_block_beside_the_board() -> void:
+	_result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	await frames(3)
+	var parts: Control = lvl.hud._parts[ScoreIcon.Kind.TIME].get_parent().get_parent()
+	var score_center := (lvl.hud._total.get_global_rect().position.y + parts.get_global_rect().end.y) / 2.0
+	var board_center: float = lvl.hud._board_scroll.get_global_rect().get_center().y
+	check(absf(score_center - board_center) < 2.0, "the total, medals and breakdown form one vertically centered block: %s vs %s" % [score_center, board_center])
+
+
+func test_denied_upload_is_quiet_but_the_saved_run_and_board_remain_available() -> void:
+	var net := _result_setup()
+	var lvl := _result_level()
+	lvl.finish(true)
+	net.answer("POST", "/scores", 403, {"error": "The integrity check failed."})
+	net.release_hold("POST", "/scores")
+	await frames(2)
+	var visible := "\n".join(lvl.hud._result.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.is_visible_in_tree()).map(func(label: Label) -> String: return label.text))
+	check(visible.contains("Saved on this device") and not visible.contains("The integrity check failed.") and not visible.contains("Posting unavailable this launch"), "a verified-upload refusal is not a technical error on the result card: %s" % visible)
+	check(_result_disk().entries("p_me").size() == 1 and not button_starting(lvl.hud, "Board").disabled, "the pending recording and board access are preserved")
+	check(not lvl.hud._score.is_ancestor_of(lvl.hud._standing), "upload state belongs with the board, not below the personal score")
+
+
+func test_campaign_selector_keeps_its_original_width_with_rank_badges() -> void:
+	_result_setup()
+	_campaign_best(_campaign_sha(), 1800)
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(3)
+	var scroll: ScrollContainer = main._levels.get_parent()
+	var row: Button = stage_rows(main)["Level 01"]
+	check(scroll.size.x <= 760.0 and row.size.x <= 760.0, "rank badges fit the original selector instead of widening it: %s / %s" % [scroll.size, row.size])
+	check(_campaign_badge(main).visible and row.get_global_rect().encloses(_campaign_badge(main).get_global_rect()), "the badge remains visible inside the compact row")
+	check(_campaign_badge(main).text == "~≤25" and _campaign_badge(main).tooltip_text.contains("#25 or better"), "the compact badge retains the estimate's upper-rank bound without clipping its meaning")
