@@ -318,7 +318,8 @@ export function rate(
     const ratingSd = Math.sqrt(v![j]!);
     const p10Low = p10(x - Z90 * ratingSd);
     const p10High = p10(x + Z90 * ratingSd);
-    const audience = starters.reduce((sum, h) => sum + skill.get(h.player)!, 0) / starters.length - thetaRef;
+    // Withheld below MIN_FIT_STARTERS: with a handful of starters the mean is one player's skill.
+    const audience = starters.length >= MIN_FIT_STARTERS ? starters.reduce((sum, h) => sum + skill.get(h.player)!, 0) / starters.length - thetaRef : null;
     // Gates: enough starters in the fit, and an interval within one band or two adjacent ones.
     const easier = SCALE.indexOf(bandOf(p10High));
     const harder = SCALE.indexOf(bandOf(p10Low));

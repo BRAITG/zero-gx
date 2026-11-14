@@ -57,6 +57,7 @@ func _ready() -> void:
 	var gear := _button(top, "⚙", _open_settings)
 	gear.tooltip_text = "Community settings"
 	gear.custom_minimum_size.x = 56
+	gear.add_theme_font_size_override("font_size", 32)  # the glyph reads small at the label size
 	var filters := HBoxContainer.new()
 	filters.add_theme_constant_override("separation", 8)
 	_column.add_child(filters)
@@ -110,6 +111,7 @@ func _load(sort: String, page: int, difficulty: String) -> void:
 		_difficulty = difficulty
 		_more.hide()
 		_show_all.hide()
+		_note.hide()
 		if _rows.get_child_count() == 0:
 			for i in PLACEHOLDERS:
 				var placeholder := HBoxContainer.new()  # as wide as a row, with room where Play goes

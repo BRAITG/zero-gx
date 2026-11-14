@@ -319,6 +319,16 @@ func test_an_empty_filter_says_so_and_show_all_clears_it() -> void:
 	await frames(2)
 	check("No Hard levels yet" in _texts(screen) and _buttons(screen, "Play").is_empty(), "the empty filter must say so: %s" % [_texts(screen)])
 	check(_buttons(screen, "Show all").size() == 1, "and offer Show all")
+	net.answer("GET", "/levels", 200, [])
+	net.held = true
+	_buttons(screen, "All")[0].pressed.emit()
+	await frames(2)
+	check(not screen._note.visible, "the empty note must go while another filter loads: %s" % [_texts(screen)])
+	net.release()
+	await frames(2)
+	net.answer("GET", "/levels", 200, [])
+	_buttons(screen, "Hard")[0].pressed.emit()  # back to the empty filter
+	await frames(2)
 	net.answer("GET", "/levels", 200, [_row(_bytes())])
 	_buttons(screen, "Show all")[0].pressed.emit()
 	await frames(2)
@@ -788,9 +798,12 @@ func test_the_publish_sheet_shows_three_steps_names_the_level_and_submits_only_w
 	check(_buttons(screen, "Use previous run").size() == 1 and not words.has("✓ Saved run"), "an unconfirmed run is offered, not yet saved")
 	var submit: Button = _buttons(screen, "Submit for review")[0]
 	check(submit.disabled, "Submit waits for the run and a difficulty")
+	_buttons(screen, "Use previous run")[0].grab_focus()  # as a tap or the pad leaves it
 	_buttons(screen, "Use previous run")[0].pressed.emit()
 	await frames(2)
 	check(_texts(screen).has("✓ Saved run") and _buttons(screen, "Use previous run").is_empty() and _buttons(screen, "Play again").size() == 1, "the run is saved: %s" % [_texts(screen)])
+	var focus := screen.get_viewport().gui_get_focus_owner()
+	check(focus != null and sheets.back().is_ancestor_of(focus), "focus must stay in the Publish sheet after Use previous run: %s" % focus)
 	check(_buttons(screen, "Submit for review")[0].disabled, "a saved run alone does not enable Submit")
 	_suggest(screen)
 	check(not _buttons(screen, "Submit for review")[0].disabled, "run and difficulty enable Submit")

@@ -76,7 +76,7 @@ Other signed-in players can see:
 - leaderboards, with your display name, your Zero-GX player ID, your score details and, while we keep it, the recording of your best run;
 - the player ranking, with your display name and total points;
 - the list of community levels, with the author's display name, the number of likes, and the level's difficulty: the label a moderator has set, and the community difficulty with how many players rated it;
-- for each version of a community level, aggregate play figures: how many players have started it, how many have cleared it, the median number of attempts among those who cleared it, and how many players are still unbeaten after 5, 10 or 20 attempts.
+- for each version of a community level, aggregate figures only: its Rated difficulty label and the range it covers, the clear curve (the share of players who had cleared it within each number of tries), how many players have started it and how many have cleared it, how many have not cleared it (and how many of those after 20 or more tries), and whether the players so far were stronger or weaker than typical.
 
 Other players never see which players started, cleared or rated a level, or any player's play history. In the app you see your own progress and your own rating.
 

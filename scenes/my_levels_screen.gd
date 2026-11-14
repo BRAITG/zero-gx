@@ -226,7 +226,8 @@ func _proof_step(o: Overlay, proof: VBoxContainer, id: String, state: Dictionary
 		_button(proof, "Use previous run", func() -> void:
 			state.proven = true
 			_proof_step(o, proof, id, state, update)
-			update.call())
+			update.call()
+			proof.find_children("*", "Button", false, false)[0].grab_focus(true))  # the pressed button is gone
 		_button(proof, "Play again", fly)
 	else:
 		_button(proof, "Play to prove it", fly)

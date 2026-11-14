@@ -308,6 +308,16 @@ describe("rate", () => {
     expect(weak.audience!).toBeCloseTo(-2.727, 2);
   });
 
+  it("withholds the audience below 10 starters", () => {
+    const histories = [
+      ...cohort("r", 24, (name) => ["A", "B", "C"].map((level) => play(name, level, 2, true))),
+      ...cohort("s", 3, (name) => [play(name, "A", 2, true), play(name, "W", 5, true)]),
+    ];
+    const few = version(rate(histories, new Map(), NOW), "W");
+    expect(few).toMatchObject({ starters: 3, audience: null });
+    expect(few.beta).not.toBeNull();
+  });
+
   it("censors histories over 30 attempts as 30 misses", () => {
     const histories = cohort("e", 60, (name) => [play(name, "A", 1, true), play(name, "B", 1, true), play(name, "C", 1, true), play(name, "T", 1000, true)]);
     const target = version(rate(histories, new Map(), NOW), "T");

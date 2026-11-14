@@ -88,7 +88,9 @@ func _build(parent: Node, row: Dictionary, on_play: Callable, to_you: bool) -> O
 	_meta = _label("", 22, Style.INK_DIM)
 	text.add_child(_meta)
 	if on_play.is_valid():
-		_button(text, "Play", on_play, "Loading…").size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		var play := _button(text, "Play", on_play, "Loading…")
+		play.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		play.add_theme_stylebox_override("normal", play.get_theme_stylebox("pressed"))  # primary, like the row's Play
 	_overlay.heading("Difficulty")
 	_difficulty = _overlay.card()
 	_overlay.heading("How players did")
@@ -445,7 +447,8 @@ func _show_difficulty(ready: bool) -> void:
 	var gap := _disagreement(rated, _data.get("rated_high"), _data.get("reviewed_difficulty"))
 	if gap != "":
 		_overlay.paragraph(gap, 22, Style.ACCENT, _difficulty)
-	_overlay.paragraph(LIMITS, 20, Style.INK_DIM, _difficulty)
+	if rated in DifficultyChip.LABELS:  # the limits qualify a rating; Estimating has none
+		_overlay.paragraph(LIMITS, 20, Style.INK_DIM, _difficulty)
 
 
 ## "A typical player clears it within 10 tries 35–55% of the time", plus a note while the published label no longer covers the interval.
@@ -481,7 +484,7 @@ func _show_votes() -> void:
 	var counts: Variant = _data.get("votes")
 	var voters := 0
 	if counts is Dictionary:
-		var most := 1
+		var most := 5  # one voter must not fill a bar
 		for difficulty: String in DIFFICULTIES:
 			most = maxi(most, _count(counts.get(difficulty)))
 		for difficulty: String in DIFFICULTIES:
@@ -564,6 +567,8 @@ func _show_best() -> void:
 ## Brings the You section into view once the sheet has been laid out.
 func _scroll_to_you() -> void:
 	await _overlay.get_tree().process_frame
+	if not _alive():
+		return
 	await _overlay.get_tree().process_frame
 	if _alive():
 		_overlay.scroll.scroll_vertical = int(_you_heading.global_position.y - _overlay.body.global_position.y)
