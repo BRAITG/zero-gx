@@ -723,6 +723,23 @@ func test_the_level_sheet_closes_before_an_action_and_delete_still_confirms() ->
 	check(not MyLevels.ids().has(id) and _sheets(screen).is_empty(), "the confirmation deletes the level")
 
 
+func test_the_level_sheet_shows_the_whole_moderator_comment_the_row_cuts() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var id := _finished_draft()
+	MyLevels.set_level_id(id, LEVEL_ID)
+	MyLevels.set_submitted(id, LevelFormat.sha256(MyLevels.load_level(id)))
+	var comment := "Too easy. ".repeat(30).strip_edges()  # 299 characters: the server keeps up to 500
+	net.answer("GET", "/me/submissions", 200, [{"level_id": LEVEL_ID, "version": 1, "status": "rejected", "comment": comment}])
+	var screen := await _my_levels()
+	await _open_row(screen)
+	var shown: Array = _texts(_sheets(screen).back())
+	var line: Array = shown.filter(func(t: String) -> bool: return t.begins_with("Rejected: "))
+	check(line.size() == 1 and line[0] == "Rejected: " + comment, "the sheet shows the full status: %s" % [shown])
+	var label: Label = _sheets(screen).back().find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.begins_with("Rejected: "))[0]
+	check(label.autowrap_mode != TextServer.AUTOWRAP_OFF and label.text_overrun_behavior == TextServer.OVERRUN_NO_TRIMMING, "the paragraph wraps instead of trimming")
+
+
 func test_a_row_is_one_status_per_the_spec() -> void:
 	var net := _fake()
 	await _signed_in(net)

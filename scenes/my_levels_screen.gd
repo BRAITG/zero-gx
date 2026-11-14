@@ -159,6 +159,8 @@ func _refresh_statuses() -> void:
 func _open_sheet(id: String) -> void:
 	var data := MyLevels.load_level(id)
 	var o := Overlay.open(self, str(data.get("title", "?")))
+	var status := _status_line(id, data)
+	o.paragraph(status[0], 22, status[1])  # the row cuts a long moderator comment; here it is whole
 	_primary(_sheet_button(o, "Edit", _edit.bind(id)))
 	var play := _sheet_button(o, "Play", func() -> void: Progress.open(id))
 	play.disabled = not LevelFormat.validate(data).is_empty()
