@@ -1,5 +1,5 @@
 // The Rated difficulty: a skill-adjusted rating fitted from first-clear histories, plus each version's raw curve and counts.
-// Pure, no runtime imports. Per-player skills exist only inside one call and are never returned by `rate`.
+// Pure: no I/O, and its only import is the shared label scale. Per-player skills exist only inside one call and are never returned by `rate`.
 
 import { type Difficulty, SCALE } from "./difficulty";
 
@@ -178,6 +178,7 @@ function invert(s: Float64Array[]): Float64Array[] | null {
  * Vⱼ = Var(θ_ref − βⱼ) for every fit version, from the joint Hessian at the fitted values through the Schur complement
  * S = H_ββ − H_βθ D⁻¹ H_θβ; null when S is not positive definite or some Vⱼ is not positive.
  */
+// shortcut: joint-mode fit biases θ_ref − β easier by ~0.1–0.17 logit and intervals get overconfident once versions have hundreds of starters; switch to a marginal fit over θ (per-player quadrature) when any version passes 200 starters.
 function variance(m: Model, theta: Float64Array, beta: Float64Array, reference: number[]): Float64Array | null {
   const n = m.versions.size;
   // Each history adds h = a·p(1−p) to its player's and its version's diagonal and −h to their H_βθ entry.
