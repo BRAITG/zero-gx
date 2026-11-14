@@ -16,35 +16,33 @@ static func estimate(points: int, count: int, quantiles: Array, top20_lowest: Va
 			return unavailable
 	if top20_lowest != null and (not _valid_points(top20_lowest) or top20_lowest < quantiles[0] or top20_lowest > quantiles[20]):
 		return unavailable
-	if count < 20 or (top20_lowest != null and points >= top20_lowest) or points > quantiles[20] or (points == quantiles[20] and quantiles[19] < quantiles[20]):
+	if count < 20 or (top20_lowest != null and points >= top20_lowest) or points >= quantiles[20]:
 		return {"text": "Estimate: would be in the top 20", "badge": "Estimate: ~top 20", "approximate": true}
 
-	var low_fraction := 1.0
-	var high_fraction := 1.0
+	var low_rank := count + 1
+	var high_rank := count + 1
 	for i in quantiles.size():
 		if points == quantiles[i]:
 			var last := i
 			while last < 20 and quantiles[last + 1] == points:
 				last += 1
-			if last > i:
-				# Ties may extend into both unsampled neighbouring buckets; do not invent their size.
-				low_fraction = (20 - mini(20, last + 1)) / 20.0
-				high_fraction = (20 - maxi(0, i - 1)) / 20.0
-			else:
-				low_fraction = (20 - i) / 20.0
-				high_fraction = low_fraction
+			high_rank = count - _sample_position(last, count) + 1
+			# Only the unsampled bucket after the last equal score can change the strictly higher count.
+			low_rank = count - _sample_position(last + 1, count) + 2 if last > i else high_rank
 			break
 		if points < quantiles[i]:
 			if i > 0:
 				var between := float(points - quantiles[i - 1]) / float(quantiles[i] - quantiles[i - 1])
-				low_fraction = (20 - (i - 1) - between) / 20.0
-				high_fraction = low_fraction
+				var before := count - _sample_position(i - 1, count) + 1
+				var after := count - _sample_position(i, count) + 1
+				low_rank = roundi(lerpf(before, after, between))
+				high_rank = low_rank
 			break
 
 	var population := count + 1
 	var floor_rank := 21 if count >= 20 and top20_lowest != null and points < top20_lowest else 1
-	var low_rank := clampi(roundi(low_fraction * count) + 1, floor_rank, population)
-	var high_rank := clampi(roundi(high_fraction * count) + 1, floor_rank, population)
+	low_rank = clampi(low_rank, floor_rank, population)
+	high_rank = clampi(high_rank, floor_rank, population)
 	var low_percent := clampi(ceili(100.0 * low_rank / population), 1, 100)
 	var high_percent := clampi(ceili(100.0 * high_rank / population), 1, 100)
 	var percent := str(low_percent) if low_percent == high_percent else "%d–%d" % [low_percent, high_percent]
@@ -58,3 +56,8 @@ static func estimate(points: int, count: int, quantiles: Array, top20_lowest: Va
 
 static func _valid_points(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and value >= 0 and value == floor(value)
+
+
+## One-based nearest-rank position; both 0% and the first sample can point to the minimum.
+static func _sample_position(index: int, count: int) -> int:
+	return maxi(1, ceili(float(index) * count / 20.0))
