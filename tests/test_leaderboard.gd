@@ -240,11 +240,11 @@ func test_better_local_best_is_bounded_by_own_same_board_rank_in_sheet_and_previ
 	world.add_child(slot)
 	var board := Community.cached_board(SHA)
 	load(SHEET).preview(slot, board, 900)
-	check(_texts(slot).contains("Estimate: would rank #21 or better (cached)") and _rows(slot).size() == 6, "cached preview uses the same snapshot bound and keeps the local score out of ranked rows")
+	check(_texts(slot).contains("Estimate: would rank #21 or better") and _texts(slot).contains("Cached standings") and _rows(slot).size() == 6, "cached preview uses the same snapshot bound and keeps the local score out of ranked rows")
 	net.answer("GET", ROUTE, 0)
 	var refresh: Button = sheet.find_child("RefreshBoard", true, false)
 	refresh.pressed.emit()
-	check(_texts(sheet).contains("Estimate: would rank #21 or better (cached)") and _texts(sheet).contains("Offline · cached standings"), "failed refresh marks both the bound and old exact row cached")
+	check(_texts(sheet).contains("Estimate: would rank #21 or better") and _texts(sheet).contains("Offline · cached standings"), "failed refresh marks the whole board cached once")
 
 
 func test_latest_post_while_first_board_read_is_held_forces_second_read_and_updates_visible_rank() -> void:
@@ -291,3 +291,33 @@ func test_standing_formatter_shares_exact_bounds_cache_and_owner_rules_with_prev
 	board.owner = "other"
 	check(not script.standing(board, 900).contains("#21 or better"), "another owner's exact row never bounds the estimate")
 	check(script.standing({}, 900) == "Estimate unavailable", "missing public distribution never invents a rank")
+
+
+func test_preview_rows_are_readable_and_cached_status_is_not_repeated() -> void:
+	var net := _fake()
+	net.answer("GET", ROUTE, 200, _payload())
+	await Community.board(SHA)
+	var slot := VBoxContainer.new()
+	world.add_child(slot)
+	load(SHEET).preview(slot, Community.cached_board(SHA), 900)
+	for row: HBoxContainer in _rows(slot):
+		for label: Label in row.get_children():
+			check(label.get_theme_font_size("font_size") >= 24, "rank, name, points and time remain readable in the preview")
+	var labels := slot.find_children("*", "Label", true, false)
+	for label: Label in labels:
+		if label.text in ["Top 5", "You"]:
+			check(label.get_theme_font_size("font_size") >= 28, "preview headings retain their hierarchy")
+	var own: PanelContainer = slot.find_child("OwnStanding", true, false)
+	check(not _texts(own).contains("(cached)"), "the banner labels the whole cached board once, not every own-standing line")
+	check(labels.filter(func(label: Label) -> bool: return label.text.begins_with("Cached standings")).size() == 1, "cached state is still visible once")
+
+
+func test_an_empty_preview_does_not_repeat_no_ranked_runs_in_the_own_card() -> void:
+	var slot := VBoxContainer.new()
+	world.add_child(slot)
+	var board := _payload(0, false)
+	board.cached = true
+	load(SHEET).preview(slot, board, 834)
+	var lines := _texts(slot).split("\n")
+	check(lines.count("No ranked runs yet") == 1 and not _texts(slot).contains("No ranked runs yet (cached)"), "the empty-board message appears once while the own card retains the local score")
+	check(_texts(slot).contains("Local best · 834 points"), "no-ranked-runs never hides the local best")

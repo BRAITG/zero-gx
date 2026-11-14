@@ -364,23 +364,16 @@ func _render_standing() -> void:
 		board["you"] = {"rank": _result_score.rank, "points": _result_score.points, "player": {"id": _result_account}}
 		board["cached"] = false
 		board["offline"] = false
-	var lines: Array[String] = []
+	var status := ""
 	if _result_error != "":
-		lines.append(_result_error)
+		status = _result_error  # a local queue-save failure must not pretend the run was queued
 	elif state == "posting":
-		lines.append("Posting…")
-	elif state == "queued":
-		lines.append("Posting unavailable this launch" if _result_score.get("denied", false) else "Will post when online")
-		if _result_score.get("error", "") != "":
-			lines.append(_result_score.error)
-	elif state == "dropped":
-		lines.append(_result_score.get("error", "Run could not be posted"))
-	lines.append(Leaderboard.standing(board, _result_points))
-	var you: Variant = board.get("you")
-	var exact := Leaderboard.standing(board, -1)
-	if you is Dictionary and int(you.points) != _result_points and exact != "Not played yet":
-		lines.append("%s · %d points" % [exact, you.points])
-	hud.set_standing("\n".join(lines))
+		status = "Posting…"
+	elif state in ["queued", "dropped"]:
+		status = "Saved on this device"
+	elif state == "posted" and _result_score.get("best", false):
+		status = Leaderboard.standing(board, _result_points)  # provisional until the fresh board arrives
+	hud.set_standing(status)
 	hud.set_board(_result_board, _result_points)
 
 

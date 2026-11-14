@@ -9,7 +9,7 @@ enum Page { HOME, OFFICIAL, TRAINING }
 const SCENE := "res://scenes/main.tscn"
 const MENU_DRIFT := Vector2(-40, -12)  # px/s
 const HOME_WIDTH := 440.0  # px: the column of home buttons
-const LIST_SIZE := Vector2(1000, 520)  # px: the scrolling stage list
+const LIST_SIZE := Vector2(760, 520)  # px: the scrolling stage list
 const ROW_HEIGHT := 108.0  # px: a stage row; its thumbnail fills the height less the margins
 const ROW_MARGIN := 8.0
 
@@ -206,17 +206,24 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 		total.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		total.custom_minimum_size.x = 100  # four digits: the medals line up across rows
 		total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-		content.add_child(total)
+		var scores := VBoxContainer.new()
+		scores.alignment = BoxContainer.ALIGNMENT_CENTER
+		scores.add_theme_constant_override("separation", 0)
+		content.add_child(scores)
+		scores.add_child(total)
 		if sha != "":
 			var run := Progress.best_demo(id)
 			var local_points := best if run != null and run.level_sha256 == sha else -1
-			var badge := _button("", Vector2(0, 52), 18)
+			var badge := _button("", Vector2(100, 28), 18)
 			badge.name = "BoardBadge"
 			badge.add_theme_color_override("font_color", Style.INK_DIM)
 			badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			badge.size_flags_horizontal = Control.SIZE_SHRINK_END
+			badge.clip_text = true
+			badge.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 			badge.set_meta("local_points", local_points)
 			badge.pressed.connect(func(): Leaderboard.open(self, sha, title, local_points))
-			content.add_child(badge)
+			scores.add_child(badge)
 			_board_badges[sha] = badge
 			_update_badge(sha)
 	return button
@@ -262,7 +269,7 @@ func _update_badge(sha: String) -> void:
 	elif standing.begins_with("Estimate: about top "):
 		text = "~top " + standing.trim_prefix("Estimate: about top ").get_slice(" · ", 0).trim_suffix(" (cached)")
 	elif standing.begins_with("Estimate: would rank #"):
-		text = "~" + standing.trim_prefix("Estimate: would rank ").trim_suffix(" (cached)")
+		text = "~≤" + standing.trim_prefix("Estimate: would rank #").get_slice(" ", 0)
 	elif standing.begins_with("Estimate: would be in the top 20"):
 		text = "~top 20"
 	badge.text = text
