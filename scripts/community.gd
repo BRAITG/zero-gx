@@ -127,10 +127,10 @@ func _sign_in() -> String:
 	return ""
 
 
-## Coroutine: one page of `sort` ("top" or "new"): `{"rows": Array}`, or on failure `{"error", "rows": the cached page or [], "offline": bool}`.
-func list(sort: String, page: int) -> Dictionary:
-	var cache := dir + "list_%s_%d.json" % [sort, page]
-	var reply := await _authed("GET", "/levels?sort=%s&page=%d" % [sort, page], TYPE_ARRAY)
+## Coroutine: one page of `sort` ("popular" or "new"), only of levels of `difficulty` ("easy".."expert") when given: `{"rows": Array}`, or on failure `{"error", "rows": the cached page or [], "offline": bool}`. Each sort, filter and page has its own cache file.
+func list(sort: String, page: int, difficulty := "") -> Dictionary:
+	var cache := dir + "list_%s_%s_%d.json" % [sort, difficulty if difficulty != "" else "all", page]
+	var reply := await _authed("GET", "/levels?sort=%s&page=%d%s" % [sort, page, "&difficulty=" + difficulty if difficulty != "" else ""], TYPE_ARRAY)
 	if reply.has("error"):
 		var cached: Variant = _parse(FileAccess.get_file_as_bytes(cache))
 		return {"error": reply.error, "rows": cached if cached is Array else [], "offline": reply.error == NO_CONNECTION}
@@ -190,7 +190,7 @@ func level_id_of(id: String) -> String:
 	return MyLevels.level_id(id)
 
 
-## Coroutine: level id → `{status, version, comment}` of the player's newest submission of it. Refreshed while signed in; otherwise, or when the refresh fails, the last known ones. It never signs in: a 401 only clears the local session.
+## Coroutine: level id → `{status, version, comment}` of the player's newest submission of it; an approved one adds `sha256`, `rated`, `rated_high`, `reviewed_difficulty`, `starters` and `likes` when the server sent them well formed. Refreshed while signed in; otherwise, or when the refresh fails, the last known ones. It never signs in: a 401 only clears the local session.
 func statuses() -> Dictionary:
 	var known: Variant = _session().get_value("statuses", "last", {})
 	if not signed_in():
@@ -201,11 +201,25 @@ func statuses() -> Dictionary:
 	var fresh := {}
 	for row: Variant in reply.data:  # newest first: a level's first row is where it stands
 		if row is Dictionary and row.get("level_id") is String and not fresh.has(row.level_id):
-			fresh[row.level_id] = {"status": row.get("status"), "version": int(row.get("version", 0)), "comment": row.get("comment") if row.get("comment") is String else ""}
+			fresh[row.level_id] = _status_of(row)
 	var file := _session()  # read afresh: a sign-in may have rewritten it meanwhile
 	file.set_value("statuses", "last", fresh)
 	_save_session(file)
 	return fresh
+
+
+func _status_of(row: Dictionary) -> Dictionary:
+	var status := {"status": row.get("status"), "version": int(row.get("version", 0)), "comment": row.get("comment") if row.get("comment") is String else ""}
+	if row.get("sha256") is String and _is_sha(row.sha256):
+		status["sha256"] = row.sha256
+	for key in ["rated", "rated_high", "reviewed_difficulty"]:
+		if row.get(key) in CommunityHistory.DIFFICULTIES:
+			status[key] = row[key]
+	for key in ["starters", "likes"]:
+		var count: Variant = row.get(key)
+		if (count is int or count is float) and count >= 0 and int(count) == count:
+			status[key] = int(count)
+	return status
 
 
 ## The player this device's session belongs to: the id the server's last `/session` answer named. "" for a session saved before that was stored, a signed-out one and an erased one.

@@ -9,7 +9,7 @@ var _column: VBoxContainer
 var _note: Label
 var _rows: VBoxContainer
 var _more: Button
-var _sort := "top"
+var _sort := "popular"
 var _page := 0  # the last page that arrived
 var _request := 0  # the newest list request; an older answer is dropped
 var _busy := false  # a download or the account deletion is under way
@@ -35,7 +35,7 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 36)
 	top.add_child(title)
 	var tabs := ButtonGroup.new()
-	for sort: String in ["top", "new"]:
+	for sort: String in ["popular", "new"]:
 		var tab := _button(top, sort.capitalize(), _load.bind(sort, 0))
 		tab.toggle_mode = true
 		tab.button_group = tabs

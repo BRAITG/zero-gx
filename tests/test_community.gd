@@ -51,7 +51,7 @@ func test_the_desktop_platform_is_unavailable_and_makes_no_calls() -> void:
 	world.add_child(net)
 	Community.transport = net
 	check(not Community.available(), "the default platform must be unavailable")
-	var listed: Dictionary = await Community.list("top", 0)
+	var listed: Dictionary = await Community.list("popular", 0)
 	check(listed.has("error") and listed.rows.is_empty(), "a list without Play Games must fail with no rows: %s" % [listed])
 	check(await Community.statuses() == {} and net.requests.is_empty(), "nothing may reach the network: %s" % [net.requests])
 
@@ -131,7 +131,7 @@ func test_a_401_signs_in_once_more_and_retries_once() -> void:
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/session", 200, {"token": "tok2", "player": SESSION.player})
 	net.answer("GET", "/levels", 200, [{"level_id": LEVEL_ID}])
-	var listed: Dictionary = await Community.list("top", 0)
+	var listed: Dictionary = await Community.list("popular", 0)
 	check(not listed.has("error") and listed.rows.size() == 1, "the retry must succeed: %s" % [listed])
 	var steps := net.requests.map(func(r: Dictionary) -> String: return "%s %s" % [r.method, r.url.get_slice("?", 0).get_slice("/", 3)])
 	check(steps == ["GET levels", "GET nonce", "POST session", "GET levels"], "requests: %s" % [steps])
@@ -146,7 +146,7 @@ func test_a_second_401_gives_up_without_a_third_request() -> void:
 	net.answer("GET", "/nonce", 200, {"nonce": "n2"})
 	net.answer("POST", "/session", 200, {"token": "tok2", "player": SESSION.player})
 	net.answer("GET", "/levels", 401, UNAUTHORIZED)
-	var listed: Dictionary = await Community.list("top", 0)
+	var listed: Dictionary = await Community.list("popular", 0)
 	check(listed.get("error") == "Sign in again." and listed.rows.is_empty(), "the second 401 must end the call: %s" % [listed])
 	check(net.requests.size() == 4 and net.count("GET", "/levels") == 2, "exactly one retry: %d requests" % net.requests.size())
 
@@ -158,7 +158,7 @@ func test_a_401_does_not_expire_a_token_a_concurrent_sign_in_just_saved() -> voi
 	net.answer("GET", "/levels", 200, [{"level_id": LEVEL_ID}])
 	net.held = true
 	var listed := []
-	var run := func() -> void: listed.append(await Community.list("top", 0))
+	var run := func() -> void: listed.append(await Community.list("popular", 0))
 	run.call()  # goes out with tok1
 	var file := ConfigFile.new()  # meanwhile another sign-in saves a new token
 	file.set_value("session", "token", "tok2")
@@ -174,7 +174,7 @@ func test_an_unexpected_answer_is_an_error_not_a_crash() -> void:
 	var net := _fake()
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, {"not": "a list"})
-	var listed: Dictionary = await Community.list("top", 0)
+	var listed: Dictionary = await Community.list("popular", 0)
 	check(listed.has("error") and listed.rows.is_empty(), "a non-list answer must fail the call: %s" % [listed])
 
 
@@ -182,11 +182,11 @@ func test_offline_list_shows_the_cached_page() -> void:
 	var net := _fake()
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [{"level_id": LEVEL_ID, "title": "Loop"}])
-	var online: Dictionary = await Community.list("top", 0)
+	var online: Dictionary = await Community.list("popular", 0)
 	check(not online.has("error") and online.rows.size() == 1, "online list: %s" % [online])
-	check(net.requests[0].url.ends_with("/levels?sort=top&page=0"), "list url: %s" % net.requests[0].url)
+	check(net.requests[0].url.ends_with("/levels?sort=popular&page=0"), "list url: %s" % net.requests[0].url)
 	net.answer("GET", "/levels", 0)
-	var offline: Dictionary = await Community.list("top", 0)
+	var offline: Dictionary = await Community.list("popular", 0)
 	check(offline.get("error") == "No connection" and offline.get("offline") == true and offline.rows.size() == 1 and offline.rows[0].title == "Loop", "cached rows offline: %s" % [offline])
 	net.answer("GET", "/levels", 0)
 	var uncached: Dictionary = await Community.list("new", 0)
@@ -432,3 +432,36 @@ func test_a_failed_account_deletion_keeps_everything_and_returns_the_sentence() 
 	net.answer("DELETE", "/me", 500, {"error": "Internal error."})
 	check(await Community.delete_account() == "Internal error.", "the server's sentence must come back")
 	check(Community.signed_in() and Community.level_id_of(id) == LEVEL_ID, "a failed deletion must keep the session and level ids")
+
+
+func test_list_caches_per_filter_and_serves_the_right_cache_offline() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [{"level_id": LEVEL_ID, "title": "All"}])
+	await Community.list("popular", 0)
+	net.answer("GET", "/levels", 200, [{"level_id": LEVEL_ID, "title": "Hard one"}])
+	await Community.list("popular", 0, "hard")
+	check(net.requests[1].url.ends_with("/levels?sort=popular&page=0&difficulty=hard"), "filtered url: %s" % net.requests[1].url)
+	check(FileAccess.file_exists(Community.dir + "list_popular_all_0.json") and FileAccess.file_exists(Community.dir + "list_popular_hard_0.json"), "one cache file per filter")
+	net.answer("GET", "/levels", 0)
+	var hard: Dictionary = await Community.list("popular", 0, "hard")
+	net.answer("GET", "/levels", 0)
+	var all: Dictionary = await Community.list("popular", 0)
+	net.answer("GET", "/levels", 0)
+	var easy: Dictionary = await Community.list("popular", 0, "easy")
+	check(hard.rows[0].title == "Hard one" and all.rows[0].title == "All" and easy.rows.is_empty(), "each filter serves its own cache: %s %s %s" % [hard, all, easy])
+
+
+func test_statuses_copies_the_new_approved_fields_and_ignores_malformed_ones() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var sha := "a".repeat(64)
+	net.answer("GET", "/me/submissions", 200, [
+		{"level_id": LEVEL_ID, "status": "approved", "version": 2, "sha256": sha, "rated": "normal", "rated_high": "hard", "reviewed_difficulty": "easy", "starters": 12, "likes": 3},
+		{"level_id": "lvl_bbbbbbbbbb", "status": "approved", "version": 1, "sha256": 5, "rated": "nope", "rated_high": null, "reviewed_difficulty": 7, "starters": "x", "likes": -1},
+	])
+	var known: Dictionary = await Community.statuses()
+	var first: Dictionary = known[LEVEL_ID]
+	check(first.sha256 == sha and first.rated == "normal" and first.rated_high == "hard" and first.reviewed_difficulty == "easy" and first.starters == 12 and first.likes == 3, "fields copied: %s" % [first])
+	var second: Dictionary = known["lvl_bbbbbbbbbb"]
+	check(second.status == "approved" and not second.has("sha256") and not second.has("rated") and not second.has("reviewed_difficulty") and not second.has("starters") and not second.has("likes"), "malformed ignored: %s" % [second])
