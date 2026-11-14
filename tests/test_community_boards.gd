@@ -273,8 +273,8 @@ func test_final_fix_postupload_get_does_not_join_or_get_overwritten_by_older_get
 	check(results.size() == 1 and cached.you.rank == 7 and cached.you.points == 900 and cached.fetched_at > 0, "late old answer cannot overwrite the newer fresh cache")
 
 
-func test_final_fix_score_invalidation_matches_latest_owner_hash_and_revision() -> void:
-	for changed in ["owner", "revision", "hash"]:
+func test_final_fix_score_invalidation_matches_captured_owner_and_hash() -> void:
+	for changed in ["owner", "hash"]:
 		Community.use_defaults()
 		var net := _fake()
 		net.answer("GET", ROUTE, 200, _upload_board())
@@ -286,9 +286,54 @@ func test_final_fix_score_invalidation_matches_latest_owner_hash_and_revision() 
 			_owner("p_2")
 			net.answer("GET", ROUTE, 200, _upload_board(false, "p_2"))
 			await Community.board(SHA)
-		elif changed == "revision":
-			_queue_board_score(net)
 		net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": true})
 		net.release_hold("POST", "/scores")
 		await Community.board(SHA)
-		check(net.count("GET", ROUTE) == (2 if changed == "owner" else 1), "%s: unrelated or obsolete success cannot invalidate the current board" % changed)
+		check(net.count("GET", ROUTE) == (2 if changed == "owner" else 1), "%s: another owner's or hash's success cannot invalidate the current board" % changed)
+
+
+func test_residual_fix_older_success_expires_board_without_adopting_rank_for_newer_revision() -> void:
+	var net := _fake()
+	net.answer("GET", ROUTE, 200, _upload_board())
+	await Community.board(SHA)
+	net.hold("POST", "/scores")
+	_queue_board_score(net)
+	await frames(4)
+	_queue_board_score(net)
+	net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": true})
+	net.release_hold("POST", "/scores")
+	var pending := Community.score_state(SHA)
+	check(pending.get("revision") == 2 and pending.get("state") == "queued" and not pending.has("rank"), "older uploaded rank cannot verify the newer queued recording")
+	check(Community.cached_board(SHA).fetched_at == 0, "older upload still changed the server and must expire the cached 700-point standing")
+	net.answer("GET", ROUTE, 200, _upload_board(true))
+	var fresh: Dictionary = await Community.board(SHA)
+	check(net.count("GET", ROUTE) == 2 and fresh.you.points == 900 and fresh.you.rank == 7, "next opening fetches the actual stored best while the newer run remains queued")
+
+
+func test_residual_fix_obsolete_failure_or_malformed_get_cannot_poison_new_success() -> void:
+	for status in [503, 200]:
+		Community.use_defaults()
+		var net := _fake()
+		net.answer("GET", ROUTE, 200, _upload_board())
+		await Community.board(SHA, true)
+		net.hold("GET", ROUTE)
+		var results := []
+		var read := func() -> void: results.append(await Community.board(SHA, true))
+		read.call()
+		net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": true})
+		_queue_board_score(net)
+		await frames(4)
+		net.answer("GET", ROUTE, 200, _upload_board(true))
+		var fresh: Dictionary = await Community.board(SHA)
+		var events := []
+		var updated := func(sha: String) -> void: events.append(sha)
+		Community.board_updated.connect(updated)
+		net.answer("GET", ROUTE, status, {"error": "Unavailable"} if status == 503 else {"rows": "malformed", "level": {}})
+		net.release_hold("GET", ROUTE)
+		Community.board_updated.disconnect(updated)
+		var cached := Community.cached_board(SHA)
+		check(results.size() == 1 and results[0].get("you", {}).get("rank") == 7 and not results[0].get("offline", true) and not results[0].has("error"), "%d: obsolete read returns the current successful cache" % status)
+		check(cached.you.rank == 7 and cached.you.points == 900 and cached.fetched_at == fresh.fetched_at and not cached.offline and not cached.has("error"), "%d: old failure cannot change freshness or poison the newer board" % status)
+		check(events.is_empty(), "%d: ignored old answer emits no stale error update" % status)
+		await Community.board(SHA)
+		check(net.count("GET", ROUTE) == 3, "%d: newer successful board remains reusable without another GET" % status)

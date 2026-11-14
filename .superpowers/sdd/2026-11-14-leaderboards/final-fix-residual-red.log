@@ -1,0 +1,5 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+FAIL test_community_boards.gd::test_residual_fix_older_success_expires_board_without_adopting_rank_for_newer_revision: older upload still changed the server and must expire the cached 700-point standing; next opening fetches the actual stored best while the newer run remains queued
+FAIL test_community_boards.gd::test_residual_fix_obsolete_failure_or_malformed_get_cannot_poison_new_success: 503: obsolete read returns the current successful cache; 503: old failure cannot change freshness or poison the newer board; 503: ignored old answer emits no stale error update; 503: newer successful board remains reusable without another GET; 200: obsolete read returns the current successful cache; 200: old failure cannot change freshness or poison the newer board; 200: ignored old answer emits no stale error update; 200: newer successful board remains reusable without another GET
+0 passed, 2 failed

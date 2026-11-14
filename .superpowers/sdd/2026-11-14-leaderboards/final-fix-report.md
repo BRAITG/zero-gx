@@ -77,3 +77,31 @@ Godot **4.7.2**, OpenGL/Metal on Apple M1 Pro, exit **0**. Both PNGs are **1280Ã
 ## Intentionally skipped / remaining risk
 
 No server suite, APK/export, Android hardware/native-banner check or live Play/Integrity/production check was run: the server/API and native bridge were not changed. Rendering proves desktop logical layout with a fake platform, not hardware behavior. Cached remote standings remain explicitly cached when a refresh fails; they are not claimed to be newly verified.
+
+## Scoped residual correction â€” superseded uploads and obsolete failed reads
+
+This section supersedes the earlier latest-revision-only invalidation and obsolete-read fallback descriptions. No server, verification or posting-policy changes.
+
+- **Older successful upload still invalidates its board.** Invalidation now belongs to the successful captured-owner/hash upload, outside the latest-revision result-adoption guard. A completed revision 1 upload expires cached 700/#25 even when revision 2 is queued; revision 2 keeps its immutable queued recording and receives no rank from revision 1. Account, deletion and generation guards remain unchanged. Corrected the former regression expectation that wrongly preserved freshness for this case.
+- **Discard every obsolete GET before processing its body or error.** After the existing owner/generation checks, the invalidation serial guard returns the current cache immediately. Old successes, HTTP failures and malformed payloads cannot create/overwrite cached data, restore freshness, record errors or emit stale board updates. If no current cache exists, the obsolete reply returns an empty cache; only a new GET establishes rows/population. Removed the now-dead stale-answer adoption branch.
+- **Behavioral proof:** two new tests cover older-revision invalidation without rank adoption and both 503/malformed old responses arriving after a fresh successful #7 board. They assert unchanged freshness, no offline/error poisoning, no stale update signal, current cached result returned to the old reader, and no extra GET on cache reuse. Updated two flow regressions to assert discarded pre-upload data, no invented provisional-rank denominator, and eventual fresh population/current-standing adoption after the result closes or remains open.
+
+Tests were written before the residual production edits. Narrow RED command:
+
+```sh
+TEST_FILTER=test_residual_fix godot --headless --path . --fixed-fps 60 -s res://tests/run_tests.gd
+```
+
+Exit **1**, **0 passed, 2 failed**, on the intended missing invalidation and stale-error suppression assertions. Output: `final-fix-residual-red.log`.
+
+Covering commands run once after both corrections, using the same isolated HOME/data/tmp stores described above:
+
+```sh
+for suite in test_community_boards test_community_sync test_leaderboard test_flow; do
+  TEST_FILTER="$suite" GODOT=godot tests/run.sh
+done
+```
+
+All exited **0**: boards **16 passed, 0 failed**; sync **60 passed, 0 failed**; leaderboard **13 passed, 0 failed**; flow **70 passed, 0 failed** (**159 total**). Outputs: `final-fix-residual-test_community_boards.log`, `final-fix-residual-test_community_sync.log`, `final-fix-residual-test_leaderboard.log`, `final-fix-residual-test_flow.log`. No SCRIPT ERROR or parse errors; each process retains the two-ObjectDB shutdown warning, and flow retains the Camera2D interpolation warning.
+
+No full-suite rerun, new renders, server checks, APK/export or live/hardware checks in this scoped residual round, as directed. The earlier 825-test full-suite result belongs to the preceding commit, not this residual correction. No unexpected covering failures required broader investigation.

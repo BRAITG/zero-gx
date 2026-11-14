@@ -1108,9 +1108,8 @@ func _flush_scores(account: String, generation: int) -> String:
 		result["denied"] = true
 	if settled and error == "":
 		result.merge(reply.data)
+		_invalidate_board(account, sha)
 	if scores.revision(account, sha) == revision:  # an answer about an older best is not this best's standing
-		if settled and error == "":
-			_invalidate_board(account, sha)
 		if not _score_results.has(account):
 			_score_results[account] = {}
 		_score_results[account][sha] = result.duplicate(true)
@@ -1207,17 +1206,14 @@ func _read_board(sha256: String, owner: String, generation: int, version: int) -
 	var reply := await _authed("GET", "/boards/%s?limit=20" % sha256, TYPE_DICTIONARY, Callable(), true, owner)
 	if generation != _generation or (owner != "" and owner != _account()) or (reply.has("account") and reply.account != _account()):
 		return _board_failed(sha256, ACCOUNT_CHANGED, false)
+	if version != _board_versions.get(sha256, 0):
+		return cached_board(sha256)
 	if reply.has("error"):
 		return _board_failed(sha256, reply.error)
 	var data := _clean_board(reply.data)
 	if data.is_empty():
 		return _board_failed(sha256, BAD_ANSWER)
-	var outdated: bool = version != _board_versions.get(sha256, 0)
-	if outdated:
-		var cached := cached_board(sha256)
-		if not cached.is_empty():
-			return cached
-	var fetched := 0 if outdated else int(Time.get_unix_time_from_system())
+	var fetched := int(Time.get_unix_time_from_system())
 	data.merge({"sha256": sha256, "fetched_at": fetched}, true)
 	_store(dir + "board_" + sha256 + ".json", JSON.stringify(data).to_utf8_buffer())
 	var you := _board_row(reply.data.get("you"))
@@ -1226,9 +1222,8 @@ func _read_board(sha256: String, owner: String, generation: int, version: int) -
 		you = {}
 	if account != "":
 		_store(_board_you_path(account, sha256), JSON.stringify({"owner": account, "sha256": sha256, "fetched_at": fetched, "you": null if you.is_empty() else you}).to_utf8_buffer())
-	data.merge({"owner": account, "you": null if you.is_empty() else you, "cached": outdated, "offline": false}, true)
-	if not outdated:
-		_board_errors.erase(sha256)
+	data.merge({"owner": account, "you": null if you.is_empty() else you, "cached": false, "offline": false}, true)
+	_board_errors.erase(sha256)
 	board_updated.emit(sha256)
 	return data
 

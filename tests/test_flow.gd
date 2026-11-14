@@ -942,7 +942,7 @@ func test_result_ignores_wrong_owner_hash_revision_and_superseding_same_hash() -
 	check(lvl.hud.result_text() == before, "held previous-owner upload cannot restore private standing after an owner switch")
 
 
-func test_result_closed_during_held_score_and_board_only_updates_cache() -> void:
+func test_result_closed_during_held_score_and_board_discards_old_read_then_caches_fresh_answer() -> void:
 	var net := _result_setup()
 	net.hold("GET", "/boards/")
 	var lvl := _result_level()
@@ -950,11 +950,14 @@ func test_result_closed_during_held_score_and_board_only_updates_cache() -> void
 	lvl.finish(true)
 	lvl.queue_free()
 	await frames(2)
-	net.answer("POST", "/scores", 200, {"rank": 7, "points": 2000, "best": true})
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
 	net.release_hold("POST", "/scores")
 	net.release_hold("GET", "/boards/")
 	await frames(2)
-	check(not is_instance_valid(lvl) and Community.cached_board(sha).get("count") == 30, "late requests update cache, never freed result controls")
+	check(not is_instance_valid(lvl) and Community.cached_board(sha).is_empty(), "closed result cannot let the obsolete pre-upload GET create a cache")
+	net.answer("GET", "/boards/", 200, _result_higher_best_payload())
+	var fresh: Dictionary = await Community.board(sha)
+	check(net.count("GET", "/boards/") == 2 and fresh.count == 30 and Community.cached_board(sha).you.points == 9000 and Community.cached_board(sha).you.rank == 2, "only a fresh post-upload read establishes cached population and current standing after the result closes")
 
 
 func test_result_matching_posted_score_becomes_exact_and_board_restores_focus() -> void:
@@ -1029,7 +1032,7 @@ func test_result_post_after_held_board_forces_fresh_preview_without_regressing_s
 	check(lvl.hud.result_text().contains("Rank #3") and not lvl.hud.result_text().contains(" of 30"), "POST standing appears immediately without inventing a still-unknown population")
 	net.hold("GET", "/boards/")
 	net.release_hold("GET", "/boards/")
-	check(net.count("GET", "/boards/") == 2 and lvl.hud.result_text().contains("Rank #3 of 30"), "old board completion schedules a forced post-upload read without regressing exact standing")
+	check(net.count("GET", "/boards/") == 2 and Community.cached_board(lvl.level_sha256).is_empty() and lvl.hud.result_text().contains("Rank #3") and not lvl.hud.result_text().contains(" of 30"), "old board is discarded while a forced post-upload read waits; provisional rank gains no stale population")
 	# Three higher scores now exist: a competitor arrived after the POST reported rank 3.
 	var fresh := {"level": {"kind": "official", "name": "Launch"}, "rows": [], "you": null, "count": 31, "quantiles": [1180, 1200, 1240, 1260, 1300, 1320, 1360, 1380, 1420, 1440, 1480, 1520, 1540, 1580, 1600, 1640, 1660, 1700, 1800, 2000, 2100]}
 	var scores: Array = [2100, 2000, 1900, 1800] + range(1700, 1160, -20)
