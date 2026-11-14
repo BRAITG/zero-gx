@@ -96,6 +96,9 @@ function seeded(seed: number): () => number {
   };
 }
 
+/** Standard normal draw (Box–Muller). */
+const gaussian = (rng: () => number) => Math.sqrt(-2 * Math.log(1 - rng())) * Math.cos(2 * Math.PI * rng());
+
 describe("fit", () => {
   it("clips one Newton step to ±1", () => {
     // Clears two levels at once: raw steps +3.248 on θ, then −2.776 on β.
@@ -124,6 +127,51 @@ describe("fit", () => {
     for (const value of [...fitted.theta.values(), ...fitted.beta.values()]) expect(Number.isFinite(value)).toBe(true);
   });
 
+  it("keeps passing while a skill still moves after the difficulties settle", () => {
+    // 200 players clear four levels at attempt 14, close to the cold start; one player fails all four 30 times and needs several clipped steps.
+    const levels = ["A", "B", "C", "D"];
+    const histories = [...cohort("p", 200, (name) => levels.map((level) => play(name, level, 14, true))), ...levels.map((level) => play("weak", level, 30, false))];
+    const fitted = fit(histories);
+    expect(fitted.converged).toBe(true);
+    expect(fitted.theta.get("weak")!).toBeCloseTo(-2.211, 2);
+    expect(Math.max(...modeSteps(histories, fitted))).toBeLessThan(0.005);
+  });
+
+  it("keeps a clear at exactly attempt 30 and counts one at 31 as 30 misses", () => {
+    const target = (attempts: number, cleared: boolean) => fit(cohort("p", 20, (name) => [play(name, "A", 1, true), play(name, "T", attempts, cleared)])).beta.get("T")!;
+    expect(target(31, true)).toBe(target(30, false));
+    expect(target(30, true)).toBeCloseTo(3.447, 2);
+    expect(target(30, false)).toBeCloseTo(6.815, 2);
+  });
+
+  it("recovers known skills and difficulties from synthetic histories within stated tolerances", () => {
+    // 200 players with skills from N(0, 1) each play five levels of difficulty 1–5, for up to 30 attempts.
+    const rng = seeded(7);
+    const truth = [1, 2, 3, 4, 5];
+    const theta = Array.from({ length: 200 }, () => gaussian(rng));
+    const histories = theta.flatMap((skill, i) =>
+      truth.map((b, j) => {
+        let attempt = 1;
+        while (attempt <= 30 && rng() >= sigmoid(skill - b)) attempt++;
+        return play(`p${i}`, `L${j}`, Math.min(attempt, 30), attempt <= 30);
+      }),
+    );
+    const fitted = fit(histories);
+    expect(fitted.converged).toBe(true);
+    // Tolerances: every β and every θ_ref − β within 0.35 logit (worst measured 0.29, on the hardest level);
+    // skills within an RMSE of 0.6 (measured 0.53, from five histories each) and a mean error of 0.1 (measured 0.01).
+    const thetaRef = [...fitted.theta.values()].reduce((sum, value) => sum + value, 0) / theta.length;
+    const trueRef = theta.reduce((sum, value) => sum + value, 0) / theta.length;
+    truth.forEach((b, j) => {
+      const fittedBeta = fitted.beta.get(`L${j}`)!;
+      expect(Math.abs(fittedBeta - b)).toBeLessThan(0.35);
+      expect(Math.abs(thetaRef - fittedBeta - (trueRef - b))).toBeLessThan(0.35);
+    });
+    const errors = theta.map((skill, i) => fitted.theta.get(`p${i}`)! - skill);
+    expect(Math.sqrt(errors.reduce((sum, e) => sum + e * e, 0) / errors.length)).toBeLessThan(0.6);
+    expect(Math.abs(errors.reduce((sum, e) => sum + e, 0) / errors.length)).toBeLessThan(0.1);
+  });
+
   it("leaves out players with one level, counting versions of a level as one", () => {
     const histories = [play("two", "A", 1, true), play("two", "B", 2, true), play("versions", "A", 3, true, "A"), play("versions", "A", 4, true, "A2")];
     const fitted = fit(histories);
@@ -149,20 +197,21 @@ describe("variances", () => {
     for (const sha of ["A", "B", "C"]) expect(Math.abs(v.get(sha)! - denseVariance(histories, fitted, reference, sha))).toBeLessThan(1e-9);
   });
 
-  it("coverage: the 90% interval of θ_ref − β covers the truth in 85–95% of simulated catalogues", () => {
+  /**
+   * Share of 90% intervals of θ_ref − β that cover the truth over 500 seeded catalogues of 25 players, with truth drawn from
+   * the priors. Each player plays `fewest`…`levels` of the `levels` levels.
+   */
+  function coverage(levels: number, fewest: number): number {
     const rng = seeded(20261114);
-    const normal = () => Math.sqrt(-2 * Math.log(1 - rng())) * Math.cos(2 * Math.PI * rng());
-    // Truth drawn from the priors; 25 players each play 6–12 of 12 levels. With fewer histories per player the joint mode's
-    // incidental-parameter bias (estimates lean easier) pulls coverage under 85%: 3–6 of 6 levels gives 83%.
-    const levels = Array.from({ length: 12 }, (_, k) => `L${k}`);
+    const names = Array.from({ length: levels }, (_, k) => `L${k}`);
     let covered = 0;
     let total = 0;
     for (let catalogue = 0; catalogue < 500; catalogue++) {
-      const theta = Array.from({ length: 25 }, () => 1.5 * normal());
-      const beta = new Map(levels.map((level) => [level, 2.6 + 2.5 * normal()]));
+      const theta = Array.from({ length: 25 }, () => 1.5 * gaussian(rng));
+      const beta = new Map(names.map((level) => [level, 2.6 + 2.5 * gaussian(rng)]));
       const histories = theta.flatMap((skill, i) => {
-        const order = [...levels].sort(() => rng() - 0.5);
-        return order.slice(0, 6 + Math.floor(rng() * 7)).map((level) => {
+        const order = [...names].sort(() => rng() - 0.5);
+        return order.slice(0, fewest + Math.floor(rng() * (levels - fewest + 1))).map((level) => {
           const patience = 1 + Math.floor(rng() * 40);
           let attempt = 1;
           while (attempt <= patience && rng() >= sigmoid(skill - beta.get(level)!)) attempt++;
@@ -180,8 +229,20 @@ describe("variances", () => {
         if (Math.abs(thetaRef - b - (trueRef - beta.get(sha)!)) <= 1.645 * Math.sqrt(v.get(sha)!)) covered++;
       }
     }
-    expect(covered / total).toBeGreaterThanOrEqual(0.85);
-    expect(covered / total).toBeLessThanOrEqual(0.95);
+    return covered / total;
+  }
+
+  it("coverage: the 90% interval of θ_ref − β covers the truth in 85–95% of mid catalogues (6–12 of 12 levels)", () => {
+    const share = coverage(12, 6);
+    expect(share).toBeGreaterThanOrEqual(0.85);
+    expect(share).toBeLessThanOrEqual(0.95);
+  });
+
+  it("coverage: sparse catalogues (3–6 of 6 levels) stay above their measured floor", () => {
+    // Measured 83.2%: with few histories per player the joint mode leans easier (spec "Known limits"), so this shape misses 85%.
+    const share = coverage(6, 3);
+    expect(share).toBeGreaterThanOrEqual(0.83);
+    expect(share).toBeLessThanOrEqual(0.95);
   });
 });
 
@@ -196,6 +257,11 @@ describe("rate", () => {
   const fixtureA = [
     ...cohort("r", 20, (name) => ["L1", "L2", "L3"].map((level) => play(name, level, 10, true))),
     ...cohort("o", 10, (name) => ["L4", "L5"].map((level) => play(name, level, 15, true))),
+  ];
+  /** 24 reference players on anchors A–C; the first `established` of them also clear T at once; `newcomers` play only T and fail it `failures` times. */
+  const caveat = (established: number, newcomers: number, failures: number) => [
+    ...cohort("r", 24, (name, i) => [play(name, "A", 2, true), play(name, "B", 4, true), play(name, "C", 6, true), ...(i < established ? [play(name, "T", 1, true)] : [])]),
+    ...cohort("n", newcomers, (name) => [play(name, "T", failures, false)]),
   ];
 
   it("marks fitted=false and every version Estimating after MAX_PASSES without convergence", () => {
@@ -220,6 +286,19 @@ describe("rate", () => {
     }
   });
 
+  it("a level played only by weak players rates easier than its raw clear rate suggests", () => {
+    // 24 reference players clear A–C at attempt 2; 15 weak players fail A 30 times, and 10 of them clear W at attempt 5.
+    const histories = [
+      ...cohort("r", 24, (name) => ["A", "B", "C"].map((level) => play(name, level, 2, true))),
+      ...cohort("w", 15, (name, i) => [play(name, "A", 30, false), play(name, "W", i < 10 ? 5 : 10, i < 10)]),
+    ];
+    const weak = version(rate(histories, new Map(), NOW), "W");
+    expect(weak.curve[9]).toBeCloseTo(2 / 3, 12);
+    expect(weak).toMatchObject({ rated: "easy", ratedHigh: null });
+    expect(weak.p10Low!).toBeCloseTo(0.9973, 3);
+    expect(weak.audience!).toBeCloseTo(-2.727, 2);
+  });
+
   it("censors histories over 30 attempts as 30 misses", () => {
     const histories = cohort("e", 60, (name) => [play(name, "A", 1, true), play(name, "B", 1, true), play(name, "C", 1, true), play(name, "T", 1000, true)]);
     const target = version(rate(histories, new Map(), NOW), "T");
@@ -228,15 +307,10 @@ describe("rate", () => {
   });
 
   it("owner's caveat: newcomers who fail an easy level never make it Hard or Expert", () => {
-    /** 24 reference players on anchors A–C; the first `established` of them also clear T at once; `newcomers` play only T and fail it `failures` times. */
-    const catalogue = (established: number, newcomers: number, failures: number) => [
-      ...cohort("r", 24, (name, i) => [play(name, "A", 2, true), play(name, "B", 4, true), play(name, "C", 6, true), ...(i < established ? [play(name, "T", 1, true)] : [])]),
-      ...cohort("n", newcomers, (name) => [play(name, "T", failures, false)]),
-    ];
     const alone = (newcomers: number, failures: number) => [...cohort("q", 10, (name) => [play(name, "T", 1, true)]), ...cohort("n", newcomers, (name) => [play(name, "T", failures, false)])];
     for (const newcomers of [15, 30, 100]) {
       for (const failures of [5, 10, 30]) {
-        const results = [rate(alone(newcomers, failures), new Map(), NOW), rate(catalogue(6, newcomers, failures), new Map(), NOW), rate(catalogue(10, newcomers, failures), new Map(), NOW)];
+        const results = [rate(alone(newcomers, failures), new Map(), NOW), rate(caveat(6, newcomers, failures), new Map(), NOW), rate(caveat(10, newcomers, failures), new Map(), NOW)];
         for (const result of results) {
           for (const entry of result.versions) {
             expect(["hard", "expert"]).not.toContain(entry.rated);
@@ -251,6 +325,26 @@ describe("rate", () => {
         expect(ten!.audience!).toBeLessThan(-0.5);
       }
     }
+  });
+
+  it("censors left-out starters' histories in the audience re-estimate", () => {
+    const audience = (failures: number) => version(rate(caveat(10, 15, failures), new Map(), NOW), "T").audience!;
+    expect(audience(300)).toBe(audience(30));
+    expect(audience(30)).toBeLessThan(audience(10));
+  });
+
+  it("publishes no rating when S is not positive definite", () => {
+    // Out of contract: negative attempts give X negative curvature, so the converged fit sits on a saddle and S fails its pivots.
+    const histories = [
+      ...cohort("r", 20, (name) => ["L1", "L2", "L3"].map((level) => play(name, level, 10, true))),
+      play("bad", "L1", 28, true), play("bad", "L2", 24, true), play("bad", "L3", 28, false), play("bad", "X", -2.4, false),
+    ];
+    const fitted = fit(histories);
+    expect(fitted.converged).toBe(true);
+    expect(variances(histories, fitted.theta, fitted.beta, [...fitted.theta.keys()])).toBeNull();
+    const result = rate(histories, new Map(), NOW);
+    expect(result.fitted).toBe(false);
+    for (const entry of result.versions) expect(entry).toMatchObject({ beta: null, ratingSd: null, rated: null });
   });
 
   it("zero clears with 40 starters gives finite numbers and Expert or Estimating", () => {
