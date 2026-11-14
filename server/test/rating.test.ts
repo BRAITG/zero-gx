@@ -197,6 +197,15 @@ describe("variances", () => {
     for (const sha of ["A", "B", "C"]) expect(Math.abs(v.get(sha)! - denseVariance(histories, fitted, reference, sha))).toBeLessThan(1e-9);
   });
 
+  it("returns null when some V is not positive even though S is positive definite", () => {
+    // Out of contract: negative attempts give the reference player negative curvature (D = −0.056) at this point, so S stays
+    // positive definite (pivots 11.84, 1.87) while V = uᵀH⁻¹u for A is negative by the dense inverse.
+    const histories = [...cohort("q", 5, (name) => [play(name, "A", 3, true), play(name, "B", 3, true)]), play("p", "A", -3, false), play("p", "B", 1, true)];
+    const at = { theta: new Map(["q0", "q1", "q2", "q3", "q4", "p"].map((id) => [id, 0])), beta: new Map([["A", 0], ["B", 0]]) };
+    expect(denseVariance(histories, at, ["p"], "A")).toBeCloseTo(-4.615, 3);
+    expect(variances(histories, at.theta, at.beta, ["p"])).toBeNull();
+  });
+
   /**
    * Share of 90% intervals of θ_ref − β that cover the truth over 500 seeded catalogues of 25 players, with truth drawn from
    * the priors. Each player plays `fewest`…`levels` of the `levels` levels.
