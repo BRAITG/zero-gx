@@ -6,7 +6,6 @@ const MENU := "res://scenes/main.tscn"
 const PAGE_SIZE := 50  # the server's page size: a shorter page is the last one
 const ROW_HEIGHT := 100
 const ROW_GAP := 8
-const PLACEHOLDERS := 3
 
 var _column: VBoxContainer
 var _note: Label
@@ -103,7 +102,7 @@ func _exit_tree() -> void:
 	Monetization.clear_surface(self)
 
 
-## Shows page `page` of `sort`, only of `difficulty` ("" for all): page 0 replaces the rows once it arrives (placeholders stand in on a first load), a later page adds to them.
+## Shows page `page` of `sort`, only of `difficulty` ("" for all): page 0 clears the list at once and shows a spinner until its answer arrives, so no row seems to belong to the newly chosen filter; a later page adds to the rows.
 func _load(sort: String, page: int, difficulty: String) -> void:
 	_request += 1
 	var mine := _request
@@ -113,20 +112,15 @@ func _load(sort: String, page: int, difficulty: String) -> void:
 		_more.hide()
 		_show_all.hide()
 		_note.hide()
-		if _rows.get_child_count() == 0:
-			for i in PLACEHOLDERS:
-				var placeholder := HBoxContainer.new()  # as wide as a row, with room where Play goes
-				placeholder.add_theme_constant_override("separation", 12)
-				placeholder.custom_minimum_size.y = ROW_HEIGHT
-				var panel := PanelContainer.new()
-				panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				placeholder.add_child(panel)
-				var gap := Control.new()
-				gap.custom_minimum_size.x = 160
-				gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
-				placeholder.add_child(gap)
-				_rows.add_child(placeholder)
+		for old in _rows.get_children():
+			old.free()
+		var waiting := CenterContainer.new()  # freed with the rows when the answer arrives
+		waiting.name = "Loading"
+		waiting.custom_minimum_size.y = ROW_HEIGHT
+		var spinner := CommunityLevelDetails.SyncIndicator.new()
+		spinner.set_pending(true, false)
+		waiting.add_child(spinner)
+		_rows.add_child(waiting)
 	var reply: Dictionary = await Community.list(sort, page, difficulty)
 	if mine != _request or not is_inside_tree():
 		return

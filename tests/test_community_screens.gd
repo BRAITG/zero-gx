@@ -377,26 +377,27 @@ func test_show_all_keeps_the_focus_when_every_list_is_empty() -> void:
 	check(focus == _buttons(screen, "All")[0], "an empty unfiltered list leaves the focus on All, not nowhere: %s" % [focus])
 
 
-func test_a_first_load_shows_placeholders_and_a_refresh_keeps_the_rows_until_the_page_arrives() -> void:
+func test_loading_shows_a_spinner_and_a_new_filter_clears_the_list_at_once() -> void:
 	var net := _fake()
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [_row(_bytes(), "Old favourite")])
 	net.held = true
 	var screen := await _community()
-	check(screen._rows.get_child_count() == 3 and _buttons(screen, "Play").is_empty(), "a first load shows three placeholder rows")
+	check(screen._rows.get_child_count() == 1 and screen._rows.get_child(0).name == "Loading" and _buttons(screen, "Play").is_empty(), "a first load shows one spinner, no placeholder rows")
 	net.release()
 	await frames(2)
-	check(screen._rows.get_child_count() == 1 and _buttons(screen, "Play").size() == 1, "the page replaces the placeholders")
-	net.answer("GET", "/levels", 200, [_row(_bytes(), "Fresh one")])
+	check(screen._rows.get_child_count() == 1 and _buttons(screen, "Play").size() == 1, "the page replaces the spinner")
+	net.answer("GET", "/levels", 200, [])
 	net.held = true
-	_buttons(screen, "New")[0].pressed.emit()
+	_buttons(screen, "Hard")[0].grab_focus()
+	_send_action(&"ui_accept")  # Button presses on release
+	_send_action(&"ui_accept", false)
 	await frames(2)
 	var titles := _texts(screen)
-	check("Old favourite" in titles and not "Fresh one" in titles and screen._rows.get_child_count() == 1, "a refresh keeps the rows meanwhile: %s" % [titles])
+	check(not "Old favourite" in titles and screen._rows.get_child(0).name == "Loading", "a new filter clears the old rows at once, so none seems to be Hard: %s" % [titles])
 	net.release()
 	await frames(2)
-	titles = _texts(screen)
-	check("Fresh one" in titles and not "Old favourite" in titles, "the new page replaces them: %s" % [titles])
+	check("No Hard levels yet" in _texts(screen) and screen.find_children("Loading", "", true, false).is_empty(), "the answer replaces the spinner: %s" % [_texts(screen)])
 
 
 func test_a_long_title_is_trimmed_and_a_row_without_a_chip_leaves_no_gap() -> void:
