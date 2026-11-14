@@ -21,6 +21,10 @@ const ERASURE_PENDING := "This device could not finish erasing your community da
 const ERASURE_UNSAVED := "Your account was not deleted: this device could not record the deletion."
 const SCORE_UNSAVED := "Your run could not be queued on this device."
 const BAD_RUN := "This run cannot be posted."
+const BOARD_CACHE_SECONDS := 60 * 60
+
+class BoardRead extends RefCounted:
+	signal completed(result: Dictionary)
 
 var transport: CommunityTransport
 var platform: CommunityPlatform
@@ -48,6 +52,8 @@ var _deleting := false  # a deletion is with the server: its local erasure is ow
 var _choices := {}  # target of a vote → serial of the latest call for it
 var _choice_serial := 0
 var _settlements := {}  # "account|vote key" → {revision, status, error}: an answer the server gave for a queued choice whose acknowledgment could not be saved. Memory only: a reset or a relaunch forgets it and the choice is simply sent again, as after a lost answer.
+var _board_reads := {}  # generation|owner|sha → one shared request
+var _board_errors := {}  # sha → failed refresh sentence; cache-only surfaces must show it as stale
 
 signal _sign_in_done(result: Dictionary)
 ## One attempt at a queued choice, after its owner and generation were checked: applied (`error` empty), refused for good (the choice is dropped) or kept for a later flush. `kind` is "like" or "difficulty"; `sha256` is "" for a like; `value` is the choice (bool, or the difficulty with "" for a removal).
@@ -60,6 +66,8 @@ signal identity_changed(account: String)
 ## and `status`; a valid success also has the server's `rank`, `points` and `best`. The named revision may be older than
 ## a best queued meanwhile: consumers must match both account and revision before adopting its result.
 signal score_result(account: String, sha256: String, revision: int, result: Dictionary)
+## Public rows/distribution or the current player's private standing changed for this version.
+signal board_updated(sha256: String)
 
 
 func _ready() -> void:
@@ -363,6 +371,12 @@ func sync_feedback() -> Dictionary:
 	return await _sync()
 
 
+## Explicit board opening retries scores without activating feedback or identifying an unknown score owner.
+func sync_scores() -> Dictionary:
+	_finish_erasure()
+	return await _sync(true)
+
+
 ## Coroutine: likes (`value`) or unlikes stage `level`; same result as `sync_feedback`, with `error` the sentence of this choice's own attempt.
 func set_like(level: String, value: bool) -> Dictionary:
 	return await _vote(level, "like:" + level, "like", "", value, func(history: CommunityHistory, account: String) -> Error: return history.queue_like(account, level, value))
@@ -590,6 +604,8 @@ func _reset_work() -> void:
 	_settlements.clear()
 	_score_results.clear()
 	_score_posting.clear()
+	_board_reads.clear()
+	_board_errors.clear()
 	for kind in _gaps:
 		_gaps[kind] = false
 
@@ -962,7 +978,7 @@ func _private_names(account: String) -> Variant:
 	var prefix := "feedback_%s_" % _owner_tag(account)
 	var file := folder.get_next()
 	while file != "":
-		if not folder.current_is_dir() and file.begins_with(prefix):
+		if not folder.current_is_dir() and (file.begins_with(prefix) or file.begins_with("board_you_%s_" % _owner_tag(account))):
 			names.append(file)
 		file = folder.get_next()
 	folder.list_dir_end()
@@ -1116,3 +1132,136 @@ func _score_answer(data: Dictionary) -> bool:
 		if not (number is int or number is float) or not is_finite(float(number)) or int(number) != number or number < (1 if key == "rank" else 0):
 			return false
 	return data.get("best") is bool
+
+
+# --- per-version standings -------------------------------------------------------------------------------------------
+
+
+## Public rows and distribution belong to the hash; `you` is read only from the current owner's separate file.
+## Cache-only answers are always labelled cached. A failed refresh also marks them offline until a successful read.
+func cached_board(sha256: String) -> Dictionary:
+	if not _is_sha(sha256):
+		return {}
+	var stored: Variant = _parse(FileAccess.get_file_as_bytes(dir + "board_" + sha256 + ".json"))
+	if not stored is Dictionary or stored.get("sha256") != sha256 or not _board_integer(stored.get("fetched_at")):
+		return {}
+	var data := _clean_board(stored)
+	if data.is_empty():
+		return {}
+	data.merge({"sha256": sha256, "fetched_at": stored.fetched_at, "owner": "", "you": null, "cached": true, "offline": not available() or _board_errors.has(sha256)}, true)
+	var owner := _account()
+	if owner != "":
+		var private: Variant = _parse(FileAccess.get_file_as_bytes(_board_you_path(owner, sha256)))
+		if private is Dictionary and private.get("owner") == owner and private.get("sha256") == sha256 and _board_integer(private.get("fetched_at")):
+			var you := _board_row(private.get("you"))
+			if private.get("you") == null or (not you.is_empty() and you.player.id == owner):
+				data.owner = owner
+				data.you = null if you.is_empty() else you
+				data.fetched_at = mini(int(data.fetched_at), int(private.fetched_at))
+	if _board_errors.has(sha256):
+		data["error"] = _board_errors[sha256]
+	return data
+
+
+## Coroutine: top 20 for this hash, at most once/hour unless forced. Concurrent reads share only their owner/generation.
+## A refresh failure returns the last public data and this owner's standing, explicitly cached/offline.
+func board(sha256: String, force := false) -> Dictionary:
+	if not _is_sha(sha256):
+		return _board_failed(sha256, BAD_ANSWER)
+	if not available():
+		return _board_failed(sha256, CommunityPlatform.UNAVAILABLE)
+	var cached := cached_board(sha256)
+	var owner := _account()
+	var now := int(Time.get_unix_time_from_system())
+	if not force and owner != "" and cached.get("owner") == owner and not cached.get("offline", false) and now >= cached.fetched_at and now - cached.fetched_at < BOARD_CACHE_SECONDS:
+		return cached
+	var generation := _generation
+	var key := "%d|%s|%s" % [generation, owner, sha256]
+	if _board_reads.has(key):
+		var joined: Dictionary = await _board_reads[key].completed
+		return joined.duplicate(true)
+	var read := BoardRead.new()
+	_board_reads[key] = read
+	var result := await _read_board(sha256, owner, generation)
+	_board_reads.erase(key)
+	read.completed.emit(result)
+	return result.duplicate(true)
+
+
+func _read_board(sha256: String, owner: String, generation: int) -> Dictionary:
+	var reply := await _authed("GET", "/boards/%s?limit=20" % sha256, TYPE_DICTIONARY, Callable(), true, owner)
+	if generation != _generation or (owner != "" and owner != _account()) or (reply.has("account") and reply.account != _account()):
+		return _board_failed(sha256, ACCOUNT_CHANGED, false)
+	if reply.has("error"):
+		return _board_failed(sha256, reply.error)
+	var data := _clean_board(reply.data)
+	if data.is_empty():
+		return _board_failed(sha256, BAD_ANSWER)
+	var fetched := int(Time.get_unix_time_from_system())
+	data.merge({"sha256": sha256, "fetched_at": fetched}, true)
+	_store(dir + "board_" + sha256 + ".json", JSON.stringify(data).to_utf8_buffer())
+	var you := _board_row(reply.data.get("you"))
+	var account := _account()
+	if not you.is_empty() and you.player.id != account:
+		you = {}
+	if account != "":
+		_store(_board_you_path(account, sha256), JSON.stringify({"owner": account, "sha256": sha256, "fetched_at": fetched, "you": null if you.is_empty() else you}).to_utf8_buffer())
+	data.merge({"owner": account, "you": null if you.is_empty() else you, "cached": false, "offline": false}, true)
+	_board_errors.erase(sha256)
+	board_updated.emit(sha256)
+	return data
+
+
+func _board_failed(sha256: String, error: String, remember := true) -> Dictionary:
+	if remember and _is_sha(sha256):
+		_board_errors[sha256] = error
+	var data := cached_board(sha256)
+	var had_cache := not data.is_empty()
+	if not had_cache:
+		data = {"sha256": sha256, "owner": "", "rows": [], "you": null, "count": -1, "quantiles": []}
+	data.merge({"error": error, "offline": true, "cached": had_cache}, true)
+	if remember and _is_sha(sha256):
+		board_updated.emit(sha256)
+	return data
+
+
+func _board_you_path(owner: String, sha256: String) -> String:
+	return dir + "board_you_%s_%s.json" % [_owner_tag(owner), sha256]
+
+
+## Bad percentile data disables estimates, not valid rows. Never coerce strings, booleans or fractions into ranks.
+func _clean_board(raw: Dictionary) -> Dictionary:
+	if not raw.get("rows") is Array or not raw.get("level") is Dictionary:
+		return {}
+	var rows := []
+	for entry: Variant in raw.rows:
+		var row := _board_row(entry)
+		if not row.is_empty():
+			rows.append(row)
+		if rows.size() == 20:
+			break
+	var count := int(raw.count) if _board_integer(raw.get("count")) else -1
+	var quantiles: Array = raw.quantiles.duplicate() if raw.get("quantiles") is Array else []
+	var valid := (count == 0 and quantiles.is_empty()) or (count > 0 and quantiles.size() == 21)
+	for i in quantiles.size():
+		if not _board_integer(quantiles[i]) or (i > 0 and quantiles[i] < quantiles[i - 1]):
+			valid = false
+			break
+	return {"level": raw.level.duplicate(true), "rows": rows, "count": count, "quantiles": quantiles if valid else []}
+
+
+func _board_row(raw: Variant) -> Dictionary:
+	if not raw is Dictionary or not raw.get("player") is Dictionary:
+		return {}
+	if not raw.player.get("id") is String or raw.player.id == "" or not raw.player.get("name") is String:
+		return {}
+	if not _board_integer(raw.get("rank")) or raw.rank < 1 or not _board_integer(raw.get("points")):
+		return {}
+	var seconds: Variant = raw.get("seconds")
+	if not (seconds is int or seconds is float) or not is_finite(float(seconds)) or seconds < 0:
+		return {}
+	return {"rank": int(raw.rank), "player": {"id": raw.player.id, "name": raw.player.name}, "points": int(raw.points), "seconds": float(seconds)}
+
+
+func _board_integer(value: Variant) -> bool:
+	return (value is int or value is float) and is_finite(float(value)) and value >= 0 and value < 9223372036854775807 and value == floor(value)
