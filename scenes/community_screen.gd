@@ -40,7 +40,7 @@ func _ready() -> void:
 	title.add_theme_font_size_override("font_size", 36)
 	top.add_child(title)
 	var segments := HBoxContainer.new()  # Popular | New
-	segments.add_theme_constant_override("separation", 0)
+	segments.add_theme_constant_override("separation", 8)
 	top.add_child(segments)
 	var tabs := ButtonGroup.new()
 	for sort: String in ["popular", "new"]:
@@ -56,7 +56,7 @@ func _ready() -> void:
 	var gear := _button(top, "⚙", _open_settings)
 	gear.tooltip_text = "Community settings"
 	gear.custom_minimum_size.x = 56
-	gear.add_theme_font_size_override("font_size", 32)  # the glyph reads small at the label size
+	gear.add_theme_font_size_override("font_size", 26)  # 26 makes the 56-px button, like Back; 28 would make it 58
 	var filters := HBoxContainer.new()
 	filters.add_theme_constant_override("separation", 8)
 	_column.add_child(filters)
@@ -119,7 +119,15 @@ func _load(sort: String, page: int, difficulty: String) -> void:
 		waiting.custom_minimum_size.y = ROW_HEIGHT
 		var spinner := CommunityLevelDetails.SyncIndicator.new()
 		spinner.set_pending(true, false)
-		waiting.add_child(spinner)
+		var slot := HBoxContainer.new()
+		slot.add_theme_constant_override("separation", 12)
+		slot.add_child(spinner)
+		var caption := Label.new()
+		caption.text = "Loading levels…"
+		caption.add_theme_font_size_override("font_size", 22)
+		caption.add_theme_color_override("font_color", Style.INK_DIM)
+		slot.add_child(caption)
+		waiting.add_child(slot)
 		_rows.add_child(waiting)
 	var reply: Dictionary = await Community.list(sort, page, difficulty)
 	if mine != _request or not is_inside_tree():
@@ -245,25 +253,28 @@ func _play(row: Dictionary) -> void:
 	if error == "" and not LevelFormat.validate(LevelFormat.read(Community.level_path(row.sha256))).is_empty():
 		error = "This level cannot be played."
 	if error != "":
-		Overlay.open(self, "Cannot play").paragraph(error)
+		Overlay.open(self, "Cannot play", false, true).paragraph(error)
 		return
 	Progress.open(Community.STAGE_PREFIX + row.sha256)
 
 
 func _open_settings() -> void:
-	var o := Overlay.open(self, "Community settings")
+	var o := Overlay.open(self, "Community settings", false, true)
 	o.heading("Account")
+	var card := o.card()
 	if Community.signed_in():
-		var deletion := _button(o.body, "Delete my community account", _confirm_delete)
-		deletion.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		o.paragraph("Removes your scores, likes, play history, difficulty ratings and name from Zero-GX's servers.", 22, Style.INK_DIM, card)
+		Style.danger(_button(card, "Delete my community account", _confirm_delete))
 	else:
-		o.paragraph("Sign in to manage your community account.")
+		o.paragraph("Sign in to manage your community account.", 22, Style.INK_DIM, card)
 
 
 func _confirm_delete() -> void:
-	var o := Overlay.open(self, "Delete community account?")
+	var o := Overlay.open(self, "Delete community account?", false, true)
 	o.paragraph("This removes your scores, likes, reports, play history, difficulty ratings and your name from Zero-GX's servers. Levels you shared stay, shown as by Deleted player.")
-	_button(o.body, "Delete account", _delete_account.bind(o), "Deleting…")
+	var delete := _button(o.body, "Delete account", _delete_account.bind(o), "Deleting…")
+	delete.custom_minimum_size.x = Overlay.WIDTH
+	Style.danger(delete)
 
 
 func _delete_account(o: Overlay) -> void:
@@ -277,7 +288,7 @@ func _delete_account(o: Overlay) -> void:
 	if is_instance_valid(o):
 		o.close()
 	if error != "":
-		Overlay.open(self, "Cannot delete account").paragraph(error)
+		Overlay.open(self, "Cannot delete account", false, true).paragraph(error)
 		return
 	_to_menu()
 

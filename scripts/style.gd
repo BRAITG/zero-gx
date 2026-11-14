@@ -113,6 +113,12 @@ func focus_first(root: Node) -> void:
 			return
 
 
+## Marks a destructive button: the warning colour in every state, never a fill. Its confirmation, or a Close that acts as Cancel, stands behind it.
+func danger(button: Button) -> void:
+	for color in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color", "font_hover_pressed_color"]:
+		button.add_theme_color_override(color, Hud.WARNING)
+
+
 ## Coroutine: runs `work` while `button` says `label` and cannot be tapped again, so the player sees the wait; afterwards the button is as it was, if it is still on screen.
 func busy(button: Button, label: String, work: Callable) -> void:
 	var text := button.text

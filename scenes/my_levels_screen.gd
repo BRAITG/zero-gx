@@ -158,7 +158,7 @@ func _refresh_statuses() -> void:
 ## The sheet of one level: Edit first, Delete last.
 func _open_sheet(id: String) -> void:
 	var data := MyLevels.load_level(id)
-	var o := Overlay.open(self, str(data.get("title", "?")))
+	var o := Overlay.open(self, str(data.get("title", "?")), false, true)
 	var status := _status_line(id, data)
 	o.paragraph(status[0], 22, status[1])  # the row cuts a long moderator comment; here it is whole
 	_primary(_sheet_button(o, "Edit", _edit.bind(id)))
@@ -167,11 +167,17 @@ func _open_sheet(id: String) -> void:
 	if MyLevels.has_demo(id):
 		_sheet_button(o, "Watch", _watch.bind(id, data))
 	if Community.available() and not MyLevels.is_submitted(id):
-		_sheet_button(o, "Publish", _publish.bind(id))
+		_sheet_button(o, "Publish", _publish.bind(id)).disabled = play.disabled  # an invalid draft cannot be published
 	_sheet_button(o, "Export", _export.bind(id, str(data.get("title", "level"))))
-	var delete := _sheet_button(o, "Delete", _confirm_delete.bind(id, str(data.get("title", "?"))))
-	for color in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color"]:
-		delete.add_theme_color_override(color, Hud.WARNING)  # danger: still behind its confirmation
+	var spacer := Control.new()  # sets the destructive action apart
+	spacer.custom_minimum_size.y = 24
+	o.body.add_child(spacer)
+	Style.danger(_sheet_button(o, "Delete", _confirm_delete.bind(id, str(data.get("title", "?")))))
+
+
+## A problem as a sentence: the validator's start in lower case.
+static func _sentence(text: String) -> String:
+	return text.left(1).to_upper() + text.substr(1)
 
 
 ## A full-width button of a level sheet; the sheet closes before `action` runs.
@@ -192,7 +198,7 @@ func _primary(button: Button) -> void:
 func _publish(id: String, proven := false) -> void:
 	if not Community.available() or not _validate_publish(id):
 		return
-	var o := Overlay.open(self, "Publish")
+	var o := Overlay.open(self, "Publish", false, true)
 	o.paragraph("“%s”" % MyLevels.load_level(id).get("title", "?"), 28, Style.ACCENT)
 	var proof := o.card()
 	var suggestion := o.card()
@@ -237,9 +243,9 @@ func _validate_publish(id: String) -> bool:
 	var problems := LevelFormat.validate(MyLevels.load_level(id))
 	if problems.is_empty():
 		return true
-	var o := Overlay.open(self, "Cannot publish")
+	var o := Overlay.open(self, "Cannot publish", false, true)
 	for problem in problems:
-		o.paragraph(problem)
+		o.paragraph(_sentence(problem))
 	return false
 
 
@@ -253,7 +259,7 @@ func _submit(id: String, confirmation: Overlay, option: OptionButton) -> void:
 	if not is_inside_tree():
 		return
 	if error != "":
-		Overlay.open(self, "Cannot submit").paragraph(error)
+		Overlay.open(self, "Cannot submit", false, true).paragraph(error)
 		return
 	_statuses[Community.level_id_of(id)] = {"status": "open"}  # until the server's own word at the next refresh
 	if is_instance_valid(confirmation):
@@ -282,13 +288,15 @@ func _watch(id: String, data: Dictionary) -> void:
 
 
 func _confirm_delete(id: String, title: String) -> void:
-	var o := Overlay.open(self, "Delete level?")
+	var o := Overlay.open(self, "Delete level?", false, true)
 	o.paragraph("“%s” will be gone for good." % title)
-	_button(o.body, "Delete", func() -> void:
+	var delete := _button(o.body, "Delete", func() -> void:
 		MyLevels.delete(id)
 		o.close()
 		_fill()
 		Style.focus_first(_column))  # the Delete button that had focus is gone
+	delete.custom_minimum_size.x = Overlay.WIDTH
+	Style.danger(delete)
 
 
 func _import() -> void:
@@ -297,15 +305,15 @@ func _import() -> void:
 		if errors.is_empty():
 			_fill()
 			return
-		var o := Overlay.open(self, "Cannot import")
+		var o := Overlay.open(self, "Cannot import", false, true)
 		for error in errors:
-			o.paragraph(error))
+			o.paragraph(_sentence(error)))
 
 
 func _export(id: String, title: String) -> void:
 	_file_dialog(true, PackedStringArray(["*.json ; Zero-GX level"]), title.validate_filename() + ".json", func(path: String) -> void:
 		if MyLevels.export_file(id, path) != OK:
-			Overlay.open(self, "Cannot export").paragraph("The file could not be written."))
+			Overlay.open(self, "Cannot export", false, true).paragraph("The file could not be written."))
 
 
 ## A file dialog; `on_pick` gets the chosen path (a `content://` URI on Android). The system's own dialog where there is one, which Android needs; a Godot FileDialog otherwise.

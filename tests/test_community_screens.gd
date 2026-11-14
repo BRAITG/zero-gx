@@ -638,7 +638,7 @@ func test_account_deletion_is_in_settings_not_the_level_list() -> void:
 		return
 	check("Account" in _texts(settings), "settings must group the account action")
 	var deletion: Button = _buttons(settings, "Delete my community account")[0]
-	check(deletion.size.x < screen.get_viewport_rect().size.x / 2, "deletion must be a normal-sized action, not full width: %s" % deletion.size)
+	check(deletion.size.y == 56 and deletion.size.x > 900 and deletion.get_theme_color("font_color") == Hud.WARNING, "deletion fills its card and is red: %s" % deletion.size)
 	_send_action(&"ui_cancel")
 	await frames(2)
 	check(screen.is_inside_tree() and tree.current_scene == null, "closing settings must keep Community open")
@@ -903,7 +903,7 @@ func test_publish_refuses_a_draft_that_breaks_the_level_rules_and_names_why() ->
 	var screen := await _my_levels()
 	await _open_publish(screen)
 	var sheets := _sheets(screen)
-	check(sheets.size() == 1 and problems[0] in _texts(sheets[0]), "the sheet must name the problem: %s" % [sheets.map(_texts)])
+	check(sheets.size() == 1 and problems[0].left(1).to_upper() + problems[0].substr(1) in _texts(sheets[0]), "the sheet must name the problem, capitalised: %s" % [sheets.map(_texts)])
 	check(_buttons(screen, "Play to prove it").is_empty() and _buttons(screen, "Use previous run").is_empty(), "an invalid draft offers no proof")
 	check(tree.current_scene == null and _posts(net) == 0, "nothing may fly or upload")
 
@@ -1273,3 +1273,145 @@ func test_delete_account_says_deleting_and_is_off_while_it_waits() -> void:
 	await frames(3)
 	check(not Community.signed_in(), "the account must be deleted")
 	_leave_scene()
+
+
+func _opaque(sheet: Overlay) -> bool:
+	return (sheet.get_child(0) as ColorRect).color.a == 1.0
+
+
+func test_the_sheets_over_the_full_bleed_lists_are_opaque_and_the_menu_ones_are_not() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	var screen := await _community()
+	var settings := await _settings(screen)
+	check(_opaque(settings), "Community settings is opaque")
+	_buttons(screen, "Delete my community account")[0].pressed.emit()
+	await frames(2)
+	check(_opaque(_sheets(screen).back()), "Delete community account? is opaque")
+	net.answer("DELETE", "/me", 500, {"error": "Internal error."})
+	_buttons(screen, "Delete account")[0].pressed.emit()
+	await frames(3)
+	check("Internal error." in _texts(_sheets(screen).back()) and _opaque(_sheets(screen).back()), "Cannot delete account is opaque")
+	screen.free()
+	var bytes := _bytes()
+	net.answer("GET", "/levels", 200, [_row(bytes)])
+	screen = await _community()
+	net.answer("GET", "/index", 200, {"commit": "abc123"})
+	net.answer("GET", "/gh/", 200, bytes + "x".to_utf8_buffer())  # does not match its hash
+	_buttons(screen, "Play")[0].pressed.emit()
+	await frames(3)
+	check(_sheets(screen).size() == 1 and _opaque(_sheets(screen)[0]), "Cannot play is opaque: %s" % [_sheets(screen).map(_texts)])
+	var id := _finished_draft()
+	var mine := await _my_levels()
+	await _open_row(mine)
+	check(_opaque(_sheets(mine).back()), "the level sheet is opaque")
+	_buttons(mine, "Delete")[0].pressed.emit()
+	await frames(2)
+	check(_opaque(_sheets(mine).back()), "Delete level? is opaque")
+	_sheets(mine).back().close()
+	await frames(2)
+	await _open_publish(mine)
+	check(_opaque(_sheets(mine).back()), "Publish is opaque")
+	_sheets(mine).back().close()
+	await frames(2)
+	var bad := LevelDoc.blank()
+	bad.goal.position = [0, 0]
+	MyLevels.save(id, bad)
+	mine._publish(id)
+	await frames(2)
+	check(_sheets(mine).size() == 1 and _opaque(_sheets(mine)[0]), "Cannot publish is opaque")
+	check(not _opaque(Overlay.open(world, "Menu sheet")), "control: a default sheet stays dim")
+
+
+func test_a_card_with_a_paragraph_and_a_button_is_exactly_one_column_wide() -> void:
+	var sheet := Overlay.open(world, "Width")
+	var card := sheet.card()
+	sheet.paragraph("A long explanation that has to wrap inside the card, never push it past the column. ".repeat(6), 22, Style.INK_DIM, card)
+	var row := HBoxContainer.new()
+	card.add_child(row)
+	sheet.paragraph("A label beside a small indicator, wrapped over more than one line when it is long enough. ".repeat(3), 22, Style.ACCENT, row)
+	var button := Button.new()
+	button.custom_minimum_size = Vector2(160, 56)
+	card.add_child(button)
+	var body_text := sheet.paragraph("In the body")
+	await frames(3)
+	check(card.get_parent().size.x == Overlay.WIDTH, "the card is exactly the column wide: %s" % card.get_parent().size.x)
+	check(button.size.x > Overlay.WIDTH - 60 and button.size.x < Overlay.WIDTH, "the button fills the card's content box: %s" % button.size.x)
+	check(body_text.size.x == Overlay.WIDTH, "a paragraph in the body keeps the column width: %s" % body_text.size.x)
+
+
+func test_the_danger_style_colours_every_state_and_never_fills() -> void:
+	var button := Button.new()
+	Style.danger(button)
+	for color in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color", "font_hover_pressed_color"]:
+		check(button.get_theme_color(color) == Hud.WARNING, "%s must be the warning colour" % color)
+	check(not button.has_theme_stylebox_override("normal") and not button.has_theme_stylebox_override("pressed"), "danger changes text only, never the fill")
+	button.free()
+
+
+func test_every_destructive_button_is_in_danger_and_the_confirmations_are_full_width() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	var screen := await _community()
+	var settings := await _settings(screen)
+	var deletion: Button = _buttons(settings, "Delete my community account")[0]
+	check(deletion.get_theme_color("font_color") == Hud.WARNING and deletion.size.y == 56, "settings' Delete is red and 56 high")
+	check(deletion.get_parent().get_parent() is PanelContainer and deletion.get_parent().get_parent().size.x == Overlay.WIDTH, "it sits in a card exactly the column wide")
+	deletion.pressed.emit()
+	await frames(2)
+	var confirm: Button = _buttons(screen, "Delete account")[0]
+	check(confirm.get_theme_color("font_hover_color") == Hud.WARNING and confirm.size == Vector2(Overlay.WIDTH, 56), "Delete account is red, 1000×56: %s" % confirm.size)
+	check(tree.root.gui_get_focus_owner().text == "Close", "focus stays on Close, the way out")
+	screen.free()
+	_fake()
+	var id := _finished_draft()
+	var mine := await _my_levels()
+	await _open_row(mine)
+	_buttons(mine, "Delete")[0].pressed.emit()
+	await frames(2)
+	var delete: Button = _buttons(mine, "Delete")[0]
+	check(delete.get_theme_color("font_pressed_color") == Hud.WARNING and delete.size == Vector2(Overlay.WIDTH, 56), "Delete level's Delete is red, 1000×56: %s" % delete.size)
+	check(MyLevels.ids().has(id), "control: nothing deleted yet")
+
+
+func test_publish_is_disabled_exactly_when_play_is() -> void:
+	_fake()
+	var bad := LevelDoc.blank()
+	bad.goal.position = [0, 0]
+	MyLevels.save(MyLevels.new_id(), bad)
+	var screen := await _my_levels()
+	await _open_row(screen)
+	check(_buttons(screen, "Play")[0].disabled and _buttons(screen, "Publish")[0].disabled, "an invalid draft can neither be played nor published")
+	screen.free()
+	screen = await _my_levels()
+	for old in MyLevels.ids():
+		MyLevels.delete(old)
+	MyLevels.save(MyLevels.new_id(), LevelDoc.blank())
+	screen._fill()
+	await _open_row(screen)
+	check(not _buttons(screen, "Play")[0].disabled and not _buttons(screen, "Publish")[0].disabled, "a valid draft can be both")
+
+
+func test_the_community_and_my_levels_headers_are_both_56_high() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	var community := await _community()
+	var mine := await _my_levels()
+	check(community._column.get_child(0).size.y == 56, "the Community header is 56: %s" % community._column.get_child(0).size.y)
+	check(mine._column.get_child(0).size.y == 56, "the My levels header is 56: %s" % mine._column.get_child(0).size.y)
+
+
+func test_the_loading_slot_says_what_it_waits_for() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	net.answer("GET", "/levels", 200, [])
+	net.held = true
+	var screen := await _community()
+	var slot := screen._rows.get_child(0)
+	check(slot.name == "Loading" and "Loading levels…" in _texts(slot), "the slot names the wait: %s" % [_texts(slot)])
+	check(slot.find_children("*", "Control", true, false).any(func(c: Control) -> bool: return c is CommunityLevelDetails.SyncIndicator), "beside the spinner")
+	net.release()
+	await frames(2)
