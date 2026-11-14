@@ -16,7 +16,7 @@ func _init(curve: Variant = null) -> void:
 
 
 func _draw() -> void:
-	if shares.is_empty():
+	if shares.size() < 2:  # one point draws no line
 		return
 	draw_dashed_line(Vector2(0, size.y / 2), Vector2(size.x, size.y / 2), Style.INK_DIM, 1.0, 6.0)
 	var points := PackedVector2Array()

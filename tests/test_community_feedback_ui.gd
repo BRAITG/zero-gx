@@ -7,9 +7,9 @@ extends "res://tests/test_case.gd"
 ## piece fails the check that names it. The contract the tests drive:
 ## - `CommunityLevelDetails.open(parent, row, on_play) -> Overlay`. Play: a Button "Play", present only with a callback.
 ## - Like: the sheet's one toggle Button. Pressed = you.liked. Disabled unless like_eligible or already liked.
-## - Difficulty: the sheet's one OptionButton. Item 0 is the unselected placeholder (metadata ""); items 1-4 carry the
-##   wire values easy, normal, hard, expert as metadata. Disabled unless difficulty_eligible.
-## - Remove: a Button whose text contains "remove". Enabled while there is a vote; needs no eligibility.
+## - Difficulty: four toggle Buttons (Easy, Normal, Hard, Expert), shown only while the player may vote (or already holds a
+##   vote). Pressing the selected one removes the vote; there is no Remove button and no dropdown on this sheet.
+## - Hero, Rated sentence, vote bars, curve, You: see the details-sheet tests below.
 ## - Pending: a visible Label containing "pending" while a choice is queued. A refusal: its sentence in a visible Label.
 ## - Hud: `signal rate_requested`; a "Rate level" Button on the result card, visible only when result.can_rate.
 ## - Level: result.can_rate = Community.play_progress(sha).can_offer_rating on a community stage; Rate opens the sheet.
@@ -106,12 +106,24 @@ func _serve(reply: Dictionary) -> void:
 
 
 ## The payload the server sends for one version. `you` and `stats` override the defaults; every field is present.
-func _reply(you := {}, stats := {}, reviewed = null, community := {}, sha := SHA) -> Dictionary:
+func _reply(you := {}, stats := {}, reviewed = null, community := {}, sha := SHA, extra := {}) -> Dictionary:
 	var mine := {"liked": false, "like_eligible": false, "difficulty": null, "difficulty_eligible": false, "attempts": 0, "cleared": false}
 	mine.merge(you, true)
 	var labels := {"value": null, "votes": 0}
 	labels.merge(community, true)
-	return {"level_id": LEVEL_ID, "sha256": sha, "reviewed_difficulty": reviewed, "community_difficulty": labels, "stats": _stats(stats), "you": mine}
+	var reply := {"level_id": LEVEL_ID, "sha256": sha, "reviewed_difficulty": reviewed, "community_difficulty": labels, "stats": _stats(stats), "you": mine}
+	reply.merge(extra, true)
+	return reply
+
+
+## The extra feedback fields of a well-played version: Rated Normal–Hard at 35–55%, a curve, four vote counts, 64 starters.
+func _rich(overrides := {}) -> Dictionary:
+	var curve := []
+	for i in 30:
+		curve.append(0.01 * (i + 5))
+	var extra := {"rated": "normal", "rated_high": "hard", "p10_low": 0.35, "p10_high": 0.55, "curve": curve, "not_cleared_20": 9, "audience": null, "starters": 64, "votes": {"easy": 3, "normal": 5, "hard": 11, "expert": 2}}
+	extra.merge(overrides, true)
+	return extra
 
 
 func _stats(overrides := {}) -> Dictionary:
@@ -167,12 +179,12 @@ func _my_levels() -> MyLevelsScreen:
 
 
 ## The shared sheet over `parent`, with its feedback loaded. Null after a failed check while the component is missing.
-func _open(parent: Node, row: Dictionary, on_play: Callable) -> Overlay:
+func _open(parent: Node, row: Dictionary, on_play: Callable, to_you := false) -> Overlay:
 	var script: Variant = load(SHEET) if ResourceLoader.exists(SHEET) else null
 	if script == null or not _declares(script, "open"):
 		check(false, "missing %s: CommunityLevelDetails.open(parent, row, on_play)" % SHEET)
 		return null
-	var sheet: Overlay = script.open(parent, row, on_play)
+	var sheet: Overlay = script.open(parent, row, on_play, to_you)
 	await frames(3)
 	return sheet
 
@@ -251,24 +263,29 @@ func _containing(node: Node, word: String) -> Array:
 	return node.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text.to_lower().contains(word) and b.is_visible_in_tree())
 
 
-func _toggles(node: Node) -> Array:
-	return node.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.toggle_mode and not (b is OptionButton))
+## The sheet's controls by role: the Like toggle, and the four vote toggles by wire value (hidden until the player may vote).
+func _controls(node: Node) -> Dictionary:
+	var toggles: Array = node.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.toggle_mode and not (b is OptionButton))
+	var like := toggles.filter(func(b: Button) -> bool: return b.text.contains("Like"))
+	var votes := {}
+	for b: Button in toggles:
+		if b.text.to_lower() in DIFFICULTIES:
+			votes[b.text.to_lower()] = b
+	return {"like": like[0] if like.size() == 1 else null, "difficulty": votes}
 
 
 func _options(node: Node) -> Array:
 	return node.find_children("*", "OptionButton", true, false)
 
 
-## The sheet's controls by role. A role the node does not show is null.
-func _controls(node: Node) -> Dictionary:
-	var toggles := _toggles(node)
-	var options := _options(node)
-	var removes := _containing(node, "remove")
-	return {
-		"like": toggles[0] if toggles.size() == 1 else null,
-		"difficulty": options[0] if options.size() == 1 else null,
-		"remove": removes[0] if removes.size() == 1 else null,
-	}
+## Whether every vote toggle can be pressed.
+func _vote_open(votes: Dictionary) -> bool:
+	return votes.size() == 4 and votes.values().all(func(b: Button) -> bool: return b.is_visible_in_tree() and not b.disabled)
+
+
+## Whether no vote toggle can be pressed (hidden or disabled).
+func _vote_closed(votes: Dictionary) -> bool:
+	return votes.values().all(func(b: Button) -> bool: return not b.is_visible_in_tree() or b.disabled)
 
 
 func _texts(node: Node) -> Array:
@@ -288,8 +305,12 @@ func _lines_with(texts: Array, word: String) -> Array:
 	return texts.filter(func(t: String) -> bool: return t.to_lower().contains(word))
 
 
-## A choice in a difficulty OptionButton, made as a player makes it: selected, then its selection signal.
-func _pick(option: OptionButton, value: String) -> void:
+## A choice in a difficulty control, made as a player makes it: a vote toggle is pressed; a dropdown selects, then signals.
+func _pick(control: Variant, value: String) -> void:
+	if control is Dictionary:
+		control[value].pressed.emit()
+		return
+	var option: OptionButton = control
 	for i in option.item_count:
 		if option.get_item_metadata(i) == value:
 			option.select(i)
@@ -298,8 +319,14 @@ func _pick(option: OptionButton, value: String) -> void:
 	check(false, "the difficulty choice has no %s" % value)
 
 
-## The wire value of the chosen difficulty; "" for the placeholder or no choice.
-func _choice(option: OptionButton) -> String:
+## The wire value of the chosen difficulty; "" for none.
+func _choice(control: Variant) -> String:
+	if control is Dictionary:
+		for value: String in control:
+			if control[value].button_pressed:
+				return value
+		return ""
+	var option: OptionButton = control
 	var value: Variant = option.get_item_metadata(option.selected) if option.selected >= 0 else ""
 	return value if value is String else ""
 
@@ -413,66 +440,246 @@ func test_the_sheets_play_plays_the_stage_the_list_plays() -> void:
 # --- what the sheet shows -------------------------------------------------------------------------------------------------
 
 
-func test_reviewed_and_community_difficulties_are_separate_values() -> void:
+func test_hero_shows_thumbnail_byline_with_version_chip_and_play() -> void:
 	var net := _fake()
 	await _signed_in(net)
-	_serve(_reply({}, {"players_started": 12, "players_cleared": 3, "total_attempts": 30}, "expert", {"value": "hard", "votes": 6}))
-	var sheet: Overlay = await _sheet(_row())
+	_serve(_reply({}, {"players_started": 64, "players_cleared": 22}, null, {}, SHA, _rich()))
+	var sheet: Overlay = await _open(world, _row({"likes": 42}), func() -> void: pass)
 	if sheet == null:
 		return
-	var lines := _texts(sheet)
-	var reviewed := _lines_with(lines, "expert").filter(func(t: String) -> bool: return not t.to_lower().contains("hard"))
-	var community := _lines_with(lines, "hard").filter(func(t: String) -> bool: return not t.to_lower().contains("expert"))
-	check(not reviewed.is_empty() and not community.is_empty(), "Reviewed and Community show on their own lines, never one grade: %s" % [lines])
+	var texts := _texts(sheet)
+	check(not sheet.find_children("*", "Thumbnail", true, false).is_empty(), "the hero shows the thumbnail")
+	check("by Nova · version 2" in texts, "the byline names the author and the version: %s" % [texts])
+	check(sheet.find_children("*", "DifficultyChip", true, false).size() >= 1 and "Rated Normal–Hard" in texts, "the chip shows with its source: %s" % [texts])
+	check("♥ 42 · 64 players" in texts, "likes and players: %s" % [texts])
+	check(_buttons(sheet, "Play").size() == 1, "Play is in the hero")
 
 
-func test_four_voters_show_no_community_grade() -> void:
+func test_the_rated_sentence_shows_the_p10_interval() -> void:
 	var net := _fake()
 	await _signed_in(net)
-	_serve(_reply({}, {"players_started": 4, "players_cleared": 1, "total_attempts": 9}, null, {"value": null, "votes": 4}))
-	var sheet: Overlay = await _sheet(_row())
-	if sheet == null:
-		return
-	var lines := _texts(sheet)
-	check(not _mentions(lines, DIFFICULTIES), "four voters show no grade: %s" % [lines])
-	check(_mentions(lines, ["4"]), "the voter count shows: %s" % [lines])
-
-
-func test_nine_starters_show_their_count_and_no_ratio() -> void:
-	var net := _fake()
-	await _signed_in(net)
-	_serve(_reply({}, {"players_started": 9, "players_cleared": 1, "total_attempts": 17}, null, {"value": null, "votes": 0}))
-	var sheet: Overlay = await _sheet(_row())
-	if sheet == null:
-		return
-	var lines := _texts(sheet)
-	check(_mentions(lines, ["9"]), "the starter count shows: %s" % [lines])
-	check(not _mentions(lines, ["%", "null", "nan", "inf"]), "nine starters show no ratio and no null: %s" % [lines])
-
-
-func test_ten_starters_without_a_clear_show_a_zero_rate_and_no_null() -> void:
-	var net := _fake()
-	await _signed_in(net)
-	_serve(_reply({}, {"players_started": 10, "players_cleared": 0, "total_attempts": 55, "clear_rate": 0}, null, {"value": null, "votes": 0}))
+	_serve(_reply({}, {"players_started": 64}, null, {}, SHA, _rich()))
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
 	var texts := _texts(sheet)
-	check(not _mentions(texts, ["null", "nan", "inf"]), "unset values show no null or nan: %s" % [texts])
-	var zero := RegEx.create_from_string("(^|[^0-9.])0([^0-9.]|$)")
-	check(texts.any(func(t: String) -> bool: return zero.search(t) != null), "no clears show a zero rate: %s" % [texts])
+	check("A typical player clears it within 10 tries 35–55% of the time" in texts, "the sentence shows the interval with an en dash: %s" % [texts])
+	check(not _mentions(texts, ["settles"]), "a fresh label adds no settling note: %s" % [texts])
 
 
-func test_ratios_and_the_finishers_median_are_shown_as_the_server_sends_them() -> void:
+func test_a_held_label_says_the_estimate_is_settling() -> void:
 	var net := _fake()
 	await _signed_in(net)
-	_serve(_reply({}, {"players_started": 10, "players_cleared": 4, "total_attempts": 16, "clear_rate": 0.4, "attempts_per_first_clear": 4, "median_tries": 2.5}, null, {"value": null, "votes": 0}))
+	_serve(_reply({}, {"players_started": 64}, null, {}, SHA, _rich({"rated": "hard", "rated_high": "hard", "p10_low": 0.3, "p10_high": 0.52})))
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
 	var texts := _texts(sheet)
-	check(_mentions(texts, ["40"]), "a clear rate of 0.4 shows as 40: %s" % [texts])
-	check(_mentions(texts, ["2.5"]), "the finishers' median of 2.5 shows: %s" % [texts])
+	check("A typical player clears it within 10 tries 30–52% of the time (the label updates once the estimate settles)" in texts, "an interval reaching past the band says so: %s" % [texts])
+
+
+func test_estimating_shows_the_starter_count_below_the_gates() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({}, {"players_started": 4}, null, {}, SHA, {"rated": null, "starters": 4}))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	var texts := _texts(sheet)
+	check("Estimating · 4 players" in texts, "below the gates: %s" % [texts])
+	check(not _mentions(texts, ["a typical player"]), "no Rated sentence while estimating: %s" % [texts])
+
+
+func test_the_sheet_says_when_rated_and_reviewed_differ_by_two_steps() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var cases := [
+		["hard", "hard", "easy", "Players find it harder than the moderator rated it"],
+		["easy", "easy", "hard", "Players find it easier than the moderator rated it"],
+		["easy", "normal", "expert", "Players find it easier than the moderator rated it"],
+		["hard", "hard", "normal", ""],
+		["normal", "hard", "expert", ""],
+	]
+	for c: Array in cases:
+		_serve(_reply({}, {"players_started": 64}, c[2], {}, SHA, _rich({"rated": c[0], "rated_high": c[1]})))
+		var sheet: Overlay = await _sheet(_row())
+		if sheet == null:
+			return
+		var lines := _lines_with(_texts(sheet), "than the moderator")
+		check(lines == ([c[3]] if c[3] != "" else []), "rated %s–%s, reviewed %s: %s" % [c[0], c[1], c[2], lines])
+		sheet.close()
+		await frames(2)
+
+
+func test_the_vote_distribution_shows_four_counts_and_the_total() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({}, {"players_started": 64}, null, {"value": "hard", "votes": 21}, SHA, _rich()))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	var texts := _texts(sheet)
+	for pair: Array in [["Easy", "3"], ["Normal", "5"], ["Hard", "11"], ["Expert", "2"]]:
+		check(pair[0] in texts and pair[1] in texts, "%s and its count %s show: %s" % [pair[0], pair[1], texts])
+	check("21 voters · Voted Hard" in texts, "the total and the upper median show at 5 or more voters: %s" % [texts])
+
+
+func test_four_voters_show_their_count_and_no_voted_label() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({}, {"players_started": 4}, null, {"value": null, "votes": 4}, SHA, {"starters": 4, "votes": {"easy": 1, "normal": 2, "hard": 1, "expert": 0}}))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	var texts := _texts(sheet)
+	check("4 voters" in texts and not _mentions(texts, ["voted"]), "four voters show no label: %s" % [texts])
+
+
+func test_the_vote_buttons_appear_only_when_eligible_and_the_selected_one_removes_the_vote() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"attempts": 3}, {"players_started": 64}, null, {}, SHA, _rich()))
+	var closed: Overlay = await _sheet(_row())
+	if closed == null:
+		return
+	var c := _controls(closed)
+	check(c.difficulty.size() == 4 and _vote_closed(c.difficulty), "before eligibility there are no vote buttons")
+	check(_mentions(_texts(closed), ["clear it or try 2 more times to vote"]), "one progress line takes their place: %s" % [_texts(closed)])
+	closed.close()
+	await frames(2)
+	_serve(_reply({"attempts": 5, "difficulty_eligible": true, "difficulty": "hard"}, {"players_started": 64}, null, {}, SHA, _rich()))
+	var open: Overlay = await _sheet(_row())
+	if open == null:
+		return
+	c = _controls(open)
+	check(_vote_open(c.difficulty) and _choice(c.difficulty) == "hard", "eligible: four buttons, the vote selected")
+	check(not _mentions(_texts(open), ["to vote"]), "no progress line once eligible: %s" % [_texts(open)])
+	_pick(c.difficulty, "hard")
+	await frames(3)
+	check(net.count("DELETE", DIFFICULTY) == 1 and net.count("PUT", DIFFICULTY) == 0, "tapping the selected vote removes it")
+	check(_choice(c.difficulty) == "", "no vote is selected after removing it")
+
+
+func test_like_keeps_its_own_progress_line() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"like_eligible": false, "attempts": 0}, {"players_started": 64}, null, {}, SHA, _rich()))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	check(_lines_with(_texts(sheet), "likes open").size() == 1 and _lines_with(_texts(sheet), "to vote").size() == 1, "each locked control has its own line: %s" % [_texts(sheet)])
+	sheet.close()
+	await frames(2)
+	_serve(_reply({"like_eligible": true, "attempts": 3}, {"players_started": 64}, null, {}, SHA, _rich()))  # earlier versions unlocked Like only
+	var liked: Overlay = await _sheet(_row())
+	if liked == null:
+		return
+	check(_lines_with(_texts(liked), "likes open").is_empty() and _lines_with(_texts(liked), "to vote").size() == 1, "an unlocked Like loses its line while the vote keeps its own: %s" % [_texts(liked)])
+
+
+func test_the_curve_and_the_cleared_percentage_need_ten_starters() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({}, {"players_started": 9, "players_cleared": 1, "clear_rate": null}, null, {}, SHA, _rich({"starters": 9, "curve": null})))
+	var few: Overlay = await _sheet(_row())
+	if few == null:
+		return
+	var texts := _texts(few)
+	check(few.find_children("*", "ClearCurve", true, false).is_empty(), "nine starters draw no curve")
+	check("Players: 9" in texts and "Cleared: 1" in texts and _lines_with(texts, "cleared:").all(func(t: String) -> bool: return not t.contains("%")), "the counts show without a percentage: %s" % [texts])
+	few.close()
+	await frames(2)
+	_serve(_reply({}, {"players_started": 10, "players_cleared": 4, "clear_rate": 0.4}, null, {}, SHA, _rich({"starters": 10})))
+	var ten: Overlay = await _sheet(_row())
+	if ten == null:
+		return
+	texts = _texts(ten)
+	check(ten.find_children("*", "ClearCurve", true, false).size() == 1, "ten starters draw the curve")
+	check("Cleared: 4 (40%)" in texts, "the percentage shows at ten: %s" % [texts])
+	check(not _mentions(texts, ["attempts per", "median", "unbeaten", "total attempts"]), "the removed statistics stay removed: %s" % [texts])
+
+
+func test_not_cleared_names_those_who_tried_twenty_times() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({}, {"players_started": 64, "players_cleared": 22, "clear_rate": 0.34}, null, {}, SHA, _rich()))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	check("42 not cleared, 9 of them after 20+ tries" in _texts(sheet), "not cleared: %s" % [_texts(sheet)])
+
+
+func test_the_curve_caption_counts_clears_after_thirty_tries() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({}, {"players_started": 64, "players_cleared": 22, "clear_rate": 0.34}, null, {}, SHA, _rich()))
+	var plain: Overlay = await _sheet(_row())
+	if plain == null:
+		return
+	check(not _mentions(_texts(plain), ["after more than 30"]), "no caption when the curve reaches the clears: %s" % [_texts(plain)])
+	plain.close()
+	await frames(2)
+	_serve(_reply({}, {"players_started": 64, "players_cleared": 30, "clear_rate": 0.47}, null, {}, SHA, _rich()))
+	var late: Overlay = await _sheet(_row())
+	if late == null:
+		return
+	check("8 cleared after more than 30 tries" in _texts(late), "the caption names the late clears: %s" % [_texts(late)])
+
+
+func test_the_audience_line_needs_a_difference_of_half_a_point() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	var cases := [[0.5, "Players so far were stronger than typical"], [-0.7, "Players so far were weaker than typical"], [0.49, ""], [null, ""]]
+	for c: Array in cases:
+		_serve(_reply({}, {"players_started": 64}, null, {}, SHA, _rich({"audience": c[0]})))
+		var sheet: Overlay = await _sheet(_row())
+		if sheet == null:
+			return
+		var lines := _lines_with(_texts(sheet), "than typical")
+		check(lines == ([c[1]] if c[1] != "" else []), "audience %s: %s" % [c[0], lines])
+		sheet.close()
+		await frames(2)
+
+
+func test_the_sheet_ends_its_difficulty_section_with_the_known_limits() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({}, {"players_started": 64}, null, {}, SHA, _rich()))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	check(_mentions(_texts(sheet), ["android play audience, not desktop players", "previous version's label is not carried over"]), "the help text states the limits once: %s" % [_texts(sheet)])
+
+
+func test_the_sheet_has_an_opaque_backdrop() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply())
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
+	check((sheet.get_child(0) as ColorRect).color.a == 1.0, "the list must not show through the details sheet")
+	var other := Overlay.open(world, "Other")
+	check((other.get_child(0) as ColorRect).color.a < 1.0, "other overlays keep their translucent backdrop")
+
+
+func test_rate_level_opens_scrolled_to_you() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"attempts": 5, "difficulty_eligible": true, "like_eligible": true}, {"players_started": 64, "players_cleared": 22, "clear_rate": 0.34}, "hard", {"value": "hard", "votes": 21}, SHA, _rich()))
+	var top: Overlay = await _sheet(_row())
+	if top == null:
+		return
+	check(top.scroll.scroll_vertical == 0, "the catalogue's sheet opens at the top")
+	top.close()
+	await frames(2)
+	var sheet: Overlay = await _open(world, _row(), Callable(), true)
+	if sheet == null:
+		return
+	await frames(4)
+	var heading: Label = sheet.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text == "You")[0]
+	check(sheet.scroll.scroll_vertical > 0, "the sheet scrolled down")
+	check(sheet.scroll.get_global_rect().encloses(heading.get_global_rect()), "the You heading is in view: %s in %s" % [heading.get_global_rect(), sheet.scroll.get_global_rect()])
 
 
 func test_only_this_players_selections_and_progress_are_shown() -> void:
@@ -505,8 +712,7 @@ func test_four_counted_tries_leave_voting_unavailable() -> void:
 		check(false, "the sheet needs one Like toggle and one difficulty choice")
 		return
 	check(c.like.disabled, "four tries: Like is unavailable")
-	check(c.difficulty.disabled, "four tries: the difficulty is unavailable")
-	check(c.remove == null or c.remove.disabled, "four tries: there is no vote to remove")
+	check(_vote_closed(c.difficulty), "four tries: the difficulty is unavailable")
 
 
 func test_a_fifth_counted_try_or_a_clear_makes_voting_available() -> void:
@@ -520,7 +726,7 @@ func test_a_fifth_counted_try_or_a_clear_makes_voting_available() -> void:
 	if c.like == null or c.difficulty == null:
 		check(false, "the sheet needs one Like toggle and one difficulty choice")
 		return
-	check(not c.like.disabled and not c.difficulty.disabled, "five counted tries open voting")
+	check(not c.like.disabled and _vote_open(c.difficulty), "five counted tries open voting")
 	fifth.close()
 	await frames(2)
 	_serve(_reply({"attempts": 1, "cleared": true, "like_eligible": true, "difficulty_eligible": true}))
@@ -531,7 +737,7 @@ func test_a_fifth_counted_try_or_a_clear_makes_voting_available() -> void:
 	if c.like == null or c.difficulty == null:
 		check(false, "the cleared sheet needs one Like toggle and one difficulty choice")
 		return
-	check(not c.like.disabled and not c.difficulty.disabled, "a clear opens voting")
+	check(not c.like.disabled and _vote_open(c.difficulty), "a clear opens voting")
 
 
 func test_stage_wide_likes_do_not_unlock_another_versions_difficulty() -> void:
@@ -546,7 +752,7 @@ func test_stage_wide_likes_do_not_unlock_another_versions_difficulty() -> void:
 		check(false, "the sheet needs one Like toggle and one difficulty choice")
 		return
 	check(not c.like.disabled, "a like earned on the stage unlocks Like here")
-	check(c.difficulty.disabled, "another version's experience must not unlock this version's difficulty")
+	check(_vote_closed(c.difficulty), "another version's experience must not unlock this version's difficulty")
 
 
 func test_local_tries_alone_do_not_enable_a_vote_before_the_server_agrees() -> void:
@@ -561,7 +767,7 @@ func test_local_tries_alone_do_not_enable_a_vote_before_the_server_agrees() -> v
 	if sheet == null:
 		return
 	var c := _controls(sheet)
-	check(c.difficulty != null and c.difficulty.disabled, "five tries on this device are not the server's eligibility: the vote stays closed")
+	check(_vote_closed(c.difficulty), "five tries on this device are not the server's eligibility: the vote stays closed")
 	check(net.count("PUT", DIFFICULTY) == 0 and net.count("POST", LIKE) == 0, "nothing is voted before the server agrees")
 
 
@@ -611,7 +817,7 @@ func test_changing_a_difficulty_replaces_the_one_vote() -> void:
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	var option: OptionButton = _controls(sheet).difficulty
+	var option: Variant = _controls(sheet).difficulty
 	if option == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
@@ -633,12 +839,9 @@ func test_removing_a_difficulty_needs_no_eligibility() -> void:
 	if sheet == null:
 		return
 	var c := _controls(sheet)
-	if c.difficulty == null or c.remove == null:
-		check(false, "the sheet needs one difficulty choice and one Remove button")
-		return
-	check(c.difficulty.disabled, "without eligibility the difficulty stays closed")
-	check(not c.remove.disabled, "the vote can be removed without a new play")
-	c.remove.pressed.emit()
+	check(_choice(c.difficulty) == "hard" and c.difficulty.hard.is_visible_in_tree() and not c.difficulty.hard.disabled, "the held vote shows and can be pressed")
+	check(c.difficulty.easy.disabled, "without eligibility no other vote can be chosen")
+	_pick(c.difficulty, "hard")
 	await frames(3)
 	check(net.count("DELETE", DIFFICULTY) == 1 and net.count("PUT", DIFFICULTY) == 0, "the removal is one DELETE")
 	check(_choice(c.difficulty) == "", "the choice goes back to none: '%s'" % _choice(c.difficulty))
@@ -654,7 +857,7 @@ func test_a_vote_still_syncing_stays_selected_and_says_pending() -> void:
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	var option: OptionButton = _controls(sheet).difficulty
+	var option: Variant = _controls(sheet).difficulty
 	if option == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
@@ -675,7 +878,7 @@ func test_a_failed_vote_stays_pending_for_a_later_sync() -> void:
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	var option: OptionButton = _controls(sheet).difficulty
+	var option: Variant = _controls(sheet).difficulty
 	if option == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
@@ -693,7 +896,7 @@ func test_a_refused_vote_restores_the_confirmed_choice_and_says_why() -> void:
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	var option: OptionButton = _controls(sheet).difficulty
+	var option: Variant = _controls(sheet).difficulty
 	if option == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
@@ -713,7 +916,7 @@ func test_an_older_answer_does_not_undo_a_newer_choice() -> void:
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	var option: OptionButton = _controls(sheet).difficulty
+	var option: Variant = _controls(sheet).difficulty
 	if option == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
@@ -737,7 +940,7 @@ func test_closing_the_sheet_while_a_vote_is_out_touches_no_freed_control() -> vo
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	var option: OptionButton = _controls(sheet).difficulty
+	var option: Variant = _controls(sheet).difficulty
 	if option == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
@@ -1003,8 +1206,8 @@ func test_a_background_report_that_earns_the_rating_enables_the_difficulty_witho
 	if c.difficulty == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
-	var option: OptionButton = c.difficulty
-	check(option.disabled, "control: the server counts four tries, so the choice stays closed")
+	var option: Variant = c.difficulty
+	check(_vote_closed(option), "control: the server counts four tries, so the choice stays closed")
 	check(net.count("POST", "/plays") == 0, "control: nothing is sent before the community is entered")
 	net.respond("POST", "/plays", func(request: Dictionary) -> Dictionary:
 		var attempts: Array = _json(request.body).get("attempts", [])
@@ -1017,7 +1220,7 @@ func test_a_background_report_that_earns_the_rating_enables_the_difficulty_witho
 	await frames(3)
 	check(net.count("POST", "/plays") == 1, "the background flush sends the five starts in one report: %d" % net.count("POST", "/plays"))
 	check(not _closed(sheet), "the same sheet is still open: nothing was closed or reopened")
-	check(not option.disabled, "the server now counts five tries, so the choice must enable by itself, with no refresh and no reopening")
+	check(_vote_open(option), "the server now counts five tries, so the choice must enable by itself, with no refresh and no reopening")
 
 
 func test_a_like_that_flushes_a_refused_difficulty_keeps_the_liked_state_and_restores_the_confirmed_choice() -> void:
@@ -1032,7 +1235,7 @@ func test_a_like_that_flushes_a_refused_difficulty_keeps_the_liked_state_and_res
 		check(false, "the sheet needs one Like toggle and one difficulty choice")
 		return
 	var like: Button = c.like
-	var option: OptionButton = c.difficulty
+	var option: Variant = c.difficulty
 	check(_choice(option) == "normal" and not like.button_pressed, "control: the confirmed choice is normal and the stage is not liked")
 	net.answer("PUT", DIFFICULTY, 0)  # offline: the choice is kept on the device
 	_pick(option, "hard")
@@ -1063,7 +1266,7 @@ func test_an_explicit_refresh_adopts_a_server_selection_another_device_changed_a
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	var option: OptionButton = _controls(sheet).difficulty
+	var option: Variant = _controls(sheet).difficulty
 	if option == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
@@ -1125,7 +1328,7 @@ func test_a_newer_choice_made_while_an_older_request_is_out_survives_closing_and
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	var option: OptionButton = _controls(sheet).difficulty
+	var option: Variant = _controls(sheet).difficulty
 	if option == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
@@ -1145,7 +1348,7 @@ func test_a_newer_choice_made_while_an_older_request_is_out_survives_closing_and
 	var again: Overlay = await _sheet(_row())
 	if again == null:
 		return
-	var reopened: OptionButton = _controls(again).difficulty
+	var reopened: Variant = _controls(again).difficulty
 	if reopened == null:
 		check(false, "the reopened sheet needs one difficulty choice")
 		return
@@ -1174,7 +1377,7 @@ func test_an_older_same_value_acknowledgment_leaves_a_newer_queued_revision_pend
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	var option: OptionButton = _controls(sheet).difficulty
+	var option: Variant = _controls(sheet).difficulty
 	if option == null:
 		check(false, "the sheet needs one difficulty choice")
 		return
@@ -1209,7 +1412,7 @@ func test_a_settled_sheet_drops_the_prior_accounts_private_state_when_a_backgrou
 	if c.like == null or c.difficulty == null:
 		check(false, "the sheet needs one Like toggle and one difficulty choice")
 		return
-	check(c.like.button_pressed and _choice(c.difficulty) == "hard" and not c.like.disabled and not c.difficulty.disabled and _mentions(_texts(sheet), ["counted tries: 5"]), "control: the loaded sheet shows the first account's like, vote, eligibility and tries: %s" % [_texts(sheet)])
+	check(c.like.button_pressed and _choice(c.difficulty) == "hard" and not c.like.disabled and _vote_open(c.difficulty) and _mentions(_texts(sheet), ["counted tries: 5"]), "control: the loaded sheet shows the first account's like, vote, eligibility and tries: %s" % [_texts(sheet)])
 	# Nothing is in flight on the sheet. The report goes out in the background, the server answers 401 and the silent sign-in is another Play Games account.
 	pilot.account = "p2"
 	_serve(_reply({}, {"players_started": 12}, null, {}, row.sha256))  # what the second account has: no like, no vote, no tries
@@ -1228,7 +1431,7 @@ func test_a_settled_sheet_drops_the_prior_accounts_private_state_when_a_backgrou
 	check(Community.pending_feedback(LEVEL_ID, row.sha256).is_empty(), "... nor queue one for it: %s" % [Community.pending_feedback(LEVEL_ID, row.sha256)])
 	net.release_hold("GET", FEEDBACK)
 	await frames(4)
-	check(not c.like.button_pressed and _choice(c.difficulty) == "" and c.like.disabled and c.difficulty.disabled and _mentions(_texts(sheet), ["counted tries: 0"]), "the second account's own answer shows, with its own closed choices: %s" % [_texts(sheet)])
+	check(not c.like.button_pressed and _choice(c.difficulty) == "" and c.like.disabled and _vote_closed(c.difficulty) and _mentions(_texts(sheet), ["counted tries: 0"]), "the second account's own answer shows, with its own closed choices: %s" % [_texts(sheet)])
 
 
 func test_a_settled_sheet_drops_the_accounts_private_state_when_its_account_is_deleted() -> void:
@@ -1375,7 +1578,7 @@ func test_play_upload_shows_motion_then_a_brief_confirmation_without_reopening_d
 	net.release_hold("POST", "/plays")
 	await frames(4)
 	check(icon.is_visible_in_tree() and icon.get("confirmed") == true and icon.rotation == 0.0, "durable acknowledgement replaces motion with the check")
-	check(not _controls(sheet).difficulty.disabled, "the same sheet unlocks voting")
+	check(_vote_open(_controls(sheet).difficulty), "the same sheet unlocks voting")
 	Engine.time_scale = 10.0
 	await tree.create_timer(1.5).timeout
 	check(icon.is_visible_in_tree() and icon.get("confirmed") == true, "confirmation remains visible before two seconds")

@@ -1,7 +1,7 @@
 class_name CommunityLevelDetails
 extends RefCounted
-## The details and rating sheet of one community version: Reviewed and Community difficulty, play statistics, and this
-## player's own Like and difficulty vote. The catalogue's Details and an ended run's Rate level both open it.
+## The details sheet of one community version: hero, difficulty (Rated, Reviewed, player votes), how players did, and this
+## player's own tries, Like and difficulty vote. The catalogue's Details and an ended run's Rate level both open it.
 ## A RefCounted, not a Node: the sheet keeps it alive through its meta, and so does any request it awaits, so a sheet
 ## closed under a held request resumes into this object and touches no freed control.
 
@@ -9,6 +9,8 @@ const DIFFICULTIES := CommunityHistory.DIFFICULTIES
 const MIN_VOTERS := 5  # fewer voters show no community label
 const MIN_STARTERS := 10  # fewer starters show no ratios
 const TARGETS := ["like", "difficulty"]
+const BANDS := {"easy": [0.8, 1.0], "normal": [0.5, 0.8], "hard": [0.2, 0.5], "expert": [0.0, 0.2]}  # the P10 range each Rated label stands for
+const LIMITS := "The rating describes the Android Play audience, not desktop players. A player who quits early counts only for the attempts they made, so a level that drives people away after one try can look easier than it is. Once a version has hundreds of starters who each play few levels, its interval is narrower than the stated 90% and its label leans slightly easy. Each new version starts as Estimating; the previous version's label is not carried over."
 
 var _overlay: Overlay
 var _level := ""
@@ -28,58 +30,88 @@ var _asked := {"like": 0, "difficulty": 0}  # serial of the latest choice per ta
 var _note := ""  # why a pending choice has not gone through
 var _refusal := ""  # the server's sentence for a choice it will never take
 
-var _reviewed: Label
-var _community: Label
-var _like: Button
-var _option: OptionButton
-var _remove: Button
+var _row := {}  # the catalogue-like row the sheet opened for
+var _to_you := false  # scroll to the You section once the first answer is in
+var _chip_slot: HBoxContainer
+var _meta: Label
+var _difficulty: VBoxContainer
+var _facts: VBoxContainer
+var _you_heading: Label
 var _progress: Label
+var _best: HBoxContainer
+var _like: Button
+var _like_note: Label
+var _votes: HBoxContainer
+var _vote_title: Label
+var _vote_buttons := {}  # wire value → toggle Button
+var _vote_note: Label
 var _pending_label: Label
 var _sync_icon: SyncIndicator
 var _sync_row: HBoxContainer
 var _refusal_label: Label
 var _hint: Label
 var _refresh: Button
-var _facts: VBoxContainer
 
 
-## Shows the sheet of the catalogue-like `row` (level_id, sha256, latest, title, author) over `parent`. Without `on_play` there is no Play button.
-static func open(parent: Node, row: Dictionary, on_play := Callable()) -> Overlay:
-	return CommunityLevelDetails.new()._build(parent, row, on_play)
+## Shows the sheet of the catalogue-like `row` (level_id, sha256, latest, title, author, likes) over `parent`, opaque. Without `on_play` there is no Play button; with `to_you` it opens scrolled to the player's own section.
+static func open(parent: Node, row: Dictionary, on_play := Callable(), to_you := false) -> Overlay:
+	return CommunityLevelDetails.new()._build(parent, row, on_play, to_you)
 
 
-func _build(parent: Node, row: Dictionary, on_play: Callable) -> Overlay:
+func _build(parent: Node, row: Dictionary, on_play: Callable, to_you: bool) -> Overlay:
 	_level = str(row.get("level_id", ""))
 	_sha = str(row.get("sha256", ""))
-	_overlay = Overlay.open(parent, str(row.get("title", "Level")))
+	_row = row
+	_to_you = to_you
+	_overlay = Overlay.open(parent, str(row.get("title", "Level")), false, true)
 	_overlay.set_meta("details", self)  # the sheet owns this object; a request in flight owns it too
-	if on_play.is_valid():
-		_button(_overlay.body, "Play", on_play, "Loading…").size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	var hero := HBoxContainer.new()
+	hero.add_theme_constant_override("separation", 24)
+	_overlay.body.add_child(hero)
+	var thumbnail := Thumbnail.of_sketch(row.get("sketch"))
+	thumbnail.custom_minimum_size = Vector2(320, 180)
+	thumbnail.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	hero.add_child(thumbnail)
+	var text := VBoxContainer.new()
+	text.add_theme_constant_override("separation", 10)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hero.add_child(text)
 	var byline := PackedStringArray()
 	if row.get("author") is String:
 		byline.append("by " + row.author)
 	if row.get("latest") is int or row.get("latest") is float:
-		byline.append("v%d" % int(row.latest))
+		byline.append("version %d" % int(row.latest))
 	if not byline.is_empty():
-		_overlay.paragraph(" · ".join(byline), 24, Style.INK_DIM)
+		text.add_child(_label(" · ".join(byline), 24, Style.INK_DIM))
+	_chip_slot = HBoxContainer.new()
+	text.add_child(_chip_slot)
+	_meta = _label("", 22, Style.INK_DIM)
+	text.add_child(_meta)
+	if on_play.is_valid():
+		_button(text, "Play", on_play, "Loading…").size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_overlay.heading("Difficulty")
-	var labels := _overlay.card()
-	_reviewed = _overlay.paragraph("", 24, Style.INK, labels)
-	_community = _overlay.paragraph("", 24, Style.INK, labels)
-	_overlay.heading("Your feedback")
+	_difficulty = _overlay.card()
+	_overlay.heading("How players did")
+	_facts = _overlay.card()
+	_you_heading = _overlay.heading("You")
 	var mine := _overlay.card()
+	_progress = _overlay.paragraph("", 22, Style.INK, mine)
+	_best = HBoxContainer.new()
+	_best.add_theme_constant_override("separation", 12)
+	mine.add_child(_best)
 	_like = _button(mine, "♥ Like", _liked_pressed)
 	_like.toggle_mode = true
 	_like.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_overlay.paragraph("Difficulty vote", 22, Style.INK, mine)
-	var vote := HBoxContainer.new()
-	vote.add_theme_constant_override("separation", 12)
-	mine.add_child(vote)
-	_option = difficulty_option()
-	_option.item_selected.connect(_picked)
-	vote.add_child(_option)
-	_remove = _button(vote, "Remove my vote", _choose.bind("difficulty", ""))
-	_progress = _overlay.paragraph("", 22, Style.INK_DIM, mine)
+	_like_note = _overlay.paragraph("", 22, Style.INK_DIM, mine)
+	_vote_title = _overlay.paragraph("Difficulty vote", 22, Style.INK, mine)
+	_votes = HBoxContainer.new()
+	_votes.add_theme_constant_override("separation", 12)
+	mine.add_child(_votes)
+	for difficulty: String in DIFFICULTIES:
+		var vote := _button(_votes, difficulty.capitalize(), _voted.bind(difficulty))
+		vote.toggle_mode = true
+		_vote_buttons[difficulty] = vote
+	_vote_note = _overlay.paragraph("", 22, Style.INK_DIM, mine)
 	_sync_row = HBoxContainer.new()
 	_sync_row.add_theme_constant_override("separation", 12)
 	mine.add_child(_sync_row)
@@ -92,8 +124,6 @@ func _build(parent: Node, row: Dictionary, on_play: Callable) -> Overlay:
 	_hint = _overlay.paragraph("", 22, Style.INK_DIM, mine)
 	_refresh = _button(mine, "Refresh", _refresh_now, "Refreshing…")
 	_refresh.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	_overlay.heading("Statistics")
-	_facts = _overlay.card()
 	Community.vote_result.connect(_vote_result)
 	Community.play_history_synced.connect(_plays_synced)
 	Community.identity_changed.connect(_identity_changed)
@@ -155,6 +185,9 @@ func _apply(reply: Dictionary) -> void:
 			var value: Variant = you.get("difficulty")
 			_vote = value if value is String and value in DIFFICULTIES else ""
 	_render()
+	if _to_you:  # the layout of the first answer must settle before the scroll position means anything
+		_to_you = false
+		_scroll_to_you()
 
 
 ## Whether the sheet is still on screen.
@@ -191,12 +224,9 @@ func _liked_pressed() -> void:
 	_choose("like", _like.button_pressed)
 
 
-func _picked(index: int) -> void:
-	var value: Variant = _option.get_item_metadata(index)
-	if value is String and value != "":
-		_choose("difficulty", value)
-	else:
-		_render()
+## A press on a vote button: the selected one removes the vote, any other one casts it.
+func _voted(value: String) -> void:
+	_choose("difficulty", "" if _shown_vote() == value else value)
 
 
 ## A choice for `target` ("like": bool, "difficulty": String, "" removes): shown at once as pending and handed to Community at once, which queues it durably (whatever happens to this sheet) and serializes the flushes. Its own answer is used only while it is still the latest choice.
@@ -330,75 +360,231 @@ func _render() -> void:
 	var you: Dictionary = _data.get("you", {})
 	var like_ok: bool = you.get("like_eligible") == true
 	var vote_ok: bool = you.get("difficulty_eligible") == true
-	var waiting := "Loading…" if _loading else "Not available"
-	_reviewed.text = (reviewed_label(_data.get("reviewed_difficulty")) if ready else "Reviewed: " + waiting)
-	_community.text = _community_text() if ready else "Community: " + waiting
+	_show_hero(ready)
+	_show_difficulty(ready)
+	_show_facts()
+	_progress.text = "Counted tries: %d%s" % [_count(you.get("attempts")), " · Cleared" if you.get("cleared") == true else ""] if ready else ""
+	_show_best()
 	_like.set_pressed_no_signal(_shown_like())
 	_like.disabled = not ready or not (_liked or like_ok)
-	_option.select(DIFFICULTIES.find(_shown_vote()) + 1)
-	_option.disabled = not ready or not vote_ok
-	_remove.disabled = _shown_vote() == ""
-	_progress.text = "Counted tries: %d%s" % [_count(you.get("attempts")), " · Cleared" if you.get("cleared") == true else ""] if ready else ""
+	_like_note.text = "Likes open after you clear this level on any version or try its versions %d times." % Community.FEEDBACK_TRIES if ready and not (_liked or like_ok) else ""
+	var shown := _shown_vote()
+	_votes.visible = ready and (vote_ok or shown != "")  # a vote already held can always be removed
+	_vote_title.visible = _votes.visible
+	for difficulty: String in DIFFICULTIES:
+		var vote: Button = _vote_buttons[difficulty]
+		vote.set_pressed_no_signal(difficulty == shown)
+		vote.disabled = not vote_ok and difficulty != shown
 	var queued: bool = _pending.like or _pending.difficulty
 	var play_pending: bool = Community.play_progress(_sha).pending
 	_pending_label.text = "Pending sync" + (" · " + _note if _note != "" else "") if queued or play_pending else ""
 	_sync_icon.set_pending(queued or play_pending, _error != "" or _note != "" or _refusal != "")
 	_refusal_label.text = _refusal
 	var local_wait: bool = ready and not vote_ok and Community.play_progress(_sha).can_offer_rating
-	_hint.text = _hint_text(ready, local_wait, like_ok, vote_ok)
-	for label: Label in [_progress, _pending_label, _refusal_label, _hint]:
+	_vote_note.text = _hint_text(ready, local_wait, vote_ok, _count(you.get("attempts")))
+	_hint.text = _error
+	for label: Label in [_progress, _like_note, _vote_note, _pending_label, _refusal_label, _hint]:
 		label.visible = label.text != ""
 	_sync_row.visible = _sync_icon.visible or _pending_label.visible
 	_refresh.visible = queued or local_wait or _error != ""
-	_show_facts()
 	if _overlay.get_viewport().gui_get_focus_owner() == null:
 		Style.focus_first(_overlay)  # a control that just turned off took the focus with it
 
 
-func _community_text() -> String:
-	return community_label(_data.get("community_difficulty"))
-
-
-func _hint_text(ready: bool, local_wait: bool, like_ok: bool, vote_ok: bool) -> String:
-	var lines := PackedStringArray()
-	if _error != "":
-		lines.append(_error)
+## The line that stands in for the vote buttons while they are locked.
+func _hint_text(ready: bool, local_wait: bool, vote_ok: bool, attempts: int) -> String:
+	if not ready or vote_ok or _shown_vote() != "":
+		return ""
 	if local_wait:
-		lines.append("Voting opens once your play history reaches the server.")
-	elif ready and not vote_ok:
-		if like_ok or _liked:
-			lines.append("Difficulty voting opens after you clear this version or try it %d times." % Community.FEEDBACK_TRIES)
-		else:
-			lines.append("Likes open after you clear this level on any version or try its versions %d times." % Community.FEEDBACK_TRIES)
-			lines.append("Difficulty votes open after you clear this version or try it %d times." % Community.FEEDBACK_TRIES)
-	return "\n".join(lines)
+		return "Voting opens once your play history reaches the server."
+	var more := maxi(1, Community.FEEDBACK_TRIES - attempts)
+	return "Clear it or try %d more %s to vote" % [more, "time" if more == 1 else "times"]
 
 
-## The raw observations as the server sent them. Ratios appear only when the server computed them; nothing here is a difficulty grade.
+## Thumbnail-side facts: the one chip with its source, and likes and players.
+func _show_hero(ready: bool) -> void:
+	for old in _chip_slot.get_children():
+		old.free()
+	var source := _row.duplicate()
+	if ready:
+		for key: String in ["rated", "rated_high", "reviewed_difficulty", "community_difficulty"]:
+			source[key] = _data.get(key)
+	var chip := DifficultyChip.of(source)
+	if chip:
+		chip.get_child(0).add_theme_font_size_override("font_size", 26)
+		_chip_slot.add_child(chip)
+	var meta := PackedStringArray()
+	var likes: Variant = _row.get("likes")
+	if likes is int or likes is float:
+		meta.append("♥ %d" % int(likes))
+	var players: Variant = _starters() if ready else _row.get("starters", _row.get("players"))
+	if players is int or players is float:
+		meta.append("%d %s" % [int(players), "player" if int(players) == 1 else "players"])
+	_meta.text = " · ".join(meta)
+	_meta.visible = not meta.is_empty()
+
+
+## Rated (or Estimating), Reviewed, the vote distribution, the disagreement line and the known limits.
+func _show_difficulty(ready: bool) -> void:
+	for old in _difficulty.get_children():
+		old.free()
+	if not ready:
+		_overlay.paragraph("Rated: " + ("Loading…" if _loading else "Not available"), 24, Style.INK, _difficulty)
+		return
+	var rated: Variant = _data.get("rated")
+	if rated in DifficultyChip.LABELS:
+		_overlay.paragraph(DifficultyChip.text_of({"rated": rated, "rated_high": _data.get("rated_high")}), 26, Style.INK, _difficulty)
+		var sentence := _rated_sentence(rated, _data.get("rated_high"))
+		if sentence != "":
+			_overlay.paragraph(sentence, 22, Style.INK, _difficulty)
+	else:
+		var starters := _starters()
+		_overlay.paragraph("Estimating · %d %s" % [starters, "player" if starters == 1 else "players"], 26, Style.INK, _difficulty)
+	_overlay.paragraph(reviewed_label(_data.get("reviewed_difficulty")), 24, Style.INK, _difficulty)
+	_show_votes()
+	var gap := _disagreement(rated, _data.get("rated_high"), _data.get("reviewed_difficulty"))
+	if gap != "":
+		_overlay.paragraph(gap, 22, Style.ACCENT, _difficulty)
+	_overlay.paragraph(LIMITS, 20, Style.INK_DIM, _difficulty)
+
+
+## "A typical player clears it within 10 tries 35–55% of the time", plus a note while the published label no longer covers the interval.
+func _rated_sentence(low_label: String, high_label: Variant) -> String:
+	var low: Variant = _data.get("p10_low")
+	var high: Variant = _data.get("p10_high")
+	if not ((low is int or low is float) and (high is int or high is float)):
+		return ""
+	var text := "A typical player clears it within 10 tries %d–%d%% of the time" % [roundi(low * 100.0), roundi(high * 100.0)]
+	var labels := [low_label, high_label if high_label in DifficultyChip.LABELS else low_label]
+	var easiest: int = labels.map(DifficultyChip.LABELS.find).min()
+	var hardest: int = labels.map(DifficultyChip.LABELS.find).max()
+	if low < BANDS[DifficultyChip.LABELS[hardest]][0] - 1e-9 or high > BANDS[DifficultyChip.LABELS[easiest]][1] + 1e-9:
+		text += " (the label updates once the estimate settles)"
+	return text
+
+
+## One line when Rated and Reviewed are two or more steps apart; a Rated range counts from its nearer end.
+func _disagreement(low_label: Variant, high_label: Variant, reviewed: Variant) -> String:
+	var scale: Array = DifficultyChip.LABELS
+	if not (low_label in scale and reviewed in scale):
+		return ""
+	var target: int = scale.find(reviewed)
+	var ends := [scale.find(low_label), scale.find(high_label if high_label in scale else low_label)]
+	var gap: int = ends[0] - target if absi(ends[0] - target) <= absi(ends[1] - target) else ends[1] - target
+	if gap >= 2:
+		return "Players find it harder than the moderator rated it"
+	return "Players find it easier than the moderator rated it" if gap <= -2 else ""
+
+
+## Four labelled bars with counts, then the voter total and, from 5 voters, the upper median.
+func _show_votes() -> void:
+	var counts: Variant = _data.get("votes")
+	var voters := 0
+	if counts is Dictionary:
+		var most := 1
+		for difficulty: String in DIFFICULTIES:
+			most = maxi(most, _count(counts.get(difficulty)))
+		for difficulty: String in DIFFICULTIES:
+			var count := _count(counts.get(difficulty))
+			voters += count
+			var line := HBoxContainer.new()
+			line.add_theme_constant_override("separation", 12)
+			_difficulty.add_child(line)
+			var title := _label(difficulty.capitalize(), 22, Style.INK)
+			title.custom_minimum_size.x = 120
+			title.size_flags_horizontal = Control.SIZE_FILL
+			line.add_child(title)
+			var bar := ProgressBar.new()
+			bar.show_percentage = false
+			bar.max_value = most
+			bar.value = count
+			bar.custom_minimum_size.y = 22
+			bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			var fill := StyleBoxFlat.new()
+			fill.bg_color = DifficultyChip.COLORS[difficulty]
+			bar.add_theme_stylebox_override("fill", fill)
+			line.add_child(bar)
+			var number := _label(str(count), 22, Style.INK)
+			number.custom_minimum_size.x = 60
+			number.size_flags_horizontal = Control.SIZE_FILL
+			number.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			line.add_child(number)
+	else:
+		voters = _count(_data.get("community_difficulty", {}).get("votes"))
+	var text := "%d %s" % [voters, "voter" if voters == 1 else "voters"]
+	var voted: Variant = _data.get("community_difficulty", {}).get("value")
+	if voted in DIFFICULTIES and voters >= MIN_VOTERS:
+		text += " · Voted " + String(voted).capitalize()
+	_overlay.paragraph(text, 22, Style.INK_DIM, _difficulty)
+
+
+## How the players so far did, up to each player's first clear: the curve, the three numbers and the audience line. Observed shares only; nothing here is a difficulty grade.
 func _show_facts() -> void:
 	for old in _facts.get_children():
 		old.free()
 	if _data.is_empty():
 		return
 	var stats: Dictionary = _data.get("stats", {})
-	var started := _count(stats.get("players_started"))
-	var lines := PackedStringArray([
-		"Players started: %d" % started,
-		"Players cleared: %d" % _count(stats.get("players_cleared")),
-		"Counted attempts: %d" % _count(stats.get("total_attempts")),
-	])
+	var started := _starters()
+	var cleared := _count(stats.get("players_cleared"))
+	var curve: Variant = _data.get("curve")
+	if started >= MIN_STARTERS and curve is Array and curve.size() > 1:
+		var plot := ClearCurve.new(curve)
+		_facts.add_child(plot)
+		_overlay.paragraph("Share of players who cleared within each number of tries, 1 to %d" % ClearCurve.MAX_TRIES, 20, Style.INK_DIM, _facts)
+		var late := cleared - roundi(plot.shares.back() * started)
+		if late > 0:
+			_overlay.paragraph("%d cleared after more than %d tries" % [late, ClearCurve.MAX_TRIES], 20, Style.INK_DIM, _facts)
+	_overlay.paragraph("Players: %d" % started, 22, Style.INK, _facts)
 	var rate: Variant = stats.get("clear_rate")
-	if rate is float or rate is int:
-		lines.append("Clear rate: %s%%" % _number(float(rate) * 100.0))
-		lines.append("Attempts per first clear: " + _number_or(stats.get("attempts_per_first_clear"), "No clears yet"))
-		lines.append("Median tries among finishers only: " + _number_or(stats.get("median_tries"), "No clears yet"))
-	else:
-		lines.append("Not enough play data: %d of %d players have started." % [started, MIN_STARTERS])
-	for tries in [5, 10, 20]:
-		lines.append("Still unbeaten after %d attempts: %d" % [tries, _count(stats.get("unbeaten_%d" % tries))])
-	for line in lines:
-		_overlay.paragraph(line, 22, Style.INK, _facts)
-	_overlay.paragraph("These figures describe the players so far; they are not a difficulty grade.", 20, Style.INK_DIM, _facts)
+	var share := " (%s%%)" % _number(float(rate) * 100.0) if (rate is float or rate is int) and started >= MIN_STARTERS else ""
+	_overlay.paragraph("Cleared: %d%s" % [cleared, share], 22, Style.INK, _facts)
+	var missing := maxi(0, started - cleared)
+	var slow := _count(_data.get("not_cleared_20"))
+	_overlay.paragraph("%d not cleared%s" % [missing, ", %d of them after 20+ tries" % slow if slow > 0 else ""], 22, Style.INK, _facts)
+	var audience: Variant = _data.get("audience")
+	if (audience is float or audience is int) and absf(audience) >= 0.5:
+		_overlay.paragraph("Players so far were %s than typical" % ("stronger" if audience > 0 else "weaker"), 22, Style.ACCENT, _facts)
+
+
+## The player's best score on this device, with its medal.
+func _show_best() -> void:
+	for old in _best.get_children():
+		old.free()
+	var points := Progress.best_points(Community.STAGE_PREFIX + _sha)
+	_best.visible = points >= 0 and not _data.is_empty()
+	if not _best.visible:
+		return
+	_best.add_child(_label("Best score: %d" % points, 22, Style.INK))
+	var medal := Progress.medal(points, Community.par_of(_row))
+	if medal != Progress.Medal.NONE:
+		_best.add_child(ScoreIcon.new(ScoreIcon.Kind.MEDAL, medal))
+
+
+## Brings the You section into view once the sheet has been laid out.
+func _scroll_to_you() -> void:
+	await _overlay.get_tree().process_frame
+	await _overlay.get_tree().process_frame
+	if _alive():
+		_overlay.scroll.scroll_vertical = int(_you_heading.global_position.y - _overlay.body.global_position.y)
+
+
+func _starters() -> int:
+	var value: Variant = _data.get("starters")
+	var stats: Dictionary = _data.get("stats", {})
+	return _count(value if value is int or value is float else stats.get("players_started"))
+
+
+func _label(text: String, size: int, color: Color) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	label.custom_minimum_size.x = 300
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_font_size_override("font_size", size)
+	label.add_theme_color_override("font_color", color)
+	return label
 
 
 static func _name(value: Variant, fallback: String) -> String:
@@ -411,14 +597,10 @@ static func _count(value: Variant) -> int:
 
 ## One decimal at most, none when whole.
 static func _number(value: float) -> String:
-	return String.num(snappedf(value, 0.1))
+	return String.num(snappedf(value, 0.1), 1).trim_suffix(".0")
 
 
-static func _number_or(value: Variant, fallback: String) -> String:
-	return _number(float(value)) if value is int or value is float else fallback
-
-
-## The native choice of a difficulty: item 0 is the unselected placeholder (metadata ""), items 1-4 the four labels with their wire values as metadata. Used by this sheet and by the Publish confirmation.
+## The native choice of a difficulty: item 0 is the unselected placeholder (metadata ""), items 1-4 the four labels with their wire values as metadata. Used by the Publish confirmation.
 static func difficulty_option() -> OptionButton:
 	var option := OptionButton.new()
 	option.custom_minimum_size = Vector2(320, 56)
@@ -444,21 +626,6 @@ static func chosen(option: OptionButton) -> String:
 ## "Reviewed: Hard" or "Reviewed: Not rated".
 static func reviewed_label(value: Variant) -> String:
 	return "Reviewed: " + _name(value, "Not rated")
-
-
-## "Community: Hard (6 votes)", or the vote count against the five that a label needs.
-static func community_label(community: Variant) -> String:
-	var data: Dictionary = community if community is Dictionary else {}
-	var votes := _count(data.get("votes"))
-	var value: Variant = data.get("value")
-	if value is String and value in DIFFICULTIES:
-		return "Community: %s (%d %s)" % [value.capitalize(), votes, "vote" if votes == 1 else "votes"]
-	return "Community: Not enough ratings (%d of %d votes)" % [votes, MIN_VOTERS]
-
-
-## One compact line for a catalogue row: Reviewed and Community side by side, never one grade.
-static func summary(row: Dictionary) -> String:
-	return "%s · %s" % [reviewed_label(row.get("reviewed_difficulty")), community_label(row.get("community_difficulty"))]
 
 
 func _button(parent: Control, text: String, action: Callable, busy := "") -> Button:
