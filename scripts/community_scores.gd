@@ -5,8 +5,8 @@ extends RefCounted
 ## for the owner, generation and revision that sent it.
 ##
 ## File: {format, version, owners: {owner: {entries: {sha: {level, revision, bytes_sha}}, revisions: {sha: highest
-## revision ever queued}}}, erased: [owner]}. One entry per owner and level version: a newer best replaces it under a
-## higher revision, and revisions never repeat, so a late answer for revision 1 can never settle revision 2.
+## revision ever queued}}}}. One entry per owner and level version: a newer best replaces it under a higher revision,
+## and revisions never repeat until erasure, so a late answer for revision 1 can never settle revision 2.
 ##
 ## Snapshots are `replay_dir(path)/<owner tag>_<sha>_<revision>.demo.gz`: copies of the encoded run made at enqueue
 ## time, never rewritten, so a later change of the player's saved best demo cannot alter what is sent. A snapshot is
@@ -15,7 +15,7 @@ extends RefCounted
 
 const FORMAT := "zero-gx-community-scores"
 const VERSION := 1
-const EMPTY := {"format": FORMAT, "version": VERSION, "owners": {}, "erased": []}
+const EMPTY := {"format": FORMAT, "version": VERSION, "owners": {}}
 
 var path := "user://community_scores.json"
 ## False until a load succeeds. A file that did not load is never written, so its bytes survive.
@@ -56,7 +56,6 @@ func enqueue(owner: String, level: String, sha: String, bytes: PackedByteArray) 
 	if owner.is_empty() or level.is_empty() or not _is_hex(sha, 64) or bytes.is_empty() or bytes.size() > Demo.MAX_BYTES:
 		return ERR_INVALID_PARAMETER
 	var next := _state.duplicate(true)
-	next["erased"].erase(owner)  # a local action brings an erased account back; server answers never do
 	var section := _section(next, owner)
 	var revision: int = int(section["revisions"].get(sha, 0)) + 1
 	section["revisions"][sha] = revision
@@ -123,9 +122,9 @@ func settle(owner: String, sha: String, at_revision: int) -> Error:
 	return err
 
 
-## Forgets everything held for `owner`: its queue and snapshots. The owner is remembered as erased, so a late answer
-## finds nothing. OK only when the metadata is saved and every unreferenced snapshot is gone; calling it again after a
-## failure finishes the job.
+## Forgets everything held for `owner`: its queue and snapshots. Late settlement finds no entry to recreate; Community
+## guards replies from a pre-erasure generation. OK only once metadata and every unreferenced snapshot are gone;
+## calling it again after a failure finishes the job.
 func erase_owner(owner: String) -> Error:
 	if not _ready:
 		return ERR_UNAVAILABLE
@@ -133,8 +132,6 @@ func erase_owner(owner: String) -> Error:
 		return ERR_INVALID_PARAMETER
 	var next := _state.duplicate(true)
 	next["owners"].erase(owner)
-	if not next["erased"].has(owner):
-		next["erased"].append(owner)
 	var err := _commit(next)
 	return err if err != OK else _sweep()
 
@@ -218,11 +215,8 @@ func _write(file: String, bytes: PackedByteArray) -> Error:
 func _valid_file(data: Variant) -> bool:
 	if typeof(data) != TYPE_DICTIONARY or data.get("format") != FORMAT or data.get("version") != VERSION:
 		return false
-	if typeof(data.get("owners")) != TYPE_DICTIONARY or typeof(data.get("erased")) != TYPE_ARRAY:
+	if typeof(data.get("owners")) != TYPE_DICTIONARY:
 		return false
-	for owner in data["erased"]:
-		if not _is_text(owner):
-			return false
 	for owner in data["owners"]:
 		if not _is_text(owner) or not _is_section(data["owners"][owner]):
 			return false

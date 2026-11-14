@@ -1,0 +1,11 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+PASS test_community_scores.gd::test_enqueue_survives_restart_with_immutable_bytes_and_owner_isolation
+PASS test_community_scores.gd::test_replacement_and_old_acknowledgment_cannot_erase_a_newer_best
+PASS test_community_scores.gd::test_failed_metadata_writes_preserve_previous_queue_and_snapshots
+PASS test_community_scores.gd::test_snapshot_write_failure_cannot_replace_old_metadata
+PASS test_community_scores.gd::test_erasure_removes_only_this_owner_and_late_ack_cannot_recreate_it
+PASS test_community_scores.gd::test_corrupt_metadata_is_never_overwritten_and_damaged_snapshot_is_never_sent
+6 passed, 0 failed
+WARNING: 2 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)

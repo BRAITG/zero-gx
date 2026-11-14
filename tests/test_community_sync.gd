@@ -1835,3 +1835,85 @@ func test_scores_erasure_metadata_failure_preserves_queue_but_blocks_all_sends_u
 	await _c.sync_feedback()
 	check(_score_disk().entries("p_1").is_empty() and _score_files().is_empty(), "retry finishes erasure without sending prior score")
 	_done()
+
+
+func test_scores_session_403_retains_run_and_suppresses_known_owner_reauthentication_until_next_launch() -> void:
+	for reason: String in ["The integrity check failed.", "This player is banned."]:
+		var net := _boot()
+		await _sign_in(net)
+		var sha := "a".repeat(64)
+		var session := ConfigFile.new()
+		session.load(Community.session_path)
+		session.erase_section("session")  # expired/rejected token, but its last known owner remains
+		session.save(Community.session_path)
+		_auto_nonces(net)
+		net.answer("POST", "/session", 403, {"error": reason})
+		_c.queue_score("stage1", _score_run(sha))
+		await _c.sync_feedback()
+		check(_c.player_id() == "p_1" and not Community.signed_in(), "refusal preserves known owner without restoring a token")
+		check(_c.score_state(sha).get("denied") == true and _c.score_state(sha).get("status") == 403, "structured session refusal marks retained score denied")
+		check(_score_disk().entries("p_1").size() == 1 and _score_files().size() == 1, "session refusal never drops owner's replay")
+		await _cooldown()
+		await _c.sync_feedback()
+		await _cooldown()
+		check(net.count("POST", "/session") == 1 and pilot.nonces.size() == 1 and _score_requests(net).is_empty(), "session403 never restarts integrity/sign-in every 30 seconds")
+		# Explicit authentication can recover feedback without reactivating denied score work this launch.
+		net.answer("POST", "/session", 200, {"token": "tok2", "player": {"id": "p_1"}})
+		check(await Community.sign_in() == "", "explicit sign-in still allowed")
+		var row := _place_level()
+		await Community.download(row)
+		var id: String = _c.record_play_start(row.sha256)
+		_c.record_play_finish(id, "failed")
+		_auto_acks(net)
+		net.answer("POST", LIKE_PATH, 200, {"likes": 1})
+		await _c.set_like(LEVEL_ID, true)
+		check(net.count("POST", "/plays") == 1 and net.count("POST", LIKE_PATH) == 1 and _score_requests(net).is_empty(), "session denial does not disable play/vote synchronization")
+		_done()
+
+
+func test_scores_malformed_success_retains_snapshot_and_never_emits_or_adopts_rank() -> void:
+	var invalid := [
+		{"rank": 0, "points": 123, "best": true},
+		{"rank": -1, "points": 123, "best": true},
+		{"rank": "1", "points": 123, "best": true},
+		{"points": 123, "best": true},
+		{"rank": 1, "points": -1, "best": true},
+		{"rank": 1, "points": 123},
+		{"rank": 1, "points": 123, "best": "true"},
+		{"rank": 1, "points": 123, "best": 1},
+	]
+	for answer: Dictionary in invalid:
+		var net := _boot()
+		await _sign_in(net)
+		var sha := "a".repeat(64)
+		var run := _score_run(sha)
+		_auto_nonces(net)
+		net.answer("POST", "/scores", 200, answer)
+		var results := []
+		var listener := func(_account: String, _hash: String, _revision: int, result: Dictionary) -> void:
+			results.append(result)
+		_c.score_result.connect(listener)
+		_c.queue_score("stage1", run)
+		var result: Dictionary = await _c.sync_feedback()
+		var state: Dictionary = _c.score_state(sha)
+		check(result.pending and result.error == Community.BAD_ANSWER, "malformed score success must be a retained failure: %s" % [answer])
+		check(state.get("state") == "queued" and state.get("error") == Community.BAD_ANSWER and not state.has("rank"), "malformed rank must never be adopted: %s" % [answer])
+		check(results.size() == 1 and results[0].get("error") == Community.BAD_ANSWER and not results[0].has("rank"), "malformed rank must never be emitted: %s" % [answer])
+		check(_score_disk().entry("p_1", sha).get("revision") == 1 and _score_disk().snapshot("p_1", sha, 1) == run.encode() and _score_files().size() == 1, "malformed success preserves durable entry and exact replay: %s" % [answer])
+		_c.score_result.disconnect(listener)
+		_done()
+
+
+func test_authentication_refusal_is_not_a_permanent_refusal_of_a_queued_vote() -> void:
+	var net := _boot()
+	await _sign_in(net)
+	var session := ConfigFile.new()
+	session.load(Community.session_path)
+	session.erase_section("session")
+	session.save(Community.session_path)
+	_auto_nonces(net)
+	net.answer("POST", "/session", 403, {"error": "The integrity check failed."})
+	var result: Dictionary = await _c.set_like(LEVEL_ID, true)
+	check(result.pending and result.error == "The integrity check failed.", "authentication failure retains choice")
+	check(_disk().pending_votes("p_1").size() == 1 and net.count("POST", LIKE_PATH) == 0, "structured auth403 must not be mistaken for endpoint refusal")
+	_done()

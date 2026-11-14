@@ -56,3 +56,31 @@ TEST_FILTER=test_community_sync GODOT=godot tests/run.sh
 - Task 5 must enforce campaign/community new-best eligibility (not training, editor, playback or losses), enqueue only after recorder finalization, retain the enqueue error for the result card, and match score-result owner/revision before showing a rank. No retroactive best uploads were added.
 - `/scores` reports `best: false` when an equal/higher score is already stored; its rank is the server's stored-best rank. Downstream board/result presentation must preserve that distinction rather than treating a higher existing remote best as verification of a lower local run.
 - No real Play hardware/native integrity or live server/network requests were exercised. New overlap test proves shared Community flush work; existing native serialization code was reused, not reimplemented or modified.
+
+## Review fix round 1
+
+The initial denial claim above covered score-endpoint 403 and native refusal, but **did not cover HTTP 403 during session reauthentication**: the public sentence-only sign-in result had discarded its status before `_send` returned. This round fixes that boundary rather than matching an error sentence.
+
+- Kept public `sign_in() -> String` unchanged; added a shared/coalesced structured internal `_sign_in_result() -> Dictionary`, with `_sign_in` preserving the original HTTP status.
+- `_send` now forwards a failed authentication's status and marks its source as `authentication: true`, after rechecking the original generation/account. Score synchronization therefore recognizes `/session` 403 as denial for the captured owner, retains the replay, and suppresses score reauthentication until the next launch.
+- A session refusal is not a rejection of a bearer token sent to the requested endpoint: `_authed` only applies its single 401 resend when the result actually has that sent token. Authentication failures cannot permanently settle/drop the underlying score or vote. Explicit sign-in and feedback remain usable independently of score denial.
+- Added expired/removed-token-but-known-owner regression cases for session integrity/banned 403, repeated cooldowns, retained snapshots, denied state, and successful explicit authentication followed by plays/votes without retrying the denied score.
+- Added malformed-success cases for zero/negative/string/missing rank, negative points, and missing/string/integer `best`. Every case asserts durable entry/snapshot retention, `BAD_ANSWER` state, and no rank adopted or emitted.
+- Added a vote-retention regression to ensure preserving auth403 does not misclassify it as a permanent refusal of the vote endpoint.
+- Removed the unused score-outbox `erased` tombstone array and its load/enqueue/erase bookkeeping. Settlement only removes existing entries and cannot recreate owners; Community's generation/erasure-obligation guards already prevent pre-erasure callbacks from affecting a later account lifetime. Tombstones were never consulted and provided no extra protection.
+
+### Fix-round checks and output
+
+The first covering attempt found a GDScript inference error at the new `settled` declaration (a `Dictionary.get` returns Variant); its autoload failed and the test runner could not finish. That run was cancelled, the declaration was explicitly typed `bool` without changing its guards, and the covering files were rerun after the correction. The original failure output is preserved in `task-3-fix1-scores-check.log`.
+
+Final commands (45-second outer bounds only prevent a broken test-runner/autoload from hanging; production waits unchanged):
+
+```sh
+timeout 45 env TEST_FILTER=test_community_scores GODOT=godot tests/run.sh
+timeout 45 env TEST_FILTER=test_community_sync GODOT=godot tests/run.sh
+```
+
+- Scores: **6 passed, 0 failed**, exit 0; `task-3-fix1-scores-check-final.log`.
+- Sync: **60 passed, 0 failed**, exit 0; `task-3-fix1-sync-check-final.log`.
+- No script errors in the final runs; both still logged two ObjectDB instances leaked at exit.
+- No full suite, build, lint, formatter, native device or live-server run. No mutation run was performed; malformed-success tests now directly require the real validator's rejection and would fail if `_score_answer` unconditionally accepted the listed payloads.

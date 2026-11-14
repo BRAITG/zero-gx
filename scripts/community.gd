@@ -49,7 +49,7 @@ var _choices := {}  # target of a vote → serial of the latest call for it
 var _choice_serial := 0
 var _settlements := {}  # "account|vote key" → {revision, status, error}: an answer the server gave for a queued choice whose acknowledgment could not be saved. Memory only: a reset or a relaunch forgets it and the choice is simply sent again, as after a lost answer.
 
-signal _sign_in_done(error: String)
+signal _sign_in_done(result: Dictionary)
 ## One attempt at a queued choice, after its owner and generation were checked: applied (`error` empty), refused for good (the choice is dropped) or kept for a later flush. `kind` is "like" or "difficulty"; `sha256` is "" for a like; `value` is the choice (bool, or the difficulty with "" for a removal).
 signal vote_result(account: String, kind: String, level: String, sha256: String, value: Variant, error: String)
 ## The server acknowledged durably saved play reports of `account` on version `sha256`, once per version and upload: its eligibility may have changed.
@@ -92,38 +92,44 @@ func signed_in() -> bool:
 
 ## Coroutine: `""` once signed in, else why not. A call that comes while a sign-in is under way waits for that one and gets its result.
 func sign_in() -> String:
+	var result := await _sign_in_result()
+	return result.get("error", "")
+
+
+## Keeps the structured HTTP refusal for internal request callers, while public sign_in still returns one sentence.
+func _sign_in_result() -> Dictionary:
 	if _signing_in:
 		return await _sign_in_done
 	_signing_in = true
-	var error := await _sign_in()
+	var result := await _sign_in()
 	_signing_in = false
-	_sign_in_done.emit(error)
-	return error
+	_sign_in_done.emit(result)
+	return result
 
 
-func _sign_in() -> String:
+func _sign_in() -> Dictionary:
 	if not platform.available():
-		return CommunityPlatform.UNAVAILABLE  # a device without Play Games makes no request at all
+		return {"status": 0, "error": CommunityPlatform.UNAVAILABLE}  # no Play Games: no request at all
 	var generation := _generation
 	var nonce := await _nonce()  # before Play Games: offline must fail at once, not after a prompt
 	if nonce.has("error"):
-		return nonce.error
+		return nonce
 	var auth: Dictionary = await platform.sign_in()
 	if auth.has("error"):
-		return auth.error
+		return auth
 	var proof: Dictionary = await platform.integrity(nonce.nonce)
 	if proof.has("error"):
-		return proof.error
+		return proof
 	if generation != _generation:
-		return SIGNED_OUT  # the account was deleted while Play Games was asking: no session for it, on the server or here
+		return {"status": 0, "error": SIGNED_OUT}  # deleted while Play Games asked: no session on the server or here
 	var body := JSON.stringify({"authCode": auth.auth_code, "integrityToken": proof.token, "nonce": nonce.nonce}).to_utf8_buffer()
 	var reply := await _call("POST", api_url + "/session", PackedStringArray(["Content-Type: application/json"]), body)
 	if reply.has("error"):
-		return reply.error
+		return reply
 	if not reply.data.get("token") is String:
-		return BAD_ANSWER
+		return {"status": reply.status, "error": BAD_ANSWER}
 	if generation != _generation:
-		return SIGNED_OUT
+		return {"status": 0, "error": SIGNED_OUT}
 	var before := player_id()
 	var file := _session()  # keeps the last known statuses
 	file.set_value("session", "token", reply.data.token)
@@ -136,7 +142,7 @@ func _sign_in() -> String:
 		file.erase_section("player")  # a token whose player is not known must not keep the previous one's name
 	_save_session(file)
 	_announce_identity(before)
-	return ""
+	return {"status": reply.status}
 
 
 ## Coroutine: one page of `sort` ("popular" or "new"), only of levels of `difficulty` ("easy".."expert") when given: `{"rows": Array}`, or on failure `{"error", "rows": the cached page or [], "offline": bool}`. Each sort, filter and page has its own cache file.
@@ -479,7 +485,7 @@ func _call(method: String, url: String, headers := PackedStringArray(), body := 
 func _authed(method: String, path: String, expect := TYPE_DICTIONARY, build := Callable(), resign := true, account := "") -> Dictionary:
 	var generation := _generation
 	var reply := await _send(method, path, expect, build, account)
-	if reply.status == 401:
+	if reply.status == 401 and reply.has("token"):  # a session refusal is not a rejection of a token we sent
 		_forget(reply.token)
 		if resign and generation == _generation:
 			reply = await _send(method, path, expect, build, account)
@@ -498,9 +504,12 @@ func _forget(token: String) -> void:
 func _send(method: String, path: String, expect: int, build: Callable, account := "") -> Dictionary:
 	var generation := _generation
 	if _token() == "":
-		var error := await sign_in()
-		if error != "":
-			return {"status": 0, "error": error}
+		var auth := await _sign_in_result()
+		var changed := _stale(account, generation)
+		if changed != "":
+			return {"status": 0, "error": changed}
+		if auth.has("error"):
+			return {"status": auth.get("status", 0), "error": auth.error, "authentication": true}
 	var stale := _stale(account, generation)
 	if stale != "":
 		return {"status": 0, "error": stale}
@@ -695,7 +704,7 @@ func _flush(generation: int, scores_only := false) -> Dictionary:
 				return gone
 		var status: int = reply.get("status", 0)
 		var error: String = reply.get("error", "")
-		if error == "" or _refused(status):
+		if error == "" or (_refused(status) and not reply.get("authentication", false)):
 			if history.ack_vote(account, vote.key, int(vote.revision)) != OK:
 				_settlements[key] = {"revision": int(vote.revision), "status": status, "error": error}  # the answer is known: only its local settlement is retried, never the request
 				_start_gap("votes")
@@ -1072,7 +1081,7 @@ func _flush_scores(account: String, generation: int) -> String:
 	var denied := status == 403 or error == CommunityAndroid.INTEGRITY_FAILED
 	if denied:
 		_score_denied[account] = true
-	var settled := error == "" or (_refused(status) and not denied)
+	var settled: bool = error == "" or (_refused(status) and not denied and not reply.get("authentication", false))
 	if settled and scores.settle(account, sha, revision) != OK:
 		error = SCORE_UNSAVED
 		settled = false  # safe to resend after a lost answer or local acknowledgment failure: the server keeps max(points)
