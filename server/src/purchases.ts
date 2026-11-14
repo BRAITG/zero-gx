@@ -35,10 +35,27 @@ async function responseJson(response: Response): Promise<Record<string, unknown>
   try {
     data = await response.json();
   } catch {
-    throw new Error("Malformed Google response.");
+    throw new GoogleFailure("Malformed Google response.");
   }
-  if (!isObject(data)) throw new Error("Malformed Google response.");
+  if (!isObject(data)) throw new GoogleFailure("Malformed Google response.");
   return data;
+}
+
+/** A failed Google call, described only by HTTP status and Google's error enums (status, reason, OAuth error code) so the log never carries free text that could echo a token or key. */
+class GoogleFailure extends Error {}
+
+async function googleFailure(step: string, response: Response): Promise<GoogleFailure> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    body = null;
+  }
+  const error = isObject(body) ? body.error : undefined;
+  const enumOf = (value: unknown) => (typeof value === "string" && /^[A-Za-z_]{1,64}$/.test(value) ? value : "-");
+  const reasons = isObject(error) && Array.isArray(error.errors) && isObject(error.errors[0]) ? error.errors[0].reason : undefined;
+  const detail = isObject(error) ? `${enumOf(error.status)} ${enumOf(reasons)}` : enumOf(error); // OAuth answers {"error": "invalid_grant"}
+  return new GoogleFailure(`${step} ${response.status} ${detail}`);
 }
 
 async function googleAccessToken(env: Env): Promise<string> {
@@ -48,45 +65,45 @@ async function googleAccessToken(env: Env): Promise<string> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
   });
-  if (!response.ok) throw new Error("Google authorization failed.");
+  if (!response.ok) throw await googleFailure("authorization", response);
   const data = await responseJson(response);
-  if (typeof data.access_token !== "string" || data.access_token.length === 0) throw new Error("Malformed Google authorization response.");
+  if (typeof data.access_token !== "string" || data.access_token.length === 0) throw new GoogleFailure("Malformed Google authorization response.");
   return data.access_token;
 }
 
 async function googlePurchase(token: string, accessToken: string): Promise<PurchaseState> {
   const url = `${PUBLISHER_ROOT}/applications/${PACKAGE}/purchases/productsv2/tokens/${encodeURIComponent(token)}`;
   const response = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-  if (!response.ok) throw new Error("Google purchase lookup failed.");
+  if (!response.ok) throw await googleFailure("purchase lookup", response);
 
   const data = await responseJson(response);
   const stateContext = data.purchaseStateContext;
-  if (!isObject(stateContext) || typeof stateContext.purchaseState !== "string") throw new Error("Malformed Google purchase state.");
+  if (!isObject(stateContext) || typeof stateContext.purchaseState !== "string") throw new GoogleFailure("Malformed Google purchase state.");
   const state = stateContext.purchaseState;
-  if (state !== "PENDING" && state !== "CANCELLED" && state !== "PURCHASED") throw new Error("Unknown Google purchase state.");
+  if (state !== "PENDING" && state !== "CANCELLED" && state !== "PURCHASED") throw new GoogleFailure("Unknown Google purchase state.");
 
   const lineItems = data.productLineItem;
-  if (!Array.isArray(lineItems) || lineItems.length === 0) throw new Error("Malformed Google product line item.");
+  if (!Array.isArray(lineItems) || lineItems.length === 0) throw new GoogleFailure("Malformed Google product line item.");
   if (lineItems.length !== 1) rejectPurchase(404, "purchase_invalid", PURCHASE_INVALID);
   const item: unknown = lineItems[0];
-  if (!isObject(item) || typeof item.productId !== "string") throw new Error("Malformed Google product line item.");
+  if (!isObject(item) || typeof item.productId !== "string") throw new GoogleFailure("Malformed Google product line item.");
   if (item.productId !== PRODUCT) rejectPurchase(404, "purchase_invalid", PURCHASE_INVALID);
   if (state === "PENDING") return { state };
   if (state === "CANCELLED") rejectPurchase(409, "purchase_inactive", PURCHASE_INACTIVE);
 
   const offer = item.productOfferDetails;
-  if (!isObject(offer)) throw new Error("Malformed Google product details.");
+  if (!isObject(offer)) throw new GoogleFailure("Malformed Google product details.");
   if ("rentOfferDetails" in offer || "preorderOfferDetails" in offer) rejectPurchase(404, "purchase_invalid", PURCHASE_INVALID);
-  if (typeof offer.quantity !== "number" || !Number.isInteger(offer.quantity)) throw new Error("Malformed Google quantity.");
+  if (typeof offer.quantity !== "number" || !Number.isInteger(offer.quantity)) throw new GoogleFailure("Malformed Google quantity.");
   if (offer.quantity !== 1) rejectPurchase(404, "purchase_invalid", PURCHASE_INVALID);
-  if (typeof offer.refundableQuantity !== "number" || !Number.isInteger(offer.refundableQuantity)) throw new Error("Malformed Google refundable quantity.");
+  if (typeof offer.refundableQuantity !== "number" || !Number.isInteger(offer.refundableQuantity)) throw new GoogleFailure("Malformed Google refundable quantity.");
   if (offer.refundableQuantity === 0) rejectPurchase(409, "purchase_inactive", PURCHASE_INACTIVE);
-  if (offer.refundableQuantity < 0 || offer.refundableQuantity !== offer.quantity) throw new Error("Malformed Google refundable quantity.");
+  if (offer.refundableQuantity < 0 || offer.refundableQuantity !== offer.quantity) throw new GoogleFailure("Malformed Google refundable quantity.");
   if (offer.consumptionState === "CONSUMPTION_STATE_CONSUMED") rejectPurchase(404, "purchase_invalid", PURCHASE_INVALID);
-  if (offer.consumptionState !== "CONSUMPTION_STATE_YET_TO_BE_CONSUMED") throw new Error("Malformed Google consumption state.");
+  if (offer.consumptionState !== "CONSUMPTION_STATE_YET_TO_BE_CONSUMED") throw new GoogleFailure("Malformed Google consumption state.");
 
   if (data.acknowledgementState === "ACKNOWLEDGEMENT_STATE_ACKNOWLEDGED") return { state, acknowledged: true };
-  if (data.acknowledgementState !== "ACKNOWLEDGEMENT_STATE_PENDING") throw new Error("Malformed Google acknowledgement state.");
+  if (data.acknowledgementState !== "ACKNOWLEDGEMENT_STATE_PENDING") throw new GoogleFailure("Malformed Google acknowledgement state.");
   return { state, acknowledged: false };
 }
 
@@ -104,7 +121,7 @@ async function acknowledge(token: string, accessToken: string): Promise<boolean>
   }
   if (response.ok) return true;
   if (response.status === 408 || response.status === 409 || response.status === 429 || response.status >= 500) return false;
-  throw new Error("Google acknowledgement failed.");
+  throw new GoogleFailure("Google acknowledgement failed.");
 }
 
 function success(): Response {
@@ -131,9 +148,10 @@ export async function postAdFreePurchase(request: Request, env: Env): Promise<Re
 
     const refreshed = await googlePurchase(purchaseToken, accessToken);
     if (refreshed.state === "PURCHASED" && refreshed.acknowledged) return success();
-    throw new Error("Google acknowledgement could not be confirmed.");
+    throw new GoogleFailure("Google acknowledgement could not be confirmed.");
   } catch (error) {
     if (error instanceof PurchaseFailure) return rejectionResponse(error.rejection);
+    console.error("Purchase verification failed:", error instanceof GoogleFailure ? error.message : "no answer from Google (network)");
     return Response.json({ error: UNAVAILABLE }, { status: 503 });
   }
 }

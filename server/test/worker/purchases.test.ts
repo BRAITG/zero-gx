@@ -371,4 +371,17 @@ describe("POST /purchases/ad-free", () => {
     expect(signatureVerified).toBe(true);
     expect(publisherCalls(calls).some((call) => call.url === PURCHASE_URL)).toBe(true);
   });
+
+  it("logs which Google step failed and its error codes, and nothing else", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    fakeGoogle(() => Response.json({ error: { code: 403, message: `${TOKEN} ${GOOGLE_ERROR_BODY}`, status: "PERMISSION_DENIED", errors: [{ reason: "permissionDenied", message: TOKEN }] } }, { status: 403 }));
+    await expectError(await postPurchase({ purchaseToken: TOKEN }, await testEnv()), 503);
+    fakeGoogle(() => Response.json({}), () => Response.json({ error: "invalid_grant", error_description: GOOGLE_ERROR_BODY }, { status: 400 }));
+    await expectError(await postPurchase({ purchaseToken: TOKEN }, await testEnv()), 503);
+    const lines = logged.mock.calls.map((call) => call.join(" "));
+    expect(lines).toEqual([
+      "Purchase verification failed: purchase lookup 403 PERMISSION_DENIED permissionDenied",
+      "Purchase verification failed: authorization 400 invalid_grant",
+    ]);
+  });
 });
