@@ -143,15 +143,16 @@ static func validate(data: Dictionary, draft := false) -> PackedStringArray:
 	for i in bodies.size():
 		var body: Variant = bodies[i]
 		if not body is Dictionary or not body.get("kind") in BODY_KINDS:
-			errors.append("body %d: unknown kind" % i)
+			errors.append("body %d: unknown kind" % (i + 1))
 			continue
+		var label := body_name(bodies, i)
 		var before := errors.size()
-		_point(body.get("position"), "body %d position" % i, errors, draft)
+		_point(body.get("position"), "%s position" % label, errors, draft)
 		for key: String in BODY_RANGES:
 			if body.has(key):
-				_number(body[key], BODY_RANGES[key].x, BODY_RANGES[key].y, "body %d %s" % [i, key], errors, draft)
+				_number(body[key], BODY_RANGES[key].x, BODY_RANGES[key].y, "%s %s" % [label, key], errors, draft)
 		if not draft and errors.size() == before:  # only well-formed numbers can be compared to the kind's limits
-			_check_kind_limits(i, body, errors)
+			_check_kind_limits(label, body, errors)
 	var rocks := _list(data, "asteroids", MAX_ASTEROIDS, errors, draft)
 	for i in rocks.size():
 		var rock: Variant = rocks[i]
@@ -203,12 +204,22 @@ static func total_pull(body: Dictionary) -> float:
 	return body_value(body, "strength") * pow(body_value(body, "radius") / 1000.0, 2)
 
 
-static func _check_kind_limits(i: int, body: Dictionary, errors: PackedStringArray) -> void:
+## A body's name in messages: its kind and its place among the bodies of that kind, e.g. "star 2".
+static func body_name(bodies: Array, i: int) -> String:
+	var kind: String = bodies[i].kind
+	var n := 0
+	for body: Variant in bodies.slice(0, i + 1):
+		if body is Dictionary and body.get("kind") == kind:
+			n += 1
+	return "%s %d" % [kind.replace("_", " "), n]
+
+
+static func _check_kind_limits(label: String, body: Dictionary, errors: PackedStringArray) -> void:
 	var limits: Dictionary = KIND_LIMITS[body.kind]
 	for key: String in limits:
 		var value := total_pull(body) if key == "total_pull" else body_value(body, key)
 		if value < limits[key].x - 0.001 or value > limits[key].y + 0.001:
-			errors.append("body %d: a %s's %s must be %s to %s" % [i, body.kind.replace("_", " "), key.replace("_", " "), limits[key].x, limits[key].y])
+			errors.append("%s: a %s's %s must be %s to %s" % [label, body.kind.replace("_", " "), key.replace("_", " "), limits[key].x, limits[key].y])
 
 
 ## The scene for `data`: a Level (or `script`, a Level subclass such as a tutorial lesson).
@@ -471,7 +482,7 @@ static func _check_start(data: Dictionary, errors: PackedStringArray) -> void:
 		var body: Dictionary = data.bodies[i]
 		var radius: float = body.get("radius", GravityBody.PRESETS[BODY_KINDS.find(body.kind)][0])
 		if _vec(body.position).distance_to(start) < radius + Ship.RADIUS:
-			errors.append("the ship starts inside body %d" % i)
+			errors.append("the ship starts inside %s" % body_name(data.bodies, i))
 	if _vec(data.goal.position).distance_to(start) < Goal.RADIUS + Ship.RADIUS:
 		errors.append("the ship starts inside the goal")
 
