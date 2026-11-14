@@ -33,6 +33,35 @@ func _payload(count := 30, own := true) -> Dictionary:
 	return {"level": {"kind": "official", "name": "Loop"}, "rows": rows, "you": {"rank": 25, "player": {"id": "p_me", "name": "My Pilot"}, "points": 700, "seconds": 30.25} if own else null, "count": count, "quantiles": range(0, 2100, 100) if count > 0 else []}
 
 
+## Exactly 950 zeroes, 30 tied at 700, and 20 tied at 2000: the 700-point best is competition rank 21.
+func _tied_payload() -> Dictionary:
+	var payload := _payload()
+	payload.count = 1000
+	payload.quantiles = Array(range(20)).map(func(_i: int) -> int: return 0) + [2000]
+	payload.you.rank = 21
+	for i in payload.rows.size():
+		payload.rows[i].rank = 1
+		payload.rows[i].points = 2000
+	payload.rows = payload.rows.slice(0, 20)
+	return payload
+
+
+func _score_run() -> Demo:
+	var run := Demo.new()
+	run.level_sha256 = SHA
+	run.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 50.0, "hull": 50.0}, {})
+	run.add_event(Demo.Event.GOAL_REACHED)
+	return run
+
+
+func _pending_score() -> int:
+	var scores := CommunityScores.new()
+	scores.path = Community.history_path.get_basename() + "_scores.json"
+	check(scores.load_file() == OK, "isolated score outbox loads")
+	check(scores.enqueue("p_me", "stage1", SHA, _score_run().encode()) == OK, "score is already durable before opening")
+	return scores.revision("p_me", SHA)
+
+
 func _texts(node: Node) -> String:
 	var labels := node.find_children("*", "Label", true, false)
 	return "\n".join(labels.map(func(label: Label) -> String: return label.text))
@@ -166,14 +195,7 @@ func test_explicit_board_open_starts_score_only_sync_without_activating_feedback
 	history.path = Community.history_path
 	check(history.load_file() == OK, "isolated history loads")
 	check(history.begin("p_me", "lvl_abcdefghij", SHA, 10) != "", "pending play is saved")
-	var scores := CommunityScores.new()
-	scores.path = Community.history_path.get_basename() + "_scores.json"
-	check(scores.load_file() == OK, "isolated score outbox loads")
-	var run := Demo.new()
-	run.level_sha256 = SHA
-	run.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 50.0, "hull": 50.0}, {})
-	run.add_event(Demo.Event.GOAL_REACHED)
-	check(scores.enqueue("p_me", "stage1", SHA, run.encode()) == OK, "score is already durable before opening")
+	_pending_score()
 	net.answer("GET", "/nonce", 200, {"nonce": "board-sync"})
 	net.hold("POST", "/scores")
 	net.answer("GET", ROUTE, 200, _payload())
@@ -203,3 +225,56 @@ func test_account_switch_drops_the_visible_private_row_before_new_read_returns()
 	net.answer("GET", ROUTE, 200, _payload(30, false))
 	net.release_hold("GET", ROUTE)
 	check(not _texts(sheet).contains("My Pilot"), "new owner never adopts the old private row")
+
+
+func test_better_local_best_is_bounded_by_own_same_board_rank_in_sheet_and_preview() -> void:
+	var net := _fake()
+	var payload := _tied_payload()
+	check(RankEstimate.estimate(900, payload.count, payload.quantiles, 2000).text.contains("~29 of 1001"), "valid nearest-rank distribution reproduces the coarser quantile estimate")
+	net.answer("GET", ROUTE, 200, payload)
+	var sheet := _open(900)
+	var text := _texts(sheet)
+	check(text.contains("Estimate: would rank #21 or better") and not text.contains("~29 of"), "better local score cannot estimate worse than the same-board exact best")
+	check(text.contains("Your ranked best · Rank #21 of 1000") and _rows(sheet)[20].get_meta("board_row").points == 700, "bound does not verify the local 900-point run")
+	var slot := VBoxContainer.new()
+	world.add_child(slot)
+	var board := Community.cached_board(SHA)
+	load(SHEET).preview(slot, board, 900)
+	check(_texts(slot).contains("Estimate: would rank #21 or better (cached)") and _rows(slot).size() == 6, "cached preview uses the same snapshot bound and keeps the local score out of ranked rows")
+	net.answer("GET", ROUTE, 0)
+	var refresh: Button = sheet.find_child("RefreshBoard", true, false)
+	refresh.pressed.emit()
+	check(_texts(sheet).contains("Estimate: would rank #21 or better (cached)") and _texts(sheet).contains("Offline · cached standings"), "failed refresh marks both the bound and old exact row cached")
+
+
+func test_latest_post_while_first_board_read_is_held_forces_second_read_and_updates_visible_rank() -> void:
+	var net := _fake()
+	var revision := _pending_score()
+	net.hold("GET", ROUTE)
+	net.hold("POST", "/scores")
+	net.answer("GET", ROUTE, 200, _payload())
+	net.answer("GET", "/nonce", 200, {"nonce": "board-latest"})
+	var sheet := _open(900)
+	check(net.count("GET", ROUTE) == 1 and net.count("POST", "/scores") == 1, "first board and current score upload are both held")
+	net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": true})
+	net.release_hold("POST", "/scores")
+	check(Community.score_state(SHA).get("state") == "posted" and net.count("GET", ROUTE) == 1, "successful upload schedules a fresh read after the older one finishes")
+	net.hold("GET", ROUTE)
+	var updated := _payload()
+	updated.you.rank = 7
+	updated.you.points = 900
+	net.answer("GET", ROUTE, 200, updated)
+	net.release_hold("GET", ROUTE)
+	check(net.count("GET", ROUTE) == 2, "latest posted result forces a second network read despite the newly fresh one-hour cache")
+	check(not _texts(sheet).contains("Rank #7 of 30"), "new exact rank waits for the fresh board answer")
+	net.release_hold("GET", ROUTE)
+	var text := _texts(sheet)
+	check(text.contains("Your ranked best · Rank #7 of 30") and not text.contains("Estimate:") and _rows(sheet)[20].get_meta("board_row").points == 900, "open sheet adopts the new exact rank and score")
+	check(Community.queue_score("stage1", _score_run()) == "" and Community.score_state(SHA).get("revision") == revision + 1, "a newer queued revision supersedes the posted result")
+	var posted := {"state": "posted", "rank": 1, "points": 999}
+	Community.score_result.emit("p_other", SHA, revision + 1, posted)
+	Community.score_result.emit("p_me", "b".repeat(64), revision + 1, posted)
+	Community.score_result.emit("p_me", SHA, revision, posted)
+	Community.score_result.emit("p_me", SHA, revision + 1, {"state": "queued"})
+	await frames(2)
+	check(net.count("GET", ROUTE) == 2 and _texts(sheet) == text, "stale owner/hash/revision and non-posted answers cannot fetch or alter the displayed standing")

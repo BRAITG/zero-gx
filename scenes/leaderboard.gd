@@ -168,10 +168,15 @@ static func _own(parent: Control, board: Dictionary, local_points: int) -> void:
 		you = null
 	if local_points >= 0 and (not you is Dictionary or local_points != you.points):
 		_label(box, "Local best · %d points" % local_points, 22)
-		var rows: Array = board.get("rows", [])
-		var lowest: Variant = rows[19].points if rows.size() >= 20 else null
-		var estimate := RankEstimate.estimate(local_points, int(board.get("count", -1)), board.get("quantiles", []), lowest)
-		_label(box, estimate.text if estimate.text != "" else "Estimate unavailable", 22, Style.INK_DIM)
+		var text: String
+		if you is Dictionary and local_points > you.points:
+			# This version's exact own row bounds a better score more tightly than lossy quantiles can.
+			text = "Estimate: would rank #%d or better%s" % [you.rank, " (cached)" if board.get("cached", false) or board.get("offline", false) else ""]
+		else:
+			var rows: Array = board.get("rows", [])
+			var lowest: Variant = rows[19].points if rows.size() >= 20 else null
+			text = RankEstimate.estimate(local_points, int(board.get("count", -1)), board.get("quantiles", []), lowest).text
+		_label(box, text if text != "" else "Estimate unavailable", 22, Style.INK_DIM)
 	if you is Dictionary:
 		var population := " of %d" % board.count if board.get("count", -1) >= you.rank else ""
 		_label(box, "Your ranked best · Rank #%d%s%s" % [you.rank, population, " (cached)" if board.get("cached", false) or board.get("offline", false) else ""], 22)
