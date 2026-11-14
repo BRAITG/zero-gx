@@ -992,3 +992,169 @@ func test_result_post_after_held_board_forces_fresh_preview_without_regressing_s
 	var text := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
 	check(text.contains("Rank #4 of 31") and not text.contains("Rank #25"), "fresh own row replaces the pre-upload preview")
 	check(lvl.hud.result_text().contains("Rank #4 of 31") and not lvl.hud.result_text().contains("Rank #3"), "fresh post-upload board supersedes the provisional POST rank in the HUD too")
+
+
+func _campaign_sha(id := "level_01") -> String:
+	return LevelFormat.sha256(LevelFormat.read(Progress.LEVELS_DIR + id + LevelFormat.EXTENSION))
+
+
+func _campaign_best(sha: String, points := 700) -> void:
+	Progress.record_win("level_01", points, 30.0, 25.0, 25.0)
+	var run := Demo.new()
+	run.level_sha256 = sha
+	run.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 25.0, "hull": 25.0}, {})
+	run.add_event(Demo.Event.GOAL_REACHED)
+	Progress.save_best_demo("level_01", run)
+
+
+func _campaign_badge(main: Node) -> Button:
+	return stage_rows(main)["Level 01"].find_child("BoardBadge", true, false) as Button
+
+
+func test_campaign_cached_exact_estimate_and_no_cache_badges() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	net.hold("GET", "/boards/" + sha)
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	check(_campaign_badge(main) != null and not _campaign_badge(main).visible, "no cached board means no badge")
+	net.release_hold("GET", "/boards/" + sha)
+	await frames(3)
+	check(_campaign_badge(main).text == "#25" and _campaign_badge(main).tooltip_text.contains("cached"), "matching local best uses the cached exact rank")
+	var payload := _result_payload()
+	payload.you = null
+	net.answer("GET", "/boards/" + sha, 200, payload)
+	await Community.board(sha, true)
+	await frames(2)
+	check(_campaign_badge(main).text.begins_with("~top ") and _campaign_badge(main).text.contains("%"), "unposted same-version best uses shared percentile estimate")
+
+
+func test_opening_campaign_refreshes_only_completed_once_per_hash_hour() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	for i in 2:
+		var main := menu(MAIN.Page.OFFICIAL)
+		world.add_child(main)
+		await frames(2)
+		main.free()
+	check(net.count("GET", "/boards/") == 1 and net.count("GET", "/boards/" + sha) == 1, "opening twice refreshes only the completed current hash once")
+	for file in DirAccess.get_files_at(Community.dir):
+		if file.begins_with("board_") and file.ends_with(".json"):
+			var cached: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Community.dir + file))
+			cached.fetched_at = int(Time.get_unix_time_from_system()) - Community.BOARD_CACHE_SECONDS - 1
+			var saved := FileAccess.open(Community.dir + file, FileAccess.WRITE)
+			saved.store_string(JSON.stringify(cached))
+			saved.close()
+	var reopened := menu(MAIN.Page.OFFICIAL)
+	world.add_child(reopened)
+	await frames(2)
+	check(net.count("GET", "/boards/" + sha) == 2, "expired cache refreshes on the next opening")
+
+
+func test_campaign_board_updates_in_place_and_board_return_preserves_selection() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	net.hold("GET", "/boards/" + sha)
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(2)
+	var selected: Button = stage_rows(main)["Level 02"]
+	selected.grab_focus()
+	var row: Button = stage_rows(main)["Level 01"]
+	net.release_hold("GET", "/boards/" + sha)
+	await frames(3)
+	check(stage_rows(main)["Level 01"] == row and focused() == selected, "async badge update preserves existing rows and selection")
+	var badge := _campaign_badge(main)
+	badge.grab_focus()
+	badge.pressed.emit()
+	await frames(2)
+	var sheets := main.find_children("*", "Overlay", true, false)
+	check(sheets.size() == 1, "campaign badge opens the shared board")
+	if sheets.is_empty():
+		return
+	sheets[0].close()
+	await frames(2)
+	check(focused() == badge and stage_rows(main)["Level 01"] == row, "return restores the exact campaign board action")
+
+
+func test_campaign_current_file_hash_never_uses_old_revision_rank_or_idbest() -> void:
+	var net := _result_setup()
+	var current := _campaign_sha()
+	var old := "b".repeat(64)
+	_campaign_best(old, 9999)
+	await Community.board(old)
+	var payload := _result_payload()
+	payload.you = null
+	net.answer("GET", "/boards/" + current, 200, payload)
+	net.hold("GET", "/boards/" + current)
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	check(not _campaign_badge(main).visible, "same filename with changed content does not adopt the old hash's exact rank")
+	net.release_hold("GET", "/boards/" + current)
+	await frames(3)
+	check(not _campaign_badge(main).visible, "old id best cannot produce an estimate for a new file revision")
+	check(net.count("GET", "/boards/" + current) == 1, "requests use LevelFormat.sha256 of the bundled current file")
+
+
+func test_training_and_desktop_lists_have_no_boards_requests_or_badges() -> void:
+	var net := _result_setup()
+	var sha := _campaign_sha()
+	_campaign_best(sha)
+	await Community.board(sha)
+	net.requests.clear()
+	var training := menu(MAIN.Page.TRAINING)
+	world.add_child(training)
+	await frames(2)
+	check(training.find_children("BoardBadge", "Button", true, false).is_empty() and net.requests.is_empty(), "training neither displays nor fetches boards")
+	training.free()
+	(Community.platform as FakePlatform).is_available = false
+	var desktop := menu(MAIN.Page.OFFICIAL)
+	world.add_child(desktop)
+	await frames(2)
+	check(desktop.find_children("BoardBadge", "Button", true, false).is_empty() and net.requests.is_empty(), "desktop ignores even a populated board cache")
+
+
+func test_campaign_identity_change_invalidates_private_badge_immediately() -> void:
+	var net := _result_setup()
+	_campaign_best("b".repeat(64))
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(2)
+	check(_campaign_badge(main).text == "#25", "setup: current-hash remote best is exact even without a matching local replay")
+	_result_owner("")
+	Community.identity_changed.emit("")
+	check(not _campaign_badge(main).visible, "sign-out immediately removes private exact rank")
+	check(net.count("POST", "/session") == 0, "identity cancellation never signs back in")
+
+
+func test_campaign_first_sign_in_still_reads_each_completed_hash_only_once() -> void:
+	var net := _result_setup("")
+	net.answer("POST", "/session", 200, {"token": "tok", "player": {"id": "p_me", "name": "My Pilot"}})
+	_campaign_best(_campaign_sha())
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	await frames(3)
+	check(net.count("GET", "/boards/") == 1, "identity learned during the opening read must not start a duplicate board refresh")
+
+
+func test_campaign_long_title_and_badge_fit_above_reserved_footer() -> void:
+	_result_setup()
+	_campaign_best(_campaign_sha())
+	Monetization.platform = load("res://tests/support/fake_monetization_platform.gd").new()
+	Monetization.start()
+	var main := menu(MAIN.Page.OFFICIAL)
+	world.add_child(main)
+	Monetization.set_surface(main, true)  # stress the same frame with a reserved footer
+	await frames(4)
+	var row: Button = stage_rows(main)["Level 01"]
+	var title := row.find_child("Title", true, false) as Label
+	title.text = "Level 01 · An extremely long orbital slalom through an abandoned interstellar shipyard"
+	await frames(3)
+	var frame: Control = main._column.get_parent()
+	var scroll: ScrollContainer = main._levels.get_parent()
+	check(frame.get_global_rect().encloses(scroll.get_global_rect()), "campaign scroll stays inside the footer-reserved frame")
+	check(main._column.global_position.y >= frame.global_position.y, "the title is not pushed above the screen")
+	check(row.get_global_rect().encloses(_campaign_badge(main).get_global_rect()), "badge stays inside the long-title row")

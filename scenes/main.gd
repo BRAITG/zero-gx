@@ -9,7 +9,7 @@ enum Page { HOME, OFFICIAL, TRAINING }
 const SCENE := "res://scenes/main.tscn"
 const MENU_DRIFT := Vector2(-40, -12)  # px/s
 const HOME_WIDTH := 440.0  # px: the column of home buttons
-const LIST_SIZE := Vector2(760, 520)  # px: the scrolling stage list
+const LIST_SIZE := Vector2(1000, 520)  # px: the scrolling stage list
 const ROW_HEIGHT := 108.0  # px: a stage row; its thumbnail fills the height less the margins
 const ROW_MARGIN := 8.0
 
@@ -21,6 +21,7 @@ var _official: Button  # the home page's primary: it takes focus when HOME opens
 var _training_button: Button
 var _levels: VBoxContainer  # the stage rows of OFFICIAL or TRAINING
 
+var _board_badges := {}  # current bundled hash → its existing row's button
 ## Set once per run: the menu scene is entered again on every return to it.
 static var _sized := false
 
@@ -41,7 +42,12 @@ func _ready() -> void:
 	else:
 		_build_list()
 	Progress.changed.connect(_refresh)
+	_column.get_parent().resized.connect(_center_column)
 	_refresh()
+	if page == Page.OFFICIAL and Community.available():
+		Community.board_updated.connect(_update_badge)
+		Community.identity_changed.connect(_board_identity_changed)
+		_refresh_boards()
 	Monetization.set_surface(self, page == Page.HOME)
 	if page == Page.HOME and get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
 		_official.grab_focus(true)
@@ -118,6 +124,7 @@ func _refresh() -> void:
 func _list_levels() -> void:
 	for old in _levels.get_children():
 		old.free()  # now, not queued: the new rows replace them in the same frame
+	_board_badges.clear()
 	var training := page == Page.TRAINING
 	var suggested: Button
 	for id in Progress.trainings() if training else Progress.levels():
@@ -126,7 +133,8 @@ func _list_levels() -> void:
 		var next := suggested == null and unlocked and best < 0
 		var data := LevelFormat.read((Progress.TUTORIALS_DIR if training else Progress.LEVELS_DIR) + id + LevelFormat.EXTENSION)
 		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
-		var button := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next, int(data.get("par", 0)))
+		var sha := LevelFormat.sha256(data) if not training and Community.available() and best >= 0 else ""
+		var button := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next, int(data.get("par", 0)), sha)
 		button.disabled = not unlocked
 		if not unlocked:
 			button.modulate = Color(1, 1, 1, 0.55)  # the thumbnail dims with the text
@@ -147,7 +155,7 @@ func _list_levels() -> void:
 ## the medal that total earns against `par` (none without a par).
 ## A best saved before fuel and hull were kept shows "—" for them rather than an invented value.
 ## The title Label is named "Title" so tests and tools can read the row's name.
-func _row(id: String, title: String, unlocked: bool, next: bool, par: int) -> Button:
+func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: String) -> Button:
 	var button := _button("", Vector2(LIST_SIZE.x - 24, ROW_HEIGHT))  # less the scrollbar
 	var content := HBoxContainer.new()
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -164,6 +172,7 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int) -> Bu
 	content.add_child(text)
 	var name_label := _label(title, 24)
 	name_label.name = "Title"
+	name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	text.add_child(name_label)
 	var parts := HBoxContainer.new()
 	parts.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -197,7 +206,51 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int) -> Bu
 		total.custom_minimum_size.x = 100  # four digits: the medals line up across rows
 		total.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		content.add_child(total)
+		if sha != "":
+			var run := Progress.best_demo(id)
+			var local_points := best if run != null and run.level_sha256 == sha else -1
+			var badge := _button("", Vector2(0, 52), 18)
+			badge.name = "BoardBadge"
+			badge.add_theme_color_override("font_color", Style.INK_DIM)
+			badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			badge.set_meta("local_points", local_points)
+			badge.pressed.connect(func(): Leaderboard.open(self, sha, title, local_points))
+			content.add_child(badge)
+			_board_badges[sha] = badge
+			_update_badge(sha)
 	return button
+
+## Opening a list is the refresh opportunity; Community owns the per-hash/owner one-hour age and coalescing.
+func _refresh_boards() -> void:
+	for sha: String in _board_badges:
+		Community.board(sha)
+
+
+func _board_identity_changed(_account: String) -> void:
+	for sha: String in _board_badges:
+		_update_badge(sha)
+
+
+## Change only the badge, never the row/focus/scroll. An id-scoped historical best is not a score on this hash.
+func _update_badge(sha: String) -> void:
+	if not is_inside_tree() or not _board_badges.has(sha):
+		return
+	var badge: Button = _board_badges[sha]
+	var board := Community.cached_board(sha)
+	var standing := Leaderboard.standing(board, int(badge.get_meta("local_points"))) if not board.is_empty() else ""
+	var text := ""
+	if standing.begins_with("Your ranked best · Rank #"):
+		text = standing.trim_prefix("Your ranked best · Rank ").get_slice(" ", 0)
+	elif standing.begins_with("Estimate: about top "):
+		text = "~top " + standing.trim_prefix("Estimate: about top ").get_slice(" · ", 0).trim_suffix(" (cached)")
+	elif standing.begins_with("Estimate: would rank #"):
+		text = "~" + standing.trim_prefix("Estimate: would rank ").trim_suffix(" (cached)")
+	elif standing.begins_with("Estimate: would be in the top 20"):
+		text = "~top 20"
+	badge.text = text
+	badge.tooltip_text = standing
+	badge.visible = text != ""
+
 
 
 func _label(text: String, font_size: int, color := Style.INK) -> Label:
@@ -211,6 +264,10 @@ func _label(text: String, font_size: int, color := Style.INK) -> Label:
 
 ## Centres the column in the frame. Anchored to the frame's centre, it stays centred when the viewport changes.
 func _center_column() -> void:
+	if _levels != null:
+		var frame := _column.get_parent() as Control
+		var fixed_height: float = _column.get_child(0).get_combined_minimum_size().y + _column.get_child(1).get_combined_minimum_size().y + 24
+		(_levels.get_parent() as ScrollContainer).custom_minimum_size.y = clampf(frame.size.y - fixed_height, 0.0, LIST_SIZE.y)
 	_column.reset_size()
 	_column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 

@@ -1647,6 +1647,131 @@ func test_every_card_of_the_details_sheet_is_one_column_wide_with_a_pending_row(
 	Community.record_play_finish(Community.record_play_start(row.sha256), "cleared")  # a queued clear: the sync row shows
 	var sheet: Overlay = await _sheet(row)
 	var cards := sheet.body.find_children("*", "PanelContainer", false, false)
-	check(cards.size() == 3, "setup: three cards: %d" % cards.size())
+	check(cards.size() == 4, "difficulty, facts, You and board each have a card: %d" % cards.size())
 	check(cards.all(func(c: PanelContainer) -> bool: return c.size.x == Overlay.WIDTH), "each card is exactly the column wide: %s" % [cards.map(func(c: PanelContainer) -> float: return c.size.x)])
 	check(sheet.find_child("SyncIndicator", true, false).is_visible_in_tree(), "control: the pending row is showing")
+
+
+# Menu board integration: real client/cache/presentation, with only HTTP and the Play bridge faked.
+func _board_payload() -> Dictionary:
+	var rows := []
+	for i in 8:
+		rows.append({"rank": i + 1, "player": {"id": "ranked_%d" % i, "name": "Board pilot %d" % i}, "points": 2000 - 100 * i, "seconds": 10.0 + i})
+	return {"level": {"kind": "community", "name": "Loop"}, "rows": rows, "you": {"rank": 12, "player": {"id": "p_1", "name": "Own pilot"}, "points": 700, "seconds": 30.0}, "count": 30, "quantiles": range(0, 2100, 100)}
+
+
+func _board_rows(node: Node) -> Array:
+	return node.find_children("*", "HBoxContainer", true, false).filter(func(row: Node) -> bool: return row.has_meta("board_row"))
+
+
+func test_details_board_top5_own_full_board_and_return_focus() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"difficulty": "hard", "difficulty_eligible": true, "attempts": 5}))
+	net.answer("GET", "/boards/" + SHA, 200, _board_payload())
+	var sheet := await _sheet(_row())
+	check(_board_rows(sheet).size() == 6, "details show five public rows and the separate own row")
+	check(_mentions(_texts(sheet), ["rank #12 of 30"]), "details show the exact own standing")
+	var full := _buttons(sheet, "Full board")
+	check(full.size() == 1, "details offer Full board")
+	if full.is_empty():
+		return
+	full[0].grab_focus()
+	full[0].pressed.emit()
+	await frames(2)
+	var board: Overlay = _sheets(world).back()
+	check(board != sheet and _board_rows(board).size() == 9, "Full board opens the shared sheet")
+	board.close()
+	await frames(2)
+	check(tree.root.gui_get_focus_owner() == full[0], "Back restores Full board focus")
+	check(_choice(_controls(sheet).difficulty) == "hard", "opening a board never resets the vote")
+
+
+func test_feedback_and_board_finish_in_either_order_without_resetting_votes() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"difficulty": "hard", "difficulty_eligible": true, "attempts": 5}))
+	net.respond("GET", "/boards/", func(_request: Dictionary) -> Dictionary: return {"status": 200, "body": _board_payload()})
+	net.hold("GET", "/boards/" + SHA)
+	var first := await _sheet(_row())
+	check(_choice(_controls(first).difficulty) == "hard", "feedback is interactive before the held board")
+	net.release_hold("GET", "/boards/" + SHA)
+	await frames(3)
+	check(_board_rows(first).size() == 6 and _choice(_controls(first).difficulty) == "hard", "late board does not reset feedback")
+	first.close()
+	await frames(2)
+	var second_sha := "b".repeat(64)
+	_serve(_reply({"difficulty": "hard", "difficulty_eligible": true, "attempts": 5}, {}, null, {}, second_sha))
+	net.hold("GET", FEEDBACK)
+	var second := await _sheet(_row({"sha256": second_sha}))
+	check(_board_rows(second).size() == 6, "the fresh board finishes while feedback is held")
+	net.release_hold("GET", FEEDBACK)
+	await frames(3)
+	check(_board_rows(second).size() == 6 and _choice(_controls(second).difficulty) == "hard", "late feedback preserves board and vote")
+
+
+func test_closing_details_during_either_read_is_safe_and_reopening_uses_cache() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply())
+	net.respond("GET", "/boards/", func(_request: Dictionary) -> Dictionary: return {"status": 200, "body": _board_payload()})
+	for route in ["/boards/" + SHA, FEEDBACK]:
+		net.hold("GET", route)
+		var sheet := await _sheet(_row())
+		sheet.close()
+		await frames(2)
+		net.release_hold("GET", route)
+		await frames(3)
+		check(_closed(sheet), "closed details stay closed when %s answers" % route)
+	var reopened := await _sheet(_row())
+	check(_board_rows(reopened).size() == 6, "reopened details safely use the completed cache")
+
+
+func test_result_details_you_anchor_and_manual_scroll_survive_delayed_board() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"difficulty_eligible": true, "attempts": 5}, {"players_started": 64}, "hard", {}, SHA, _rich()))
+	net.answer("GET", "/boards/" + SHA, 200, _board_payload())
+	net.hold("GET", "/boards/" + SHA)
+	var sheet := await _open(world, _row(), Callable(), true)
+	await frames(3)
+	var you: Label = sheet.get_meta("details")._you_heading
+	var before := you.global_position.y
+	check(sheet.scroll.get_global_rect().encloses(you.get_global_rect()), "result-origin You is visible before board arrives")
+	net.release_hold("GET", "/boards/" + SHA)
+	await frames(3)
+	check(is_equal_approx(you.global_position.y, before), "late board must not move You")
+	sheet.scroll.scroll_vertical = 20
+	await Community.board(SHA, true)
+	await frames(3)
+	check(sheet.scroll.scroll_vertical == 20, "board updates never steal manual scroll")
+
+
+func test_details_owner_switch_drops_private_rank_while_old_board_is_held() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply())
+	net.answer("GET", "/boards/" + SHA, 200, _board_payload())
+	var sheet := await _sheet(_row())
+	check(_mentions(_texts(sheet), ["rank #12"]), "setup: first owner's rank is visible")
+	net.hold("GET", "/boards/" + SHA)
+	var refresh := func() -> void: await Community.board(SHA, true)
+	refresh.call()
+	net.hold("GET", "/boards/" + SHA)
+	await _signed_in(net, SESSION_TWO)
+	check(not _mentions(_texts(sheet), ["rank #12", "own pilot"]), "identity event clears the prior private row immediately")
+	net.release_hold("GET", "/boards/" + SHA)
+	await frames(3)
+	check(not _mentions(_texts(sheet), ["rank #12", "own pilot"]), "old owner's late reply cannot restore private rank")
+	net.release_hold("GET", "/boards/" + SHA)
+	await frames(3)
+
+
+func test_desktop_details_have_no_board_or_board_request() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	pilot.is_available = false
+	_serve(_reply())
+	var sheet := await _sheet(_row())
+	check(_buttons(sheet, "Full board").is_empty() and _board_rows(sheet).is_empty(), "non-Play details have no board UI")
+	check(net.count("GET", "/boards/") == 0, "non-Play details never fetch a board")

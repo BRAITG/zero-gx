@@ -51,6 +51,9 @@ var _sync_row: HBoxContainer
 var _refusal_label: Label
 var _hint: Label
 var _refresh: Button
+var _board_slot: VBoxContainer
+var _board := {}
+var _board_read := 0  # invalidates an old owner's held answer
 
 
 ## Shows the sheet of the catalogue-like `row` (level_id, sha256, latest, title, author, likes) over `parent`, opaque. Without `on_play` there is no Play button; with `to_you` it opens scrolled to the player's own section.
@@ -126,11 +129,54 @@ func _build(parent: Node, row: Dictionary, on_play: Callable, to_you: bool) -> O
 	_hint = _overlay.paragraph("", 22, Style.INK_DIM, mine)
 	_refresh = _button(mine, "Refresh", _refresh_now, "Refreshing…")
 	_refresh.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	if Community.available():
+		# After You: delayed board expansion cannot move the result-origin anchor or steal manual scroll.
+		_overlay.heading("Board")
+		_board_slot = _overlay.card()
+		var full := _button(_overlay.body, "Full board", _open_board)
+		full.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		Community.board_updated.connect(_board_updated)
+		_board = Community.cached_board(_sha)
+		_show_board()
 	Community.vote_result.connect(_vote_result)
 	Community.play_history_synced.connect(_plays_synced)
 	Community.identity_changed.connect(_identity_changed)
 	_read_feedback()
+	if _board_slot != null:
+		_read_board()
 	return _overlay
+
+
+func _open_board() -> void:
+	Leaderboard.open(_overlay, _sha, str(_row.get("title", "Level")), Progress.best_points(Community.STAGE_PREFIX + _sha))
+
+
+func _read_board() -> void:
+	_board_read += 1
+	var serial := _board_read
+	var owner := Community.player_id()
+	var reply: Dictionary = await Community.board(_sha)
+	if _alive() and serial == _board_read and owner == Community.player_id():
+		_board = reply
+		_show_board()
+
+
+func _board_updated(sha256: String) -> void:
+	if _alive() and sha256 == _sha:
+		_board = Community.cached_board(_sha)
+		_show_board()
+
+
+func _show_board() -> void:
+	if not _alive() or _board_slot == null:
+		return
+	Leaderboard.preview(_board_slot, _board, Progress.best_points(Community.STAGE_PREFIX + _sha))
+	for label: Label in _board_slot.find_children("*", "Label", true, false):
+		if label.get_parent() is VBoxContainer:
+			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if _board.is_empty():
+		var label := _board_slot.get_node("LeaderboardPreview").get_child(0) as Label
+		label.text = "Loading standings…"
 
 
 # --- reading ------------------------------------------------------------------------------------------------------------
@@ -300,6 +346,12 @@ func _identity_changed(account: String) -> void:
 		return
 	_error = ""
 	_forget_owner()
+	if _board_slot != null:
+		_board_read += 1
+		_board = Community.cached_board(_sha)
+		_show_board()
+		if account != "":
+			_read_board()
 	_loading = account != ""
 	_render()
 	if account != "":
