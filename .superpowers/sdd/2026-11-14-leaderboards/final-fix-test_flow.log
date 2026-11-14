@@ -1,0 +1,83 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+WARNING: Camera2D overridden to physics process mode due to use of physics interpolation.
+     at: _update_process_callback (scene/2d/camera_2d.cpp:88)
+     GDScript backtrace (most recent call first):
+         [0] _ready (res://scenes/ship.gd:131)
+         [1] level (res://tests/test_flow.gd:19)
+         [2] test_reaching_goal_wins (res://tests/test_flow.gd:30)
+         [3] _invoke (res://tests/run_tests.gd:108)
+         [4] _run (res://tests/run_tests.gd:84)
+PASS test_flow.gd::test_reaching_goal_wins
+PASS test_flow.gd::test_destroyed_loses
+PASS test_flow.gd::test_finish_is_idempotent
+PASS test_flow.gd::test_the_main_scene_opens_on_home
+PASS test_flow.gd::test_official_lists_every_level
+PASS test_flow.gd::test_official_row_shows_the_best_medal
+PASS test_flow.gd::test_win_saves_points
+PASS test_flow.gd::test_loss_saves_nothing
+PASS test_flow.gd::test_loss_cause_out_of_fuel
+PASS test_flow.gd::test_result_card_counts_up_and_fills_medal_slots
+PASS test_flow.gd::test_training_result_has_no_medal_slots
+PASS test_flow.gd::test_clock_waits_for_first_thrust
+PASS test_flow.gd::test_menu_locks_levels
+PASS test_flow.gd::test_intro_card_until_first_thrust
+PASS test_flow.gd::test_tour_walks_stops_then_plays
+PASS test_flow.gd::test_no_tour_once_won
+PASS test_flow.gd::test_goal_arrow_edge_point
+PASS test_flow.gd::test_distance_and_speed_units
+PASS test_flow.gd::test_credits_carry_the_licenses
+PASS test_flow.gd::test_velocity_arrow_setting
+PASS test_flow.gd::test_gravity_field_setting
+PASS test_flow.gd::test_the_last_training_stage_ends_the_training
+PASS test_flow.gd::test_main_menu_marks_completed_training
+PASS test_flow.gd::test_pause_toggles_the_tree
+PASS test_flow.gd::test_accept_in_flight_presses_nothing
+PASS test_flow.gd::test_result_card_takes_focus
+PASS test_flow.gd::test_fire_tap_after_finish_presses_nothing
+PASS test_flow.gd::test_cancel_resumes_from_the_pause_card
+PASS test_flow.gd::test_resume_returns_focus_to_the_caption
+PASS test_flow.gd::test_home_opens_with_official_focused
+PASS test_flow.gd::test_list_pages_focus_their_first_stage
+PASS test_flow.gd::test_overlay_closes_on_cancel_and_restores_focus
+PASS test_flow.gd::test_overlay_keeps_focus_inside
+PASS test_flow.gd::test_cancel_on_a_list_returns_home
+PASS test_flow.gd::test_cancel_on_home_does_nothing
+PASS test_flow.gd::test_home_opens_each_list_and_back_returns_home
+PASS test_flow.gd::test_menu_from_a_level_reopens_the_official_list
+PASS test_flow.gd::test_menu_from_a_training_stage_reopens_the_training_list
+PASS test_flow.gd::test_tutorial_ok_takes_focus
+PASS test_flow.gd::test_cancel_closes_the_tuning_panel_only
+PASS test_flow.gd::test_held_fire_does_not_press_the_result_card
+PASS test_flow.gd::test_focused_button_is_visible
+PASS test_flow.gd::test_ui_pause_settings_keeps_flight_frozen_until_resume
+PASS test_flow.gd::test_official_focus_advances_to_unfinished_level
+PASS test_flow.gd::test_results_enqueue_only_signed_in_play_new_best_wins
+PASS test_flow.gd::test_result_queues_its_finalized_memory_demo_when_best_demo_save_fails
+PASS test_flow.gd::test_result_posting_is_immediate_and_exact_rank_is_for_remote_stored_best
+PASS test_flow.gd::test_final_fix_best_false_failed_refresh_keeps_local_estimate_and_cached_remote_best
+PASS test_flow.gd::test_final_fix_best_false_without_board_never_fabricates_an_exact_local_rank
+PASS test_flow.gd::test_final_fix_result_uses_current_completion_not_old_hash_historical_best
+PASS test_flow.gd::test_result_pending_and_queue_save_error_are_visible_without_claiming_exact_rank
+PASS test_flow.gd::test_result_ignores_wrong_owner_hash_revision_and_superseding_same_hash
+PASS test_flow.gd::test_result_closed_during_held_score_and_board_only_updates_cache
+PASS test_flow.gd::test_result_matching_posted_score_becomes_exact_and_board_restores_focus
+PASS test_flow.gd::test_result_invalid_finalized_demo_never_falls_back_to_prior_best_replay
+PASS test_flow.gd::test_result_preview_and_actions_fit_logical_viewport_with_ad_footer
+PASS test_flow.gd::test_result_post_after_held_board_forces_fresh_preview_without_regressing_standing
+PASS test_flow.gd::test_campaign_cached_exact_estimate_and_no_cache_badges
+PASS test_flow.gd::test_opening_campaign_refreshes_only_completed_once_per_hash_hour
+PASS test_flow.gd::test_campaign_board_updates_in_place_and_board_return_preserves_selection
+PASS test_flow.gd::test_campaign_current_file_hash_never_uses_old_revision_rank_or_idbest
+PASS test_flow.gd::test_training_and_desktop_lists_have_no_boards_requests_or_badges
+PASS test_flow.gd::test_campaign_identity_change_invalidates_private_badge_immediately
+PASS test_flow.gd::test_campaign_unknown_owner_open_is_cache_only_without_sign_in_or_network
+PASS test_flow.gd::test_campaign_long_title_and_badge_fit_above_reserved_footer
+PASS test_flow.gd::test_campaign_failed_auto_refresh_is_hourly_but_manual_board_bypasses_cooldown
+PASS test_flow.gd::test_campaign_automatic_cooldown_is_scoped_to_owner_and_preserved_on_return
+PASS test_flow.gd::test_campaign_known_owner_expired_session_may_reauthenticate
+PASS test_flow.gd::test_campaign_unknown_owner_uses_public_cache_and_only_explicit_board_signs_in
+PASS test_flow.gd::test_campaign_fresh_cache_hit_does_not_delay_private_cache_expiry_refresh
+70 passed, 0 failed
+WARNING: 2 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)

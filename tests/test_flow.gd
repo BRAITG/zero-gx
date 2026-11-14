@@ -767,6 +767,18 @@ func _result_payload() -> Dictionary:
 	return {"level": {"kind": "official", "name": "Launch"}, "rows": rows, "you": {"rank": 25, "player": {"id": "p_me", "name": "My Pilot"}, "points": 700, "seconds": 30.25}, "count": 30, "quantiles": range(0, 3100, 150)}
 
 
+## Thirty real standings: the remote best beats this device's 1800-point completion.
+func _result_higher_best_payload() -> Dictionary:
+	var payload := _result_payload()
+	payload.you.rank = 2
+	payload.you.points = 9000
+	for i in payload.rows.size():
+		payload.rows[i].points = 10000 if i == 0 else 3000 - i * 100
+	payload.rows[1] = payload.you.duplicate(true)
+	payload.quantiles = [100, 200, 300, 500, 600, 800, 900, 1100, 1200, 1400, 1500, 1700, 1800, 2000, 2100, 2300, 2400, 2600, 2700, 9000, 10000]
+	return payload
+
+
 func _result_disk() -> CommunityScores:
 	var scores := CommunityScores.new()
 	scores.path = Community.history_path.get_basename() + "_scores.json"
@@ -834,20 +846,60 @@ func test_result_posting_is_immediate_and_exact_rank_is_for_remote_stored_best()
 	lvl.finish(true)
 	check(lvl.hud._result.visible and lvl.hud.result_text().contains("Posting"), "result shows without awaiting the held upload")
 	check(net.count("POST", "/scores") == 1, "score sync starts without waiting for the board")
-	var stored := _result_payload()
-	stored.you.rank = 7
-	stored.you.points = 900
-	for i in stored.rows.size():
-		stored.rows[i].points = 1020 - i * 20
-	stored.rows[6] = stored.you.duplicate(true)
+	var stored := _result_higher_best_payload()
 	net.answer("GET", "/boards/", 200, stored)
-	net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": false})
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
 	net.release_hold("POST", "/scores")
 	var text := lvl.hud.result_text()
-	check(text.contains("Your ranked best") and text.contains("Rank #7") and text.contains("900 points"), "best:false rank is labelled as the remote stored best")
-	check(text.contains("Estimate:") and not text.contains("Rank #25"), "higher local score remains estimated and bounded by the new remote rank")
+	check(text.contains("Your ranked best") and text.contains("Rank #2") and text.contains("9000 points"), "best:false uses the stored score from the board, not the submitted points")
+	check(text.contains("Estimate:") and not text.contains("Rank #25"), "lower local score remains estimated separately from the higher remote best")
 	check(button_starting(lvl.hud, "Board").is_visible_in_tree(), "eligible win offers Board")
 	check(lvl.hud.find_child("LeaderboardPreview", true, false) != null, "eligible result hosts the shared top-five preview")
+
+
+func test_final_fix_best_false_failed_refresh_keeps_local_estimate_and_cached_remote_best() -> void:
+	var net := _result_setup()
+	net.answer("GET", "/boards/", 200, _result_higher_best_payload())
+	var lvl := _result_level()
+	lvl.finish(true)
+	net.answer("GET", "/boards/", 0)
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
+	net.release_hold("POST", "/scores")
+	var text := lvl.hud.result_text()
+	check(text.contains("Estimate:") and text.contains("9000 points") and text.contains("Rank #2 of 30 (cached)"), "POST submitted points cannot inherit the stored best's rank when refresh fails")
+	var preview := lvl.hud.find_child("LeaderboardPreview", true, false)
+	var labels := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
+	check(labels.contains("Local best · 1800 points") and labels.contains("9000"), "preview retains separate local and cached remote scores")
+
+
+func test_final_fix_best_false_without_board_never_fabricates_an_exact_local_rank() -> void:
+	var net := _result_setup()
+	net.answer("GET", "/boards/", 0)
+	var lvl := _result_level()
+	lvl.finish(true)
+	net.answer("GET", "/boards/", 0)
+	net.answer("POST", "/scores", 200, {"rank": 2, "points": 1800, "best": false})
+	net.release_hold("POST", "/scores")
+	var text := lvl.hud.result_text()
+	check(text.contains("Estimate unavailable") and not text.contains("Your ranked best") and not text.contains("Rank #2"), "without a stored score the lower local completion stays unverified")
+
+
+func test_final_fix_result_uses_current_completion_not_old_hash_historical_best() -> void:
+	var net := _result_setup()
+	_campaign_best("b".repeat(64), 9999)
+	var lvl := _result_level()
+	lvl.finish(true)
+	check(Progress.best_points("level_01") == 9999 and Progress.best_demo("level_01").level_sha256 == "b".repeat(64), "historical progress remains intact")
+	check(net.count("POST", "/scores") == 0 and _result_disk().entries("p_me").is_empty(), "current non-best completion is never retroactively queued")
+	var preview := lvl.hud.find_child("LeaderboardPreview", true, false)
+	var text := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
+	check(text.contains("Local best · 1800 points") and not text.contains("9999"), "current-hash preview estimates only the completed current run")
+	button_starting(lvl.hud, "Board").pressed.emit()
+	var sheets := lvl.find_children("*", "Overlay", true, false)
+	check(sheets.size() == 1, "result still opens its current board")
+	if not sheets.is_empty():
+		var board_text := "\n".join(sheets[0].find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
+		check(board_text.contains("Local best · 1800 points") and not board_text.contains("9999"), "full board receives the same current-hash local score")
 
 
 func test_result_pending_and_queue_save_error_are_visible_without_claiming_exact_rank() -> void:

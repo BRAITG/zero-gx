@@ -1,0 +1,22 @@
+Godot Engine v4.7.2.stable.official.ed1daf0bf - https://godotengine.org
+
+FAIL test_community_boards.gd::test_final_fix_background_post_expires_public_and_private_cache_before_board_opens: old data remains available for explicitly cached display but is stale; both cache components expire durably; opening after a restart fetches the posted board instead of reusing the hour-old standing
+FAIL test_community_boards.gd::test_final_fix_preupload_get_cannot_restore_freshness_after_background_post: a held pre-upload answer cannot make stale rows fresh; opening still fetches after the stale in-flight answer completes
+FAIL test_community_boards.gd::test_final_fix_postupload_get_does_not_join_or_get_overwritten_by_older_get: post-upload reads cannot coalesce with requests from before the upload
+PASS test_community_boards.gd::test_final_fix_score_invalidation_matches_latest_owner_hash_and_revision
+WARNING: Camera2D overridden to physics process mode due to use of physics interpolation.
+     at: _update_process_callback (scene/2d/camera_2d.cpp:88)
+     GDScript backtrace (most recent call first):
+         [0] _ready (res://scenes/ship.gd:131)
+         [1] _result_level (res://tests/test_flow.gd:759)
+         [2] test_final_fix_best_false_failed_refresh_keeps_local_estimate_and_cached_remote_best (res://tests/test_flow.gd:863)
+         [3] _invoke (res://tests/run_tests.gd:108)
+         [4] _run (res://tests/run_tests.gd:84)
+FAIL test_flow.gd::test_final_fix_best_false_failed_refresh_keeps_local_estimate_and_cached_remote_best: POST submitted points cannot inherit the stored best's rank when refresh fails
+FAIL test_flow.gd::test_final_fix_best_false_without_board_never_fabricates_an_exact_local_rank: without a stored score the lower local completion stays unverified
+FAIL test_flow.gd::test_final_fix_result_uses_current_completion_not_old_hash_historical_best: current-hash preview estimates only the completed current run; full board receives the same current-hash local score
+1 passed, 6 failed
+WARNING: 10 ObjectDB instances were leaked at exit (run with `--verbose` for details).
+   at: cleanup (core/object/object.cpp:2536)
+ERROR: 2 resources still in use at exit (run with --verbose for details).
+   at: clear (core/io/resource.cpp:822)

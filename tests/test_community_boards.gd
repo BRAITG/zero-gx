@@ -182,3 +182,113 @@ func test_deleted_owner_private_board_is_erased_but_public_board_stays() -> void
 	check(await Community.delete_account() == "", "account deletion succeeds")
 	_owner("p_1")
 	check(Community.cached_board(SHA).get("you") == null and Community.cached_board(SHA).rows.size() == 1, "erasure removes private standing, not public rows")
+
+
+func _upload_board(posted := false, owner := "p_1") -> Dictionary:
+	var payload := _payload(owner)
+	payload.rows = []
+	var points: Array = [1200, 1150, 1100, 1050, 1000, 950] + ([900] if posted else []) + range(890, 710, -10) + ([] if posted else [700]) + range(690, 640, -10)
+	for i in points.size():
+		var row := _row(owner if points[i] == (900 if posted else 700) else "other_%d" % i, points[i])
+		row.rank = i + 1
+		if row.player.id == owner:
+			payload.you = row
+		if i < 20:
+			payload.rows.append(row)
+	payload.quantiles = []
+	return payload
+
+
+func _queue_board_score(net: FakeTransport, sha := SHA) -> void:
+	var run := Demo.new()
+	run.level_sha256 = sha
+	run.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 50.0, "hull": 40.0}, {})
+	run.add_event(Demo.Event.GOAL_REACHED)
+	Progress.record_win("stage1", 900, 0.0)
+	Progress.save_best_demo("stage1", run)
+	net.answer("GET", "/nonce", 200, {"nonce": "board_upload"})
+	check(Community.queue_score("stage1", run) == "", "score queues without any result or board UI")
+
+
+func test_final_fix_background_post_expires_public_and_private_cache_before_board_opens() -> void:
+	var net := _fake()
+	net.answer("GET", ROUTE, 200, _upload_board())
+	await Community.board(SHA)
+	net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": true})
+	_queue_board_score(net)
+	await frames(4)
+	check(net.count("POST", "/scores") == 1 and net.count("GET", ROUTE) == 1, "background success does not add a UI refresh loop")
+	var cached := Community.cached_board(SHA)
+	check(cached.you.points == 700 and cached.you.rank == 25 and cached.fetched_at == 0, "old data remains available for explicitly cached display but is stale")
+	var public: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Community.dir + "board_" + SHA + ".json"))
+	var private: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(Community._board_you_path("p_1", SHA)))
+	check(public.fetched_at == 0 and private.fetched_at == 0, "both cache components expire durably")
+	check(Progress.best_points("stage1") == 900 and Progress.best_demo("stage1") != null, "posting never deletes the local best")
+	Community.use_defaults()
+	Community.transport = net
+	Community.platform = FakePlatform.new()
+	net.answer("GET", ROUTE, 200, _upload_board(true))
+	var sheet := Leaderboard.open(world, SHA, "Loop", 900)
+	check(net.count("GET", ROUTE) == 2 and Community.cached_board(SHA).you.rank == 7 and Community.cached_board(SHA).you.points == 900, "opening after a restart fetches the posted board instead of reusing the hour-old standing")
+	sheet.close()
+
+
+func test_final_fix_preupload_get_cannot_restore_freshness_after_background_post() -> void:
+	var net := _fake()
+	net.answer("GET", ROUTE, 200, _upload_board())
+	await Community.board(SHA)
+	net.hold("GET", ROUTE)
+	var results := []
+	var read := func() -> void: results.append(await Community.board(SHA, true))
+	read.call()
+	net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": true})
+	_queue_board_score(net)
+	await frames(4)
+	net.answer("GET", ROUTE, 200, _upload_board())
+	net.release_hold("GET", ROUTE)
+	check(results.size() == 1 and Community.cached_board(SHA).fetched_at == 0, "a held pre-upload answer cannot make stale rows fresh")
+	net.answer("GET", ROUTE, 200, _upload_board(true))
+	var sheet := Leaderboard.open(world, SHA, "Loop", 900)
+	check(net.count("GET", ROUTE) == 3 and Community.cached_board(SHA).you.rank == 7, "opening still fetches after the stale in-flight answer completes")
+	sheet.close()
+
+
+func test_final_fix_postupload_get_does_not_join_or_get_overwritten_by_older_get() -> void:
+	var net := _fake()
+	net.hold("GET", ROUTE)
+	var results := []
+	var read := func() -> void: results.append(await Community.board(SHA, true))
+	read.call()
+	net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": true})
+	_queue_board_score(net)
+	await frames(4)
+	net.answer("GET", ROUTE, 200, _upload_board(true))
+	var fresh := []
+	var read_fresh := func() -> void: fresh.append(await Community.board(SHA))
+	read_fresh.call()
+	check(net.count("GET", ROUTE) == 2 and fresh.size() == 1 and fresh[0].get("you", {}).get("rank") == 7, "post-upload reads cannot coalesce with requests from before the upload")
+	net.answer("GET", ROUTE, 200, _upload_board())
+	net.release_hold("GET", ROUTE)
+	var cached := Community.cached_board(SHA)
+	check(results.size() == 1 and cached.you.rank == 7 and cached.you.points == 900 and cached.fetched_at > 0, "late old answer cannot overwrite the newer fresh cache")
+
+
+func test_final_fix_score_invalidation_matches_latest_owner_hash_and_revision() -> void:
+	for changed in ["owner", "revision", "hash"]:
+		Community.use_defaults()
+		var net := _fake()
+		net.answer("GET", ROUTE, 200, _upload_board())
+		await Community.board(SHA, true)
+		net.hold("POST", "/scores")
+		_queue_board_score(net, "b".repeat(64) if changed == "hash" else SHA)
+		await frames(4)
+		if changed == "owner":
+			_owner("p_2")
+			net.answer("GET", ROUTE, 200, _upload_board(false, "p_2"))
+			await Community.board(SHA)
+		elif changed == "revision":
+			_queue_board_score(net)
+		net.answer("POST", "/scores", 200, {"rank": 7, "points": 900, "best": true})
+		net.release_hold("POST", "/scores")
+		await Community.board(SHA)
+		check(net.count("GET", ROUTE) == (2 if changed == "owner" else 1), "%s: unrelated or obsolete success cannot invalidate the current board" % changed)

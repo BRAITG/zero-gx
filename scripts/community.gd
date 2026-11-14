@@ -52,8 +52,9 @@ var _deleting := false  # a deletion is with the server: its local erasure is ow
 var _choices := {}  # target of a vote → serial of the latest call for it
 var _choice_serial := 0
 var _settlements := {}  # "account|vote key" → {revision, status, error}: an answer the server gave for a queued choice whose acknowledgment could not be saved. Memory only: a reset or a relaunch forgets it and the choice is simply sent again, as after a lost answer.
-var _board_reads := {}  # generation|owner|sha → one shared request
+var _board_reads := {}  # generation|owner|sha|version → one shared request
 var _board_errors := {}  # sha → failed refresh sentence; cache-only surfaces must show it as stale
+var _board_versions := {}  # sha → invalidation serial; a pre-upload read cannot restore freshness
 
 signal _sign_in_done(result: Dictionary)
 ## One attempt at a queued choice, after its owner and generation were checked: applied (`error` empty), refused for good (the choice is dropped) or kept for a later flush. `kind` is "like" or "difficulty"; `sha256` is "" for a like; `value` is the choice (bool, or the difficulty with "" for a removal).
@@ -606,6 +607,7 @@ func _reset_work() -> void:
 	_score_posting.clear()
 	_board_reads.clear()
 	_board_errors.clear()
+	_board_versions.clear()
 	for kind in _gaps:
 		_gaps[kind] = false
 
@@ -1107,6 +1109,8 @@ func _flush_scores(account: String, generation: int) -> String:
 	if settled and error == "":
 		result.merge(reply.data)
 	if scores.revision(account, sha) == revision:  # an answer about an older best is not this best's standing
+		if settled and error == "":
+			_invalidate_board(account, sha)
 		if not _score_results.has(account):
 			_score_results[account] = {}
 		_score_results[account][sha] = result.duplicate(true)
@@ -1137,6 +1141,16 @@ func _score_answer(data: Dictionary) -> bool:
 # --- per-version standings -------------------------------------------------------------------------------------------
 
 
+## Posting changes public standings and this owner's private best, even with no board UI open.
+func _invalidate_board(owner: String, sha256: String) -> void:
+	_board_versions[sha256] = int(_board_versions.get(sha256, 0)) + 1
+	for path: String in [dir + "board_" + sha256 + ".json", _board_you_path(owner, sha256)]:
+		var stored: Variant = _parse(FileAccess.get_file_as_bytes(path))
+		if stored is Dictionary and stored.get("sha256") == sha256:
+			stored["fetched_at"] = 0
+			_store(path, JSON.stringify(stored).to_utf8_buffer())
+
+
 ## Public rows and distribution belong to the hash; `you` is read only from the current owner's separate file.
 ## Cache-only answers are always labelled cached. A failed refresh also marks them offline until a successful read.
 func cached_board(sha256: String) -> Dictionary:
@@ -1163,7 +1177,7 @@ func cached_board(sha256: String) -> Dictionary:
 	return data
 
 
-## Coroutine: top 20 for this hash, at most once/hour unless forced. Concurrent reads share only their owner/generation.
+## Coroutine: top 20 for this hash, at most once/hour unless forced. Concurrent reads share their owner/generation/version.
 ## A refresh failure returns the last public data and this owner's standing, explicitly cached/offline.
 func board(sha256: String, force := false) -> Dictionary:
 	if not _is_sha(sha256):
@@ -1176,19 +1190,20 @@ func board(sha256: String, force := false) -> Dictionary:
 	if not force and owner != "" and cached.get("owner") == owner and not cached.get("offline", false) and now >= cached.fetched_at and now - cached.fetched_at < BOARD_CACHE_SECONDS:
 		return cached
 	var generation := _generation
-	var key := "%d|%s|%s" % [generation, owner, sha256]
+	var version: int = _board_versions.get(sha256, 0)
+	var key := "%d|%s|%s|%d" % [generation, owner, sha256, version]
 	if _board_reads.has(key):
 		var joined: Dictionary = await _board_reads[key].completed
 		return joined.duplicate(true)
 	var read := BoardRead.new()
 	_board_reads[key] = read
-	var result := await _read_board(sha256, owner, generation)
+	var result := await _read_board(sha256, owner, generation, version)
 	_board_reads.erase(key)
 	read.completed.emit(result)
 	return result.duplicate(true)
 
 
-func _read_board(sha256: String, owner: String, generation: int) -> Dictionary:
+func _read_board(sha256: String, owner: String, generation: int, version: int) -> Dictionary:
 	var reply := await _authed("GET", "/boards/%s?limit=20" % sha256, TYPE_DICTIONARY, Callable(), true, owner)
 	if generation != _generation or (owner != "" and owner != _account()) or (reply.has("account") and reply.account != _account()):
 		return _board_failed(sha256, ACCOUNT_CHANGED, false)
@@ -1197,7 +1212,12 @@ func _read_board(sha256: String, owner: String, generation: int) -> Dictionary:
 	var data := _clean_board(reply.data)
 	if data.is_empty():
 		return _board_failed(sha256, BAD_ANSWER)
-	var fetched := int(Time.get_unix_time_from_system())
+	var outdated: bool = version != _board_versions.get(sha256, 0)
+	if outdated:
+		var cached := cached_board(sha256)
+		if not cached.is_empty():
+			return cached
+	var fetched := 0 if outdated else int(Time.get_unix_time_from_system())
 	data.merge({"sha256": sha256, "fetched_at": fetched}, true)
 	_store(dir + "board_" + sha256 + ".json", JSON.stringify(data).to_utf8_buffer())
 	var you := _board_row(reply.data.get("you"))
@@ -1206,8 +1226,9 @@ func _read_board(sha256: String, owner: String, generation: int) -> Dictionary:
 		you = {}
 	if account != "":
 		_store(_board_you_path(account, sha256), JSON.stringify({"owner": account, "sha256": sha256, "fetched_at": fetched, "you": null if you.is_empty() else you}).to_utf8_buffer())
-	data.merge({"owner": account, "you": null if you.is_empty() else you, "cached": false, "offline": false}, true)
-	_board_errors.erase(sha256)
+	data.merge({"owner": account, "you": null if you.is_empty() else you, "cached": outdated, "offline": false}, true)
+	if not outdated:
+		_board_errors.erase(sha256)
 	board_updated.emit(sha256)
 	return data
 

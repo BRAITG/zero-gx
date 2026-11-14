@@ -267,7 +267,8 @@ func finish(won: bool) -> void:
 		_result_generation += 1
 		_result_account = Community.player_id()
 		_result_sha = level_sha256
-		_result_points = Progress.best_points(level_id)
+		var best_run := Progress.best_demo(level_id)
+		_result_points = Progress.best_points(level_id) if best_run != null and best_run.level_sha256 == _result_sha else int(result.points)
 		_result_board = Community.cached_board(_result_sha)
 		if result.new_best and demo != null and Community.signed_in() and _result_account != "":
 			_result_error = Community.queue_score(level_id, demo)
@@ -357,8 +358,8 @@ func _render_standing() -> void:
 		return
 	var board := _result_board.duplicate(true)
 	var state: String = _result_score.get("state", "")
-	if state == "posted":
-		# POST rank/points describe the server's stored best, including when best is false.
+	if state == "posted" and _result_score.get("best", false):
+		# POST points are submitted points; only best:true associates them with the stored-best rank.
 		board["owner"] = _result_account
 		board["you"] = {"rank": _result_score.rank, "points": _result_score.points, "player": {"id": _result_account}}
 		board["cached"] = false
