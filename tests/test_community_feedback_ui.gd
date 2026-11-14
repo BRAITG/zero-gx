@@ -223,8 +223,10 @@ func _plain_level() -> Level:
 
 ## Publish, then Use previous run: the final confirmation, which only Submit for review leaves.
 func _confirmation(screen: MyLevelsScreen) -> void:
+	screen._list.get_child(0).pressed.emit()
+	await frames(2)
 	_buttons(screen, "Publish")[0].pressed.emit()
-	await frames(1)
+	await frames(2)
 	_buttons(screen, "Use previous run")[0].pressed.emit()
 	await frames(2)
 

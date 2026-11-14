@@ -146,7 +146,11 @@ func test_my_levels_screen_offers_import_and_export() -> void:
 	world.add_child(screen)
 	await frames(2)
 	var labels: Array = screen.find_children("*", "Button", true, false).map(func(b: Button): return b.text)
-	check("Import" in labels and "Export" in labels, "buttons: %s" % [labels])
+	check("Import" in labels and "New level" in labels, "header buttons: %s" % [labels])
+	screen._list.get_child(0).pressed.emit()
+	await frames(2)
+	labels = screen.find_children("*", "Overlay", true, false)[0].body.find_children("*", "Button", true, false).map(func(b: Button): return b.text)
+	check("Export" in labels, "the level's sheet offers Export: %s" % [labels])
 	screen.queue_free()
 
 
@@ -168,10 +172,12 @@ func test_an_invalid_draft_says_why_play_is_off() -> void:
 	var screen := MyLevelsScreen.new()
 	world.add_child(screen)
 	await frames(2)
+	var reasons: Array = screen.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text == "Needs fixes: " + problems[0])
+	check(reasons.size() == 1, "the row's status is the first problem: %s" % [problems[0]])
+	screen._list.get_child(0).pressed.emit()
+	await frames(2)
 	var plays: Array = screen.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == "Play")
 	check(plays.size() == 1 and plays[0].disabled, "Play is off for the invalid draft")
-	var reasons: Array = screen.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text.contains(problems[0]))
-	check(not reasons.is_empty(), "the first problem is shown beside Play: %s" % [problems[0]])
 	screen.queue_free()
 
 
@@ -198,17 +204,17 @@ func test_imported_invalid_level_shows_its_thumbnail_and_keeps_play_disabled() -
 		check(thumbnail.custom_minimum_size.is_equal_approx(Vector2(128, 72)), "thumbnail slot is 128 × 72: %s" % thumbnail.custom_minimum_size)
 		check(is_equal_approx(thumbnail.size.x / thumbnail.size.y, 16.0 / 9.0), "thumbnail stays 16:9: %s" % thumbnail.size)
 		check(thumbnail.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the thumbnail ignores the mouse")
+	var warnings: Array = screen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.begins_with("Needs fixes:"))
+	check(warnings.size() == 1, "the row says what to fix")
+	screen._list.get_child(0).pressed.emit()
+	await frames(2)
 	var plays: Array = screen.find_children("*", "Button", true, false).filter(func(button: Button) -> bool: return button.text == "Play")
 	check(plays.size() == 1 and plays[0].disabled, "Play stays off for the invalid imported level")
-	var warnings: Array = screen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.begins_with("⚠ Cannot play:"))
-	check(warnings.size() == 1, "the invalid-level warning stays in the card")
-	if thumbnails.size() == 1 and warnings.size() == 1:
-		check(warnings[0].get_global_rect().position.y >= thumbnails[0].get_parent().get_global_rect().end.y, "the warning stays below the card's thumbnail and actions")
 	screen.queue_free()
 	MyLevels.delete(id)
 
 
-func test_my_level_actions_wrap_inside_a_narrow_window_and_title_ellipsises() -> void:
+func test_a_narrow_window_keeps_the_row_inside_and_the_title_ellipsises() -> void:
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(960, 720)
 	world.add_child(viewport)
@@ -224,31 +230,20 @@ func test_my_level_actions_wrap_inside_a_narrow_window_and_title_ellipsises() ->
 	var screen := MyLevelsScreen.new()
 	viewport.add_child(screen)
 	await frames(2)
-	var expected_actions := ["Edit", "Watch", "Play", "Export", "Delete"]
-	var buttons: Array = screen.find_children("*", "Button", true, false).filter(func(button: Button) -> bool: return button.text in expected_actions)
 	var bounds := Rect2(Vector2.ZERO, viewport.size)
-	check(buttons.size() == expected_actions.size(), "all level actions are shown: %s" % [buttons.map(func(button: Button) -> String: return button.text)])
-	var first_y := -1.0
-	var wraps := false
-	for button: Button in buttons:
-		var rect := button.get_global_rect()
-		check(button.is_visible_in_tree() and bounds.encloses(rect), "%s stays visible inside the narrow screen: %s" % [button.text, rect])
-		if first_y < 0.0:
-			first_y = rect.position.y
-		elif rect.position.y > first_y + 1.0:
-			wraps = true
-	check(wraps, "actions wrap to another row in the same card")
+	var row: Button = screen._list.get_child(0)
+	check(bounds.encloses(row.get_global_rect()), "the row stays inside the narrow screen: %s" % row.get_global_rect())
 	var scrolls: Array = screen.find_children("*", "ScrollContainer", true, false)
 	check(scrolls.size() == 1 and scrolls[0].horizontal_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED, "the level list has no horizontal scrolling")
 	var titles: Array = screen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.contains(long_title))
 	check(titles.size() == 1 and titles[0].text_overrun_behavior == TextServer.OVERRUN_TRIM_ELLIPSIS, "the long level title ellipsises")
-	var thumbnails: Array[Node] = screen.find_children("*", "Thumbnail", true, false)
-	check(not thumbnails.is_empty(), "the wrapped card keeps its thumbnail")
-	for node: Node in thumbnails:
-		var thumbnail: Thumbnail = node as Thumbnail
-		check(thumbnail.size.y > 0.0, "wrapped thumbnail has a laid-out height")
-		if thumbnail.size.y > 0.0:
-			check(is_equal_approx(thumbnail.size.x / thumbnail.size.y, 16.0 / 9.0), "wrapped thumbnail stays 16:9: %s" % thumbnail.size)
+	var thumbnail: Thumbnail = screen.find_children("*", "Thumbnail", true, false)[0]
+	check(thumbnail.size.y > 0.0 and is_equal_approx(thumbnail.size.x / thumbnail.size.y, 16.0 / 9.0), "the thumbnail stays 16:9: %s" % thumbnail.size)
+	row.pressed.emit()
+	await frames(2)
+	var expected_actions := ["Edit", "Play", "Watch", "Export", "Delete"]
+	var buttons: Array = screen.find_children("*", "Overlay", true, false)[0].body.find_children("*", "Button", true, false)
+	check(buttons.map(func(button: Button) -> String: return button.text) == expected_actions, "the sheet offers the actions: %s" % [buttons.map(func(button: Button) -> String: return button.text)])
 	screen.queue_free()
 	viewport.queue_free()
 	MyLevels.delete(id)

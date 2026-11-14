@@ -120,6 +120,8 @@ func _build(title: String, opaque: bool) -> void:
 	heading_label.text = title
 	heading_label.add_theme_font_override("font", Style.display_font)
 	heading_label.add_theme_font_size_override("font_size", 36)
+	heading_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	heading_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS  # a long level title must not push past the column
 	top.add_child(heading_label)
 	scroll = ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL

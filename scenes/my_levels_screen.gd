@@ -1,15 +1,17 @@
 class_name MyLevelsScreen
 extends Control
-## The player's own levels: make a new one, import or export one, edit, play or delete.
+## The player's own levels: one status row each. A row opens the level's sheet (edit, play, publish, export, delete); New level and Import are in the header.
 
 const MENU := "res://scenes/main.tscn"
+const ROW_HEIGHT := 100
+const FIX_COLOR := Color("#ff8a6a")
 
 ## Set only by a won Publish test flight; opening the screen never submits it.
 var confirm_publish_id := ""
 
 var _column: VBoxContainer
 var _list: VBoxContainer
-var _statuses := {}  # community level id → {status, version, comment}
+var _statuses := {}  # community level id → Community.statuses()
 var _busy := false  # a submission is on its way
 
 
@@ -32,7 +34,7 @@ func _ready() -> void:
 	title.add_theme_font_override("font", Style.display_font)
 	title.add_theme_font_size_override("font_size", 36)
 	top.add_child(title)
-	_button(top, "New level", func() -> void: _edit(MyLevels.new_id()))
+	_primary(_button(top, "New level", func() -> void: _edit(MyLevels.new_id())))
 	_button(top, "Import", _import)
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -47,7 +49,7 @@ func _ready() -> void:
 	_refresh_statuses()
 	Style.focus_first.call_deferred(_column)  # after layout
 	if confirm_publish_id != "" and Community.available():
-		_confirm_publish.call_deferred(confirm_publish_id)
+		_publish.call_deferred(confirm_publish_id, true)
 
 
 func _fill() -> void:
@@ -61,77 +63,85 @@ func _fill() -> void:
 		empty.add_theme_font_size_override("font_size", 24)
 		_list.add_child(empty)
 	for id in ids:
-		var data := MyLevels.load_level(id)
-		var card := VBoxContainer.new()  # the row, and under it the submission line
-		card.add_theme_constant_override("separation", 4)
-		_list.add_child(card)
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 12)
-		card.add_child(row)
-		var thumbnail := Thumbnail.of_sketch(LevelFormat.sketch(data))
-		thumbnail.custom_minimum_size = Vector2(128, 72)
-		thumbnail.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(thumbnail)
-		var label := Label.new()
-		var best := Progress.best_points(id)
-		label.text = "%s%s · %s" % ["✓ " if MyLevels.is_completed(id) else "", data.get("title", "?"), "—" if best < 0 else str(best)]
-		label.add_theme_font_size_override("font_size", 24)
-		label.custom_minimum_size.x = 200
-		label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-		row.add_child(label)
-		var actions := HFlowContainer.new()
-		actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		actions.add_theme_constant_override("h_separation", 12)
-		actions.add_theme_constant_override("v_separation", 12)
-		row.add_child(actions)
-		_button(actions, "Edit", _edit.bind(id))
-		if MyLevels.has_demo(id):
-			_button(actions, "Watch", _watch.bind(id, data))
-		var problems := LevelFormat.validate(data)
-		var play := _button(actions, "Play", func() -> void: Progress.open(id))
-		play.disabled = not problems.is_empty()
-		_button(actions, "Export", _export.bind(id, str(data.get("title", "level"))))
-		_button(actions, "Delete", _confirm_delete.bind(id, str(data.get("title", "?"))))
-		if not problems.is_empty():  # says what to fix, so a draft that cannot be played is not a mystery
-			var reason := Label.new()
-			reason.text = "⚠ Cannot play: " + problems[0] + ("  (+%d more)" % (problems.size() - 1) if problems.size() > 1 else "")
-			reason.add_theme_font_size_override("font_size", 20)
-			reason.add_theme_color_override("font_color", Color("#ff8a6a"))
-			reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			card.add_child(reason)
-		if Community.available():
-			_submission_line(card, id)
+		_add_row(id)
 
 
-## Under a row: review status and Publish for a draft not submitted as it is now.
-func _submission_line(card: VBoxContainer, id: String) -> void:
-	var submitted := MyLevels.is_submitted(id)
-	var text := _status_text(Community.level_id_of(id))
-	if text == "" and submitted:
-		text = "Submitted"  # the server's word has not come yet, or cannot be reached
-	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 12)
-	card.add_child(line)
+## A level's row: the whole row is one button that opens the level's sheet.
+func _add_row(id: String) -> void:
+	var data := MyLevels.load_level(id)
+	var button := Button.new()
+	button.name = "Row"
+	button.custom_minimum_size.y = ROW_HEIGHT
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.clip_contents = true
+	button.pressed.connect(Sfx.play.bind("tap"))
+	button.pressed.connect(_open_sheet.bind(id))
+	_list.add_child(button)
+	var content := HBoxContainer.new()
+	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 8)
+	content.add_theme_constant_override("separation", 16)
+	button.add_child(content)
+	var thumbnail := Thumbnail.of_sketch(LevelFormat.sketch(data))
+	thumbnail.custom_minimum_size = Vector2(128, 72)
+	thumbnail.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	thumbnail.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(thumbnail)
+	var text := VBoxContainer.new()
+	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.alignment = BoxContainer.ALIGNMENT_CENTER
+	text.add_theme_constant_override("separation", 2)
+	content.add_child(text)
+	text.add_child(_label(str(data.get("title", "?")), 24, Style.INK))
+	var status := _status_line(id, data)
+	text.add_child(_label(status[0], 20, status[1]))
+
+
+func _label(text: String, font_size: int, color: Color) -> Label:
 	var label := Label.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 20)
-	label.add_theme_color_override("font_color", Style.INK_DIM)
-	label.custom_minimum_size.x = 300  # lines up with the title above
-	line.add_child(label)
-	if not submitted:
-		_button(line, "Publish", _publish.bind(id))
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", color)
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	return label
 
 
-func _status_text(community_id: String) -> String:
-	var status: Dictionary = _statuses.get(community_id, {})
-	match status.get("status"):
-		"open":
-			return "Pending"
-		"approved":
-			return "Approved v%d" % int(status.get("version", 1))
-		"rejected":
-			return "Rejected: " + status.comment if status.get("comment", "") != "" else "Rejected"
-	return ""
+## [text, colour] of a level's one status line. Desktop builds (no Community) know only the first three states.
+func _status_line(id: String, data: Dictionary) -> Array:
+	var problems := LevelFormat.validate(data)
+	if not problems.is_empty():
+		return ["Needs fixes: " + problems[0], FIX_COLOR]
+	if Community.available():
+		var status: Dictionary = _statuses.get(Community.level_id_of(id), {})
+		match status.get("status"):
+			"open":
+				return ["In review", Style.INK_DIM]
+			"rejected":
+				return ["Rejected: " + status.comment if status.get("comment", "") != "" else "Rejected", FIX_COLOR]
+			"approved":
+				return [_published_line(data, status), Style.INK_DIM]
+		if MyLevels.is_submitted(id):
+			return ["Submitted", Style.INK_DIM]  # the server's word has not come yet, or cannot be reached
+	if MyLevels.is_completed(id):
+		return ["Ready to publish", Hud.GOAL_GREEN]
+	return ["Not tested yet", Style.INK_DIM]
+
+
+## "Published v2 · Hard · 64 players · ♥ 42"; a part the status lacks (offline, no stats) is left out, and an edited draft says so instead of the numbers.
+func _published_line(data: Dictionary, status: Dictionary) -> String:
+	var parts := ["Published v%d" % int(status.get("version", 1))]
+	if status.has("sha256") and LevelFormat.sha256(data) != status.sha256:
+		return parts[0] + " · edited since"
+	var chip := DifficultyChip.text_of(status)  # "Rated Hard": the source word is the chip's, the line keeps the label
+	if chip != "":
+		parts.append(chip.get_slice(" ", 1))
+	if status.has("starters"):
+		parts.append("%d %s" % [status.starters, "player" if status.starters == 1 else "players"])
+	if status.has("likes"):
+		parts.append("♥ %d" % status.likes)
+	return " · ".join(parts)
 
 
 ## Refreshes the statuses from the server where the player is signed in; Community falls back to the last known ones.
@@ -145,18 +155,79 @@ func _refresh_statuses() -> void:
 	_refill()
 
 
-func _publish(id: String) -> void:
+## The sheet of one level: Edit first, Delete last.
+func _open_sheet(id: String) -> void:
+	var data := MyLevels.load_level(id)
+	var o := Overlay.open(self, str(data.get("title", "?")))
+	_primary(_sheet_button(o, "Edit", _edit.bind(id)))
+	var play := _sheet_button(o, "Play", func() -> void: Progress.open(id))
+	play.disabled = not LevelFormat.validate(data).is_empty()
+	if MyLevels.has_demo(id):
+		_sheet_button(o, "Watch", _watch.bind(id, data))
+	if Community.available() and not MyLevels.is_submitted(id):
+		_sheet_button(o, "Publish", _publish.bind(id))
+	_sheet_button(o, "Export", _export.bind(id, str(data.get("title", "level"))))
+	var delete := _sheet_button(o, "Delete", _confirm_delete.bind(id, str(data.get("title", "?"))))
+	for color in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color"]:
+		delete.add_theme_color_override(color, Hud.WARNING)  # danger: still behind its confirmation
+
+
+## A full-width button of a level sheet; the sheet closes before `action` runs.
+func _sheet_button(o: Overlay, text: String, action: Callable) -> Button:
+	var button := _button(o.body, text, func() -> void:
+		o.close()
+		action.call())
+	button.custom_minimum_size.x = Overlay.WIDTH
+	return button
+
+
+## The row's primary action, styled as the pressed button.
+func _primary(button: Button) -> void:
+	button.add_theme_stylebox_override("normal", button.get_theme_stylebox("pressed"))
+
+
+## The Publish sheet: 1. prove it, 2. suggest a difficulty, 3. submit. `proven` when a won proof flight just ended. Nothing uploads before Submit.
+func _publish(id: String, proven := false) -> void:
 	if not Community.available() or not _validate_publish(id):
 		return
-	var o := Overlay.open(self, "Publish level")
-	o.paragraph("A finishing recording proves this level can be completed.")
-	if MyLevels.demo(id) != null:
-		_button(o.body, "Use previous run", func() -> void:
-			o.close()
-			_confirm_publish(id))
-		_button(o.body, "Play again", Progress.open.bind(id, true, true))
+	var o := Overlay.open(self, "Publish")
+	o.paragraph("“%s”" % MyLevels.load_level(id).get("title", "?"), 28, Style.ACCENT)
+	var proof := o.card()
+	var suggestion := o.card()
+	var send := o.card()
+	var state := {"proven": proven, "submit": null}  # a lambda copies a bool, so the flags live in a Dictionary
+	var option := CommunityLevelDetails.difficulty_option()
+	var update := func() -> void:
+		state.submit.disabled = not state.proven or CommunityLevelDetails.chosen(option) == ""
+	o.paragraph("2. Suggest a difficulty", 24, Style.INK, suggestion)
+	suggestion.add_child(option)
+	o.paragraph("A moderator chooses the reviewed difficulty. Your suggestion is sent beside the level and does not change it.", 20, Style.INK_DIM, suggestion)
+	o.paragraph("3. Submit for review", 24, Style.INK, send)
+	o.paragraph("Submit this level and your finishing recording for moderator review. It will not be listed publicly until a moderator approves it.", 20, Style.INK_DIM, send)
+	state.submit = _button(send, "Submit for review", _submit.bind(id, o, option), "Submitting…")
+	option.item_selected.connect(func(_index: int) -> void: update.call())
+	_proof_step(o, proof, id, state, update)
+	update.call()
+
+
+## Step 1 of the Publish sheet: the saved run, or what proves one. Rebuilt when the player takes the previous run.
+func _proof_step(o: Overlay, proof: VBoxContainer, id: String, state: Dictionary, update: Callable) -> void:
+	for old in proof.get_children():
+		proof.remove_child(old)
+		old.queue_free()
+	o.paragraph("1. Prove it can be finished", 24, Style.INK, proof)
+	var fly := Progress.open.bind(id, true, true)
+	if state.proven:
+		o.paragraph("✓ Saved run", 22, Hud.GOAL_GREEN, proof)
+		_button(proof, "Play again", fly)
+	elif MyLevels.demo(id) != null:
+		_button(proof, "Use previous run", func() -> void:
+			state.proven = true
+			_proof_step(o, proof, id, state, update)
+			update.call())
+		_button(proof, "Play again", fly)
 	else:
-		_button(o.body, "Play to prove it", Progress.open.bind(id, true, true))
+		_button(proof, "Play to prove it", fly)
 
 
 func _validate_publish(id: String) -> bool:
@@ -167,19 +238,6 @@ func _validate_publish(id: String) -> bool:
 	for problem in problems:
 		o.paragraph(problem)
 	return false
-
-
-func _confirm_publish(id: String) -> void:
-	var o := Overlay.open(self, "Publish level")
-	o.paragraph("Submit this level and your finishing recording for moderator review. It will not be listed publicly until a moderator approves it.")
-	var suggestion := o.card()
-	o.paragraph("Suggested difficulty", 22, Style.INK, suggestion)
-	var option := CommunityLevelDetails.difficulty_option()
-	suggestion.add_child(option)
-	o.paragraph("A moderator chooses the reviewed difficulty. Your suggestion is sent beside the level and does not change it.", 20, Style.INK_DIM, suggestion)
-	var submit := _button(o.body, "Submit for review", _submit.bind(id, o, option), "Submitting…")
-	submit.disabled = true  # until a difficulty is chosen
-	option.item_selected.connect(func(_index: int) -> void: submit.disabled = CommunityLevelDetails.chosen(option) == "")
 
 
 func _submit(id: String, confirmation: Overlay, option: OptionButton) -> void:
@@ -280,7 +338,7 @@ func _button(parent: Control, text: String, action: Callable, busy := "") -> But
 	return button
 
 
-## Back closes the top Publish sheet first; otherwise it returns to the menu.
+## Back closes the top sheet first; otherwise it returns to the menu.
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		var sheets := find_children("*", "Overlay", true, false)
