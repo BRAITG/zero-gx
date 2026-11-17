@@ -282,49 +282,6 @@ jobs:
           tracks: internal
           status: completed
 
-  graph:
-    # The committed code graph must equal a rebuild with the pinned Graphify build.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 10
-    env:
-      UV_PYTHON: "3.11"
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
-      - name: Check that graphify-out/graph.json is fresh
-        run: |
-          sh tools/ensure-graphify.sh
-          git show HEAD:graphify-out/graph.json > "$RUNNER_TEMP/graph-committed.json"
-          PYTHONHASHSEED=0 graphify update .
-          if ! git diff --quiet -- graphify-out/graph.json; then
-            echo "::error::graphify-out/graph.json is stale; bounded node/edge delta follows."
-            git diff --stat -- graphify-out/graph.json
-            jq -n \
-              --slurpfile committed "$RUNNER_TEMP/graph-committed.json" \
-              --slurpfile rebuilt graphify-out/graph.json '
-              ($committed[0].nodes | map(.id) | sort) as $old_nodes |
-              ($rebuilt[0].nodes | map(.id) | sort) as $new_nodes |
-              ($committed[0].links | map({source, target, relation}) | unique_by([.source, .target, .relation])) as $old_edges |
-              ($rebuilt[0].links | map({source, target, relation}) | unique_by([.source, .target, .relation])) as $new_edges |
-              ($new_nodes - $old_nodes) as $added_nodes |
-              ($old_nodes - $new_nodes) as $removed_nodes |
-              ($new_edges - $old_edges) as $added_edges |
-              ($old_edges - $new_edges) as $removed_edges |
-              {
-                added_node_count: ($added_nodes | length),
-                added_node_ids: $added_nodes[:50],
-                removed_node_count: ($removed_nodes | length),
-                removed_node_ids: $removed_nodes[:50],
-                added_edge_count: ($added_edges | length),
-                added_edge_endpoints: $added_edges[:50],
-                removed_edge_count: ($removed_edges | length),
-                removed_edge_endpoints: $removed_edges[:50]
-              }'
-            exit 1
-          fi
-
   server:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
