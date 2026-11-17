@@ -18,7 +18,6 @@
 - Existing tests that pin replaced behaviour (`test_wall_points_win_near_misses`, the sheet tests, `test_opening_an_old_out_of_range_star_brings_it_in_range`, `test_right_drag_pans` if it changes) are rewritten to the new rule, not kept.
 - Clean cutover: remove replaced code (`LevelDoc.begin_move`, `_open_sheet`, `_choice`, `_slider`, `_kind_option`, `_ask_reclose` as an Overlay) in the slice that replaces it; no shims.
 - `project.godot` may be rewritten by Godot on import or export (the `GodotPlayGameServices` autoload path becomes a `uid://`). Restore it with `git restore project.godot` before committing unless a task changes it on purpose.
-- Commits go through the repository hook, which regenerates `graphify-out/graph.json`; run with `PATH=/tmp/zero-gx-graphify/bin:$PATH GRAPHIFY_NO_AUTO_REFRESH=1`.
 
 ## Shared interfaces
 
