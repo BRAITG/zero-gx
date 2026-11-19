@@ -1,7 +1,7 @@
 # PR landing
 
-Scope: reviewing and merging a pull request in this repository. Load when: opening a PR, applying review findings, or
-merging.
+Scope: reviewing and merging a pull request in this repository. Load when: opening a PR, reviewing it, applying review
+findings, or merging it.
 
 - **Owner:** repository owner. **Last verified:** 2026-11-19.
 
@@ -21,7 +21,8 @@ merging.
 ## Review bots
 
 Both bots are installed on this repository. Request them once the review round has stopped and CI is green on the
-current head:
+current head. Request them again for each later push that changes production logic, once its round has stopped and its
+CI is green:
 
 - **CodeRabbit:** comment `@coderabbitai review`.
 - **Codex:** comment `@codex review`. If Codex replies that its usage limit is reached, skip it; that does not block
@@ -31,13 +32,16 @@ Triage their findings like any other. A fix push that changes production logic s
 
 ## Merge gate
 
-Merge without asking the owner as soon as all of these hold on the current head:
+Merge without asking the owner as soon as all of these hold for the current head:
 
 1. The review round has stopped (its stop rule holds), with every finding's verdict recorded on the PR.
-2. CodeRabbit has reviewed the PR, and its findings are fixed or carry a recorded verdict.
-3. CI is green.
+2. CodeRabbit has reviewed the current head, or the last head that changed production logic. Its findings are fixed or
+   carry a recorded verdict.
+3. Codex has done the same, or has replied that its usage limit is reached.
+4. CI is green.
 
-If CodeRabbit has not reviewed the PR, ask the owner before merging.
+Ask the owner before merging when CodeRabbit has not reviewed that head. That includes a reply saying CodeRabbit is
+rate-limited or skipped the review: a reply is not a review.
 
 ## CI
 
@@ -48,7 +52,9 @@ If CodeRabbit has not reviewed the PR, ask the owner before merging.
 
 ## Local test runs
 
-- Run the suite with `GODOT=<godot 4.7.2 binary> bash tests/run.sh`. Set `TEST_FILTER=<file>` to run one test file.
+- Run the suite with `GODOT=<godot 4.7.2 binary> bash tests/run.sh`.
+- `TEST_FILTER` runs only the tests whose `file::name` contains its value. For example, `test_editor.gd` runs one file,
+  and `test_level_doc.gd::test_undo_restores_the_closed_wall` runs one test.
 - As root, the 7 chmod-based tests in `test_community_history.gd` and `test_community_sync.gd` fail. They cannot make a
   folder read-only for root. That is expected.
 - Concurrent runs share `user://` state, which makes them fail at random. Run one suite at a time, or give each run
@@ -56,7 +62,5 @@ If CodeRabbit has not reviewed the PR, ask the owner before merging.
 
 ## After merging
 
-- Sync the primary checkout with `git pull --ff-only`.
-- Remove the task's worktree with `git worktree remove`.
-- Keep the branch.
-- A `Fixes #N` line in the PR body closes the linked issue.
+- Clean up the branch and its worktree as your general worktree rules say.
+- A `Fixes #N` line in the PR body closes the linked issue on merge. Check that it closed.
