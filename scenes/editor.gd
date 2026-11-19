@@ -325,10 +325,10 @@ func press(world: Vector2, mouse: bool = false) -> void:
 	var at: Vector2 = _place_at(world, tool)
 	_press_world = world
 	_press_ref = _pick_world(world, mouse)
-	if _press_ref.is_empty() and snap_objects and tool in PLACING:
-		_press_ref = _pick_world(at, mouse)  # a snapped placement picks up what already sits on its node instead of stacking on it
 	if mouse:
 		_hover = _press_ref
+	if _press_ref.is_empty() and snap_objects and tool in PLACING:
+		_press_ref = _thing_on_node(at)  # picks up what already sits on the node instead of stacking on it
 	_held = {}
 	_active_body_handle = {}
 	_moving = false
@@ -379,6 +379,16 @@ func press(world: Vector2, mouse: bool = false) -> void:
 		_press_position = doc.position_of(_held)
 		doc.begin_edit()
 	_refresh()
+
+
+## The body, asteroid or pickup centered exactly on `at`, or an empty ref.
+func _thing_on_node(at: Vector2) -> Dictionary:
+	for type: String in ["body", "asteroid", "pickup"]:
+		var entries: Array = doc.data.get({"body": "bodies", "asteroid": "asteroids", "pickup": "pickups"}[type], [])
+		for index: int in entries.size():
+			if LevelDoc._v(entries[index].position) == at:
+				return {"type": type, "index": index}
+	return {}
 
 
 func _insert_wall_point(wall_index: int, after: int, at: Vector2) -> bool:

@@ -202,7 +202,7 @@ func test_snap_objects_toggle_snaps_centers_to_the_grid() -> void:
 	toggle.button_pressed = true
 	e.select_tool("select")
 	e.press(Vector2(4045, 1013))  # 10 px right of the center
-	e.drag(Vector2(4355, 1170))  # the pointer snaps to x 4400, the center (10 px left) to x 4300
+	e.drag(Vector2(4355, 1170))  # the pointer alone would snap to x 4400; the center, 10 px left of it, snaps to x 4300
 	e.release(Vector2(4355, 1170), true)
 	check(e.doc.position_of(ref) == Vector2(4300, 1200), "on: the dragged center lands on a 10 m node: %s" % e.doc.position_of(ref))
 	e.fine_snap = true
@@ -221,18 +221,25 @@ func test_snap_objects_places_on_a_node_without_stacking_and_drifts_from_the_fin
 	e.release(Vector2(3004, 2003), false)
 	var pickups: Array = e.doc.data.get("pickups", [])
 	check(pickups.size() == 1 and LevelDoc._v(pickups[0].position) == Vector2(3000, 2000), "a pickup is placed on the node: %s" % [pickups])
-	e._camera.zoom = Vector2.ONE * 2.0  # pick slop is in screen px, so zoom in until the tap misses
+	e._camera.zoom = Vector2.ONE * LevelEditor.ZOOM_RANGE.y  # pick slop is in screen px, so zoom in until the tap misses
 	var far := Vector2(3045, 2045)  # snaps to the pickup's node
 	check(e._pick_world(far, false).is_empty(), "control: the tap misses the pickup itself")
 	e.press(far)
 	e.release(far, false)
 	check(e.doc.data.pickups.size() == 1, "a tap that snaps onto the pickup does not stack a second: %s" % [e.doc.data.pickups])
+	var ship: Vector2 = e.doc.position_of({"type": "ship", "index": 0})
+	var beside_ship: Vector2 = ship + Vector2(45, 45)
+	check(e._pick_world(beside_ship, false).is_empty() and e._place_at(beside_ship, "pickup") == ship, "control: the tap misses the ship and snaps onto its node")
+	e.press(beside_ship)
+	e.release(beside_ship, false)
+	check(e.doc.position_of({"type": "ship", "index": 0}) == ship and e.doc.data.pickups.size() == 2, "a tap that snaps onto the ship's node places, never grabs the ship: %s" % [e.doc.data.pickups])
 	e.select_tool("asteroid")
 	e.press(Vector2(5045, 5045))
 	e.drag(Vector2(5058, 5045))
 	e.release(Vector2(5058, 5045), true)
 	var rock: Dictionary = e.doc.data.asteroids[0]
 	check(LevelDoc._v(rock.position) == Vector2(5000, 5000) and LevelDoc._v(rock.velocity) == Vector2(13, 0) * LevelEditor.DRIFT_PER_PX, "the rock snaps and its drift follows the finger: %s" % [rock])
+
 
 func test_closing_a_wall_scales_with_zoom() -> void:
 	var e := editor()
