@@ -186,6 +186,32 @@ func test_fine_grid_toggle_snaps_to_one_metre() -> void:
 	check(LevelDoc._v(e.doc.data.walls[0].points[0]) == Vector2(3050, 950), "Fine grid snaps to 1 m: %s" % [e.doc.data.walls[0].points])
 
 
+
+func test_snap_objects_toggle_snaps_centers_to_the_grid() -> void:
+	var e := editor()
+	await frames(1)
+	var toggle: CheckButton
+	for button: CheckButton in e.find_children("*", "CheckButton", true, false):
+		if button.text == "Snap objects":
+			toggle = button
+	check(toggle != null, "the editor has a Snap objects toggle")
+	e.select_tool("planet")
+	e.press(Vector2(4035.4, 1013.2))
+	e.release(Vector2(4035.4, 1013.2), false)
+	var ref := {"type": "body", "index": 0}
+	check(e.doc.position_of(ref) == Vector2(4035, 1013), "off: a planet goes where it is put: %s" % e.doc.position_of(ref))
+	toggle.button_pressed = true
+	e.select_tool("select")
+	e.press(Vector2(4045, 1013))  # 10 px right of the center
+	e.drag(Vector2(4268, 1170))
+	e.release(Vector2(4268, 1170), true)
+	check(e.doc.position_of(ref) == Vector2(4300, 1200), "on: the dragged center lands on a 10 m node: %s" % e.doc.position_of(ref))
+	e.fine_snap = true
+	e.press(Vector2(4300, 1200))
+	e.drag(Vector2(4333.4, 1188.6))
+	e.release(Vector2(4333.4, 1188.6), true)
+	check(e.doc.position_of(ref) == Vector2(4330, 1190), "on with Fine grid: the center lands on a 1 m node: %s" % e.doc.position_of(ref))
+
 func test_closing_a_wall_scales_with_zoom() -> void:
 	var e := editor()
 	await frames(1)

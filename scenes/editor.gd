@@ -43,6 +43,7 @@ var tool := "select"
 var wall_kind := "blue"
 var pickup_kind := "thrust_up"
 var fine_snap := false
+var snap_objects := false  # planets, stars, asteroids and pickups snap their centers to the grid too
 
 var _camera: Camera2D
 var _preview: Node2D
@@ -749,9 +750,9 @@ func _long_press(press_number: int) -> void:
 
 
 
-## Walls, the start and the goal snap to the grid; everything else goes exactly where it is put.
+## Walls, the start and the goal snap to the grid; everything else snaps only with Snap objects on.
 func _place_at(world: Vector2, kind: String) -> Vector2:
-	return LevelDoc.snap(world, fine_snap) if kind in ["wall", "wall_point", "start", "goal", "ship"] else world.round()
+	return LevelDoc.snap(world, fine_snap) if snap_objects or kind in ["wall", "wall_point", "start", "goal", "ship"] else world.round()
 
 
 func _to_world(screen: Vector2) -> Vector2:
@@ -1081,6 +1082,10 @@ func _build_ui() -> void:
 		fine_snap = on
 		_marks.queue_redraw())
 	_top_bar.add_child(fine)
+	var snap_toggle := CheckButton.new()
+	snap_toggle.text = "Snap objects"
+	snap_toggle.toggled.connect(func(on: bool) -> void: snap_objects = on)
+	_top_bar.add_child(snap_toggle)
 	_title_label = Label.new()
 	_title_label.add_theme_font_size_override("font_size", 20)
 	_title_label.clip_text = true
