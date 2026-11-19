@@ -202,8 +202,8 @@ func test_snap_objects_toggle_snaps_centers_to_the_grid() -> void:
 	toggle.button_pressed = true
 	e.select_tool("select")
 	e.press(Vector2(4045, 1013))  # 10 px right of the center
-	e.drag(Vector2(4268, 1170))
-	e.release(Vector2(4268, 1170), true)
+	e.drag(Vector2(4355, 1170))  # the pointer snaps to x 4400, the center (10 px left) to x 4300
+	e.release(Vector2(4355, 1170), true)
 	check(e.doc.position_of(ref) == Vector2(4300, 1200), "on: the dragged center lands on a 10 m node: %s" % e.doc.position_of(ref))
 	e.fine_snap = true
 	e.press(Vector2(4300, 1200))
