@@ -325,6 +325,8 @@ func press(world: Vector2, mouse: bool = false) -> void:
 	var at: Vector2 = _place_at(world, tool)
 	_press_world = world
 	_press_ref = _pick_world(world, mouse)
+	if _press_ref.is_empty() and snap_objects and tool in PLACING:
+		_press_ref = _pick_world(at, mouse)  # a snapped placement picks up what already sits on its node instead of stacking on it
 	if mouse:
 		_hover = _press_ref
 	_held = {}
@@ -416,7 +418,7 @@ func drag(world: Vector2) -> void:
 	elif tool == "asteroid":
 		var rock: Dictionary = doc.data.asteroids[_held.index]
 		if not rock.has("orbit"):
-			var velocity: Vector2 = ((world - LevelDoc._v(rock.position)) * DRIFT_PER_PX).limit_length(MAX_DRIFT)
+			var velocity: Vector2 = ((world - _press_world) * DRIFT_PER_PX).limit_length(MAX_DRIFT)  # from the finger, not the possibly snapped rock
 			doc.set_property(_held, "velocity", LevelDoc._p(velocity))
 	_refresh()
 
