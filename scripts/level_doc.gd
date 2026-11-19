@@ -57,13 +57,21 @@ func place(kind: String, at: Vector2) -> Dictionary:
 
 
 ## The orbit of an asteroid at `at`: around the first planet whose ring holds it, or empty to drift.
-func _orbit_at(at: Vector2) -> Dictionary:
+## A rock that had orbit `was` stays with that body while its ring holds it, and keeps its speed.
+func _orbit_at(at: Vector2, was: Dictionary = {}) -> Dictionary:
 	var bodies: Array = data.get("bodies", [])
-	for i in bodies.size():
+	var kept: int = int(was.get("body", -1))
+	var order: Array = range(bodies.size())
+	if kept >= 0 and kept < bodies.size():
+		order.push_front(kept)
+	for i: int in order:
 		var body: Dictionary = bodies[i]
 		var distance := _v(body.position).distance_to(at)
-		if body.kind == "planet" and distance > LevelFormat.body_value(body, "radius") + Asteroid.RADIUS * 2.0 and distance <= LevelFormat.body_value(body, "reach"):
-			return {"body": i, "radius": roundi(distance), "speed": ORBIT_SPEED, "angle": snappedf((at - _v(body.position)).angle(), 0.0001)}
+		if (body.kind == "planet" or i == kept) and distance > LevelFormat.body_value(body, "radius") + Asteroid.RADIUS * 2.0 and distance <= LevelFormat.body_value(body, "reach"):
+			var orbit := {"body": i, "radius": roundi(distance), "speed": was.get("speed", ORBIT_SPEED), "angle": snappedf((at - _v(body.position)).angle(), 0.0001)}
+			if not was.is_empty() and not was.has("speed"):
+				orbit.erase("speed")  # the game's own default applies, as before the move
+			return orbit
 	return {}
 
 
@@ -221,14 +229,24 @@ func move(ref: Dictionary, at: Vector2) -> void:
 		if entry.position == entry_position:
 			return
 		_record()
+		var shift: Vector2 = _v(entry_position) - _v(entry.position)
 		entry.position = entry_position
 		if ref.type == "asteroid":  # a moved rock orbits the ring it lands on, as a placed one does
-			var orbit := _orbit_at(at)
+			# Judge from the rock as it was before this edit, so a drag that crosses a gap keeps its orbit speed.
+			var earlier: Array = (_edit_snapshot if _editing else _history.back()).get("asteroids", [])
+			var was: Dictionary = earlier[ref.index] if ref.index < earlier.size() else {}
+			var orbit := _orbit_at(_v(entry_position), was.get("orbit", {}))
 			if orbit.is_empty():
 				entry.erase("orbit")
+				if was.has("velocity"):
+					entry.velocity = was.velocity
 			else:
-				orbit.speed = entry.get("orbit", {}).get("speed", ORBIT_SPEED)  # keep a speed set in its sheet
 				entry.orbit = orbit
+				entry.erase("velocity")  # an orbiting rock does not drift
+		elif ref.type == "body":
+			for rock: Dictionary in data.get("asteroids", []):
+				if rock.has("orbit") and int(rock.orbit.body) == ref.index:
+					rock.position = _p(_v(rock.position) + shift)  # its orbit is relative to the body, so it moves along
 
 
 func begin_edit() -> void:
