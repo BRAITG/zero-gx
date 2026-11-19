@@ -189,10 +189,7 @@ func test_fine_grid_toggle_snaps_to_one_metre() -> void:
 func test_snap_objects_toggle_snaps_centers_to_the_grid() -> void:
 	var e := editor()
 	await frames(1)
-	var toggle: CheckButton
-	for button: CheckButton in e.find_children("*", "CheckButton", true, false):
-		if button.text == "Snap objects":
-			toggle = button
+	var toggle := _button_named(e, "Snap objects")
 	check(toggle != null, "the editor has a Snap objects toggle")
 	e.select_tool("planet")
 	e.press(Vector2(4035.4, 1013.2))
@@ -233,6 +230,19 @@ func test_snap_objects_places_on_a_node_without_stacking_and_drifts_from_the_fin
 	e.press(beside_ship)
 	e.release(beside_ship, false)
 	check(e.doc.position_of({"type": "ship", "index": 0}) == ship and e.doc.data.pickups.size() == 2, "a tap that snaps onto the ship's node places, never grabs the ship: %s" % [e.doc.data.pickups])
+	e.doc.add_wall_point(Vector2(2000, 2040))
+	e.doc.add_wall_point(Vector2(4000, 2040))
+	var by_wall := Vector2(3030, 2045)
+	check(e._pick_world(by_wall, false).get("type", "") == "wall", "control: the tap lands on a wall beside the pickup's node: %s" % [e._pick_world(by_wall, false)])
+	e.press(by_wall)
+	e.release(by_wall, false)
+	check(e.doc.data.pickups.size() == 2, "a tap on a wall that snaps onto the pickup does not stack a second: %s" % [e.doc.data.pickups])
+	e.doc.place("boost", Vector2(6004, 2003))  # off the grid, placed with Snap objects off
+	var near_node := Vector2(6040, 2040)
+	check(e._pick_world(near_node, false).is_empty(), "control: the tap misses the off-grid pickup")
+	e.press(near_node)
+	e.release(near_node, false)
+	check(e.doc.data.pickups.size() == 3, "a tap that snaps to the node an off-grid pickup snaps to picks it up: %s" % [e.doc.data.pickups])
 	e.select_tool("asteroid")
 	e.press(Vector2(5045, 5045))
 	e.drag(Vector2(5058, 5045))

@@ -8,6 +8,7 @@ const PREVIEW := preload("res://scenes/level_preview.gd")
 const TOOLS := ["select", "wall", "planet", "black_hole", "star", "asteroid", "pickup", "start", "goal", "erase"]
 const TOOL_LABELS := {"select": "Select", "wall": "Wall", "planet": "Planet", "black_hole": "Black hole", "star": "Star", "asteroid": "Asteroid", "pickup": "Pickup", "start": "Start", "goal": "Goal", "erase": "Erase"}
 const PLACING := ["planet", "black_hole", "star", "asteroid", "pickup"]  # tools that add a thing
+const NODE_THINGS := {"body": "bodies", "asteroid": "asteroids", "pickup": "pickups"}  # ref type -> doc collection
 const ZOOM_RANGE := Vector2(0.1, 1.5)
 const DRIFT_PER_PX := 1.0  # px/s of asteroid drift per px dragged
 const MAX_DRIFT := 400.0  # px/s
@@ -327,7 +328,7 @@ func press(world: Vector2, mouse: bool = false) -> void:
 	_press_ref = _pick_world(world, mouse)
 	if mouse:
 		_hover = _press_ref
-	if _press_ref.is_empty() and snap_objects and tool in PLACING:
+	if snap_objects and tool in PLACING and _press_ref.get("type", "") in ["", "wall", "wall_point"]:  # placing tools ignore walls
 		_press_ref = _thing_on_node(at)  # picks up what already sits on the node instead of stacking on it
 	_held = {}
 	_active_body_handle = {}
@@ -381,12 +382,12 @@ func press(world: Vector2, mouse: bool = false) -> void:
 	_refresh()
 
 
-## The body, asteroid or pickup centered exactly on `at`, or an empty ref.
+## The body, asteroid or pickup whose center snaps to the node `at`, or an empty ref.
 func _thing_on_node(at: Vector2) -> Dictionary:
-	for type: String in ["body", "asteroid", "pickup"]:
-		var entries: Array = doc.data.get({"body": "bodies", "asteroid": "asteroids", "pickup": "pickups"}[type], [])
+	for type: String in NODE_THINGS:
+		var entries: Array = doc.data.get(NODE_THINGS[type], [])
 		for index: int in entries.size():
-			if LevelDoc._v(entries[index].position) == at:
+			if LevelDoc.snap(LevelDoc._v(entries[index].position), fine_snap) == at:
 				return {"type": type, "index": index}
 	return {}
 
