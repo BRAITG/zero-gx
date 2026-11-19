@@ -328,8 +328,6 @@ func press(world: Vector2, mouse: bool = false) -> void:
 	_press_ref = _pick_world(world, mouse)
 	if mouse:
 		_hover = _press_ref
-	if snap_objects and tool in PLACING and _press_ref.get("type", "") in ["", "wall", "wall_point"]:  # placing tools ignore walls
-		_press_ref = _thing_on_node(at)  # picks up what already sits on the node instead of stacking on it
 	_held = {}
 	_active_body_handle = {}
 	_moving = false
@@ -363,7 +361,7 @@ func press(world: Vector2, mouse: bool = false) -> void:
 		doc.begin_edit()
 	elif tool == "wall":
 		doc.begin_edit()
-	elif tool in ["planet", "black_hole", "star", "pickup", "asteroid"]:
+	elif tool in ["planet", "black_hole", "star", "pickup", "asteroid"] and not (snap_objects and _node_taken(at)):  # never stack on a node
 		doc.begin_edit()
 		if tool == "asteroid":
 			_held = doc.place("asteroid", at)
@@ -382,14 +380,13 @@ func press(world: Vector2, mouse: bool = false) -> void:
 	_refresh()
 
 
-## The body, asteroid or pickup whose center snaps to the node `at`, or an empty ref.
-func _thing_on_node(at: Vector2) -> Dictionary:
+## Whether a body, asteroid or pickup has its center on, or snapping to, the node `at`.
+func _node_taken(at: Vector2) -> bool:
 	for type: String in NODE_THINGS:
-		var entries: Array = doc.data.get(NODE_THINGS[type], [])
-		for index: int in entries.size():
-			if LevelDoc.snap(LevelDoc._v(entries[index].position), fine_snap) == at:
-				return {"type": type, "index": index}
-	return {}
+		for index: int in doc.data.get(NODE_THINGS[type], []).size():
+			if LevelDoc.snap(doc.position_of({"type": type, "index": index}), fine_snap) == at:
+				return true
+	return false
 
 
 func _insert_wall_point(wall_index: int, after: int, at: Vector2) -> bool:
