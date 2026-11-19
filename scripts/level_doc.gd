@@ -49,15 +49,22 @@ func place(kind: String, at: Vector2) -> Dictionary:
 		return {"type": "pickup", "index": data.pickups.size() - 1}
 	assert(kind == "asteroid", "unknown thing to place: %s" % kind)
 	var rock := {"position": _p(at)}
+	var orbit := _orbit_at(at)
+	if not orbit.is_empty():
+		rock.orbit = orbit
+	data.get_or_add("asteroids", []).append(rock)
+	return {"type": "asteroid", "index": data.asteroids.size() - 1}
+
+
+## The orbit of an asteroid at `at`: around the first planet whose ring holds it, or empty to drift.
+func _orbit_at(at: Vector2) -> Dictionary:
 	var bodies: Array = data.get("bodies", [])
 	for i in bodies.size():
 		var body: Dictionary = bodies[i]
 		var distance := _v(body.position).distance_to(at)
 		if body.kind == "planet" and distance > LevelFormat.body_value(body, "radius") + Asteroid.RADIUS * 2.0 and distance <= LevelFormat.body_value(body, "reach"):
-			rock.orbit = {"body": i, "radius": roundi(distance), "speed": ORBIT_SPEED, "angle": snappedf((at - _v(body.position)).angle(), 0.0001)}
-			break
-	data.get_or_add("asteroids", []).append(rock)
-	return {"type": "asteroid", "index": data.asteroids.size() - 1}
+			return {"body": i, "radius": roundi(distance), "speed": ORBIT_SPEED, "angle": snappedf((at - _v(body.position)).angle(), 0.0001)}
+	return {}
 
 
 ## Add a point to the wall being drawn, starting a new wall of `kind` if none is. Tapping near
@@ -215,6 +222,13 @@ func move(ref: Dictionary, at: Vector2) -> void:
 			return
 		_record()
 		entry.position = entry_position
+		if ref.type == "asteroid":  # a moved rock orbits the ring it lands on, as a placed one does
+			var orbit := _orbit_at(at)
+			if orbit.is_empty():
+				entry.erase("orbit")
+			else:
+				orbit.speed = entry.get("orbit", {}).get("speed", ORBIT_SPEED)  # keep a speed set in its sheet
+				entry.orbit = orbit
 
 
 func begin_edit() -> void:

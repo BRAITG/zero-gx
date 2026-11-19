@@ -28,6 +28,19 @@ func test_asteroid_on_a_planet_ring_orbits_it() -> void:
 	check(not doc.data.asteroids[1].has("orbit"), "a far asteroid must drift")
 
 
+func test_moving_an_asteroid_moves_its_orbit() -> void:
+	var doc := LevelDoc.new()
+	doc.place("planet", Vector2(1200, 600))
+	var ref: Dictionary = doc.place("asteroid", Vector2(1200, 400))
+	doc.set_property(ref, "orbit", {"body": 0, "radius": 200, "speed": 1.5, "angle": snappedf(-PI / 2, 0.0001)})
+	doc.move(ref, Vector2(1400, 600))
+	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "speed": 1.5, "angle": 0.0}, "a rock moved along the ring orbits from there at its own speed: %s" % doc.data.asteroids[0])
+	doc.move(ref, Vector2(3000, 600))
+	check(not doc.data.asteroids[0].has("orbit"), "a rock moved off the ring drifts: %s" % doc.data.asteroids[0])
+	doc.move(ref, Vector2(1200, 800))
+	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "speed": LevelDoc.ORBIT_SPEED, "angle": snappedf(PI / 2, 0.0001)}, "a drifting rock moved onto the ring orbits: %s" % doc.data.asteroids[0])
+
+
 func test_erasing_a_body_fixes_orbits() -> void:
 	var doc := LevelDoc.new()
 	doc.place("planet", Vector2(1200, 600))
