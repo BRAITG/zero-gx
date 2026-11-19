@@ -7,6 +7,10 @@ findings, or merging it.
 
 ## Floors (never weaken)
 
+- **Documentation and dev-only changes skip all of this.** Commit them straight to `master` in the primary checkout and
+  push. They need no PR, no worktree and no review round. This covers documentation, agent instructions and policy,
+  and other files the game and the server never load. This repository rule overrides the general rule that every
+  change needs a worktree.
 - **Landing means merged.** A PR has landed when it is merged into `master`. A commit or an open PR has not landed.
 - **Every PR gets the review round.** Run the `pr-review-round` skill when the PR opens and after every push that
   changes production logic. It has three passes: adversarial, code review and simplification. Its stop rule ends the
