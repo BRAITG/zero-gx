@@ -8,7 +8,7 @@ const PREVIEW := preload("res://scenes/level_preview.gd")
 const TOOLS := ["select", "wall", "planet", "black_hole", "star", "asteroid", "pickup", "start", "goal", "erase"]
 const TOOL_LABELS := {"select": "Select", "wall": "Wall", "planet": "Planet", "black_hole": "Black hole", "star": "Star", "asteroid": "Asteroid", "pickup": "Pickup", "start": "Start", "goal": "Goal", "erase": "Erase"}
 const PLACING := ["planet", "black_hole", "star", "asteroid", "pickup"]  # tools that add a thing
-const NODE_THINGS := {"body": "bodies", "asteroid": "asteroids", "pickup": "pickups"}  # ref type -> doc collection
+const NODE_THINGS := ["bodies", "asteroids", "pickups"]  # doc collections of things a snapped placement must not stack on
 const ZOOM_RANGE := Vector2(0.1, 1.5)
 const DRIFT_PER_PX := 1.0  # px/s of asteroid drift per px dragged
 const MAX_DRIFT := 400.0  # px/s
@@ -361,7 +361,7 @@ func press(world: Vector2, mouse: bool = false) -> void:
 		doc.begin_edit()
 	elif tool == "wall":
 		doc.begin_edit()
-	elif tool in ["planet", "black_hole", "star", "pickup", "asteroid"] and not (snap_objects and _node_taken(at)):  # never stack on a node
+	elif tool in PLACING and not (snap_objects and _node_taken(at)):  # never stack on a node
 		doc.begin_edit()
 		if tool == "asteroid":
 			_held = doc.place("asteroid", at)
@@ -382,9 +382,9 @@ func press(world: Vector2, mouse: bool = false) -> void:
 
 ## Whether a body, asteroid or pickup has its center on, or snapping to, the node `at`.
 func _node_taken(at: Vector2) -> bool:
-	for type: String in NODE_THINGS:
-		for index: int in doc.data.get(NODE_THINGS[type], []).size():
-			if LevelDoc.snap(doc.position_of({"type": type, "index": index}), fine_snap) == at:
+	for collection: String in NODE_THINGS:
+		for entry: Dictionary in doc.data.get(collection, []):
+			if LevelDoc.snap(LevelDoc._v(entry.position), fine_snap) == at:
 				return true
 	return false
 

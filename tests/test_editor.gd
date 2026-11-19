@@ -241,7 +241,9 @@ func test_snap_objects_places_on_a_node_without_stacking_and_drifts_from_the_fin
 	var near_node := Vector2(5960, 1960)
 	check(e._pick_world(near_node, false).is_empty(), "control: the tap misses the off-grid pickup")
 	e.press(near_node)
-	e.release(near_node, false)
+	e.drag(near_node + Vector2(30, 0))
+	e.release(near_node + Vector2(30, 0), true)
+	check(LevelDoc._v(e.doc.data.pickups[2].position) == Vector2(6030, 2020), "the press does not grab the off-grid pickup: %s" % [e.doc.data.pickups[2]])
 	check(e.doc.data.pickups.size() == 3, "a tap that snaps to the node an off-grid pickup snaps to places nothing: %s" % [e.doc.data.pickups])
 	e.select_tool("asteroid")
 	e.press(Vector2(5045, 5045))
@@ -249,6 +251,16 @@ func test_snap_objects_places_on_a_node_without_stacking_and_drifts_from_the_fin
 	e.release(Vector2(5058, 5045), true)
 	var rock: Dictionary = e.doc.data.asteroids[0]
 	check(LevelDoc._v(rock.position) == Vector2(5000, 5000) and LevelDoc._v(rock.velocity) == Vector2(13, 0) * LevelEditor.DRIFT_PER_PX, "the rock snaps and its drift follows the finger: %s" % [rock])
+	e.select_tool("pickup")
+	var beside_rock := Vector2(5045, 5045)
+	check(e._pick_world(beside_rock, false).is_empty(), "control: the tap misses the rock")
+	e.press(beside_rock)
+	e.release(beside_rock, false)
+	check(e.doc.data.pickups.size() == 3, "a tap that snaps onto the rock's node places nothing: %s" % [e.doc.data.pickups])
+	e.snap_objects = false
+	e.press(Vector2(6000, 2000))  # misses the off-grid pickup whose center snaps here
+	e.release(Vector2(6000, 2000), false)
+	check(e.doc.data.pickups.size() == 4, "with Snap objects off a free spot places, whatever snaps there: %s" % [e.doc.data.pickups])
 
 
 func test_closing_a_wall_scales_with_zoom() -> void:
