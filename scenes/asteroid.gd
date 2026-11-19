@@ -8,11 +8,11 @@ const MASS := 2.0
 const MIN_IMPACT_SPEED := 20.0  # px/s
 const PLANET_DAMAGE_PER_IMPULSE := 0.04
 const MAX_SPEED := 1200.0  # Same no-tunneling bound as the ship.
+const ORBIT_SPEED := 1.0  # rad/s for an orbit with no speed of its own, in the game and the editor
 
 ## Orbit on rails: set a parent planet to circle it exactly until something hits this asteroid.
 @export var orbit_parent: NodePath
 @export var orbit_radius := 150.0
-const ORBIT_SPEED := 1.0  # rad/s for an orbit with no speed of its own, in the game and the editor
 ## rad/s; the sign sets the direction.
 @export var orbit_speed := ORBIT_SPEED
 @export var orbit_angle := 0.0

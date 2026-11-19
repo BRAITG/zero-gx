@@ -24,7 +24,7 @@ func test_asteroid_on_a_planet_ring_orbits_it() -> void:
 	doc.place("planet", Vector2(1200, 600))
 	doc.place("asteroid", Vector2(1200, 400))  # 200 px out: on the ring
 	doc.place("asteroid", Vector2(3000, 600))  # far away: drifts
-	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "speed": Asteroid.ORBIT_SPEED, "angle": snappedf(-PI / 2, 0.0001)}, "orbit: %s" % doc.data.asteroids[0])
+	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "speed": 1.0, "angle": snappedf(-PI / 2, 0.0001)}, "a new orbit flies at 1 rad/s: %s" % doc.data.asteroids[0])
 	check(not doc.data.asteroids[1].has("orbit"), "a far asteroid must drift")
 
 
