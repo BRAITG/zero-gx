@@ -95,6 +95,18 @@ func test_moving_a_body_ignores_an_orbit_that_names_no_body() -> void:
 	check(doc.data.asteroids[0].position == [3100, 600], "moving the rock does not crash: %s" % doc.data.asteroids[0])
 
 
+func test_an_orbit_around_a_missing_body_counts_as_none() -> void:
+	var doc := LevelDoc.new()
+	doc.place("planet", Vector2(1200, 600))
+	doc.place("planet", Vector2(5000, 600))
+	var ref: Dictionary = doc.place("asteroid", Vector2(3000, 3000))
+	doc.set_property(ref, "orbit", {"body": 5, "radius": 200, "angle": 0.0})  # an invalid draft: no body 5
+	doc.erase({"type": "body", "index": 0})
+	check(doc.data.asteroids[0].orbit.body == 5, "erasing a body does not renumber an orbit that names no body: %s" % doc.data.asteroids[0])
+	doc.move(ref, Vector2(5200, 600))
+	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "angle": 0.0, "speed": LevelDoc.ORBIT_SPEED}, "dropped on a ring it orbits as if newly placed: %s" % doc.data.asteroids[0])
+
+
 func test_moving_a_planet_carries_its_orbiting_rocks() -> void:
 	var doc := LevelDoc.new()
 	var planet: Dictionary = doc.place("planet", Vector2(1200, 600))

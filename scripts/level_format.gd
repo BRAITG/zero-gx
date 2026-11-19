@@ -274,13 +274,15 @@ static func build(data: Dictionary, script: Script = LEVEL_SCRIPT) -> Level:
 		rock.name = "Rock%d" % (i + 1)
 		rock.position = _vec(rocks[i].position)
 		var orbit: Variant = rocks[i].get("orbit")
-		if not orbit is Dictionary:  # a rock on rails keeps its drift for when it is off them, as the editor does
-			rock.linear_velocity = _vec(rocks[i].get("velocity", [0, 0]))
-		else:
+		if orbit is Dictionary:
 			rock.orbit_parent = NodePath("../Body%d" % (int(orbit.body) + 1))
 			rock.orbit_radius = orbit.get("radius", rock.orbit_radius)
 			rock.orbit_speed = orbit.get("speed", rock.orbit_speed)
 			rock.orbit_angle = orbit.get("angle", rock.orbit_angle)
+			if rocks[i].has("velocity"):  # unused on rails; kept for the editor and for serialize()
+				rock.set_meta("velocity", _vec(rocks[i].velocity))
+		else:
+			rock.linear_velocity = _vec(rocks[i].get("velocity", [0, 0]))
 		root.add_child(rock)
 	var pickups: Array = data.get("pickups", [])
 	for i in pickups.size():
@@ -355,8 +357,9 @@ static func serialize(root: Node) -> Dictionary:
 			data.get_or_add("bodies", []).append(body)
 		elif child is Asteroid:
 			var rock := {"position": _list_of(child.position)}
-			if child.linear_velocity != Vector2.ZERO:
-				rock.velocity = _list_of(child.linear_velocity)
+			var drift: Vector2 = child.get_meta("velocity", child.linear_velocity)
+			if drift != Vector2.ZERO:
+				rock.velocity = _list_of(drift)
 			if not child.orbit_parent.is_empty():
 				var parent := child.get_node(child.orbit_parent)
 				rock.orbit = {"body": bodies.find(parent), "radius": _num(child.orbit_radius), "speed": _num(child.orbit_speed), "angle": snappedf(child.orbit_angle, 0.0001)}

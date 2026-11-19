@@ -62,11 +62,9 @@ func place(kind: String, at: Vector2) -> Dictionary:
 func _orbit_at(at: Vector2, before: Dictionary = {}) -> Dictionary:
 	var bodies: Array = data.get("bodies", [])
 	var kept: int = _orbit_body(before)
-	if kept >= bodies.size():
-		kept = -1
 	var was_orbit: Dictionary = before.orbit if kept >= 0 else {}
 	var order: Array = range(bodies.size())
-	if kept >= 0 and kept < bodies.size():
+	if kept >= 0:
 		order.push_front(kept)
 	for i: int in order:
 		var body: Dictionary = bodies[i]
@@ -79,11 +77,12 @@ func _orbit_at(at: Vector2, before: Dictionary = {}) -> Dictionary:
 	return {}
 
 
-## The body index `rock` orbits, or -1 when it drifts or its orbit names no body.
-static func _orbit_body(rock: Dictionary) -> int:
+## The body index `rock` orbits, or -1 when it drifts or its orbit names no body of this level.
+func _orbit_body(rock: Dictionary) -> int:
 	var orbit: Variant = rock.get("orbit")
 	var body: Variant = orbit.get("body") if orbit is Dictionary else null
-	return int(body) if body is int or body is float else -1
+	var index: int = int(body) if body is int or body is float else -1
+	return index if index >= 0 and index < data.get("bodies", []).size() else -1
 
 
 ## Add a point to the wall being drawn, starting a new wall of `kind` if none is. Tapping near
@@ -244,7 +243,8 @@ func move(ref: Dictionary, at: Vector2) -> void:
 		entry.position = entry_position
 		if ref.type == "asteroid":  # a moved rock orbits the ring it lands on, as a placed one does
 			# Judge from the rock as it was before this edit (the snapshot _record() keeps for it), so a drag
-			# that crosses a gap keeps its orbit. Its velocity stays: the game ignores it while the rock orbits.
+			# that crosses a gap keeps its orbit. Its velocity stays for when it is dragged off the ring;
+			# LevelFormat.build ignores it while the rock orbits.
 			var earlier: Array = _history.back().get("asteroids", [])
 			var orbit := _orbit_at(_v(entry_position), earlier[ref.index] if ref.index < earlier.size() else {})
 			if orbit.is_empty():
@@ -316,13 +316,13 @@ func erase(ref: Dictionary, reclose := true) -> void:
 		"wall":
 			data.walls.remove_at(ref.index)
 		"body":
-			data.bodies.remove_at(ref.index)
 			for rock in data.get("asteroids", []):  # orbits follow the bodies' new indices
-				var orbited: int = _orbit_body(rock)
+				var orbited: int = _orbit_body(rock)  # read before the removal shortens the list
 				if orbited == ref.index:
 					rock.erase("orbit")
 				elif orbited > ref.index:
 					rock.orbit.body = orbited - 1
+			data.bodies.remove_at(ref.index)
 		_:
 			data[ref.type + "s"].remove_at(ref.index)
 
