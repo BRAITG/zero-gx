@@ -1628,7 +1628,7 @@ func _open_property_panel(ref: Dictionary, property: String) -> void:
 			field = "orbit_speed"
 			bounds = Vector2(-3, 3)
 			step = 0.1
-			value = float(doc.data.asteroids[ref.index].orbit.get("speed", LevelDoc.ORBIT_SPEED))
+			value = float(doc.data.asteroids[ref.index].orbit.get("speed", Asteroid.ORBIT_SPEED))
 		"start_motion":
 			title = "Start motion"
 			help = "Direction and speed"

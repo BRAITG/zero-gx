@@ -24,7 +24,7 @@ func test_asteroid_on_a_planet_ring_orbits_it() -> void:
 	doc.place("planet", Vector2(1200, 600))
 	doc.place("asteroid", Vector2(1200, 400))  # 200 px out: on the ring
 	doc.place("asteroid", Vector2(3000, 600))  # far away: drifts
-	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "speed": LevelDoc.ORBIT_SPEED, "angle": snappedf(-PI / 2, 0.0001)}, "orbit: %s" % doc.data.asteroids[0])
+	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "speed": Asteroid.ORBIT_SPEED, "angle": snappedf(-PI / 2, 0.0001)}, "orbit: %s" % doc.data.asteroids[0])
 	check(not doc.data.asteroids[1].has("orbit"), "a far asteroid must drift")
 
 
@@ -38,7 +38,7 @@ func test_moving_an_asteroid_moves_its_orbit() -> void:
 	doc.move(ref, Vector2(3000, 600))
 	check(not doc.data.asteroids[0].has("orbit"), "a rock moved off the ring drifts: %s" % doc.data.asteroids[0])
 	doc.move(ref, Vector2(1200, 800))
-	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "speed": LevelDoc.ORBIT_SPEED, "angle": snappedf(PI / 2, 0.0001)}, "a drifting rock moved onto the ring orbits: %s" % doc.data.asteroids[0])
+	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "speed": Asteroid.ORBIT_SPEED, "angle": snappedf(PI / 2, 0.0001)}, "a drifting rock moved onto the ring orbits: %s" % doc.data.asteroids[0])
 
 
 func test_a_drag_across_a_gap_keeps_the_orbit_speed_and_the_drift() -> void:
@@ -104,7 +104,7 @@ func test_an_orbit_around_a_missing_body_counts_as_none() -> void:
 	doc.erase({"type": "body", "index": 0})
 	check(doc.data.asteroids[0].orbit.body == 5, "erasing a body does not renumber an orbit that names no body: %s" % doc.data.asteroids[0])
 	doc.move(ref, Vector2(5200, 600))
-	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "angle": 0.0, "speed": LevelDoc.ORBIT_SPEED}, "dropped on a ring it orbits as if newly placed: %s" % doc.data.asteroids[0])
+	check(doc.data.asteroids[0].orbit == {"body": 0, "radius": 200, "angle": 0.0, "speed": Asteroid.ORBIT_SPEED}, "dropped on a ring it orbits as if newly placed: %s" % doc.data.asteroids[0])
 
 
 func test_moving_a_planet_carries_its_orbiting_rocks() -> void:

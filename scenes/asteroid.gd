@@ -12,8 +12,9 @@ const MAX_SPEED := 1200.0  # Same no-tunneling bound as the ship.
 ## Orbit on rails: set a parent planet to circle it exactly until something hits this asteroid.
 @export var orbit_parent: NodePath
 @export var orbit_radius := 150.0
+const ORBIT_SPEED := 1.0  # rad/s for an orbit with no speed of its own, in the game and the editor
 ## rad/s; the sign sets the direction.
-@export var orbit_speed := 1.0
+@export var orbit_speed := ORBIT_SPEED
 @export var orbit_angle := 0.0
 
 var on_rails := false
