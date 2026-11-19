@@ -1670,6 +1670,21 @@ func test_orbit_speed_panel_session_is_one_undo_step() -> void:
 	check(e.doc.data == before, "one undo restores all Orbit speed panel writes")
 
 
+func test_orbit_speed_panel_shows_the_speed_the_game_flies_when_none_is_set() -> void:
+	var e: LevelEditor = editor()
+	await frames(1)
+	var body_ref: Dictionary = e.doc.place("planet", Vector2(1200, 600))
+	var rock_ref: Dictionary = e.doc.place("asteroid", Vector2(3000, 600))
+	e.doc.data.asteroids[rock_ref.index]["orbit"] = {"body": body_ref.index, "radius": 200, "angle": 0.0}  # no speed, as hand-written
+	var lvl := LevelFormat.build(e.doc.data)
+	var flown: float = lvl.find_children("Rock*", "Asteroid", false, false)[0].orbit_speed
+	lvl.free()
+	e._open_property_panel(rock_ref, "orbit_speed")
+	await frames(1)
+	var boxes := _panel_spinboxes(e)
+	check(boxes.size() == 1 and is_equal_approx(boxes[0].value, flown), "the panel shows %s rad/s, the game flies %s" % [boxes[0].value if not boxes.is_empty() else "nothing", flown])
+
+
 func test_start_motion_keeps_direction_at_zero_and_zero_speed_removes_velocity() -> void:
 	var e: LevelEditor = editor()
 	await frames(1)

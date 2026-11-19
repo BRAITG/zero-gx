@@ -25,7 +25,7 @@ A level is a JSON object. Official levels and tutorials are plain `*.json` files
                 "radius": 64, "strength": 3200, "reach": 450,    // optional; preset values if absent
                 "destructible": false, "health": 100 } ],        // optional
   "asteroids": [ { "position": [x, y], "velocity": [x, y],
-                   "orbit": { "body": 0, "radius": 150, "speed": 0.8, "angle": 0 } } ],  // orbit optional
+                   "orbit": { "body": 0, "radius": 150, "speed": 1.0, "angle": 0 } } ],  // orbit optional
   "pickups": [ { "kind": "thrust_up", "position": [x, y] } ],
   "tour":  [ { "position": [x, y], "text": "…" } ],
   "route": { "points": [[x, y], …], "cruise": 300, "coast": [2, 3] }  // optional
