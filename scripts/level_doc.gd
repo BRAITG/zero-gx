@@ -57,10 +57,11 @@ func place(kind: String, at: Vector2) -> Dictionary:
 
 
 ## The orbit of an asteroid at `at`: around the first planet whose ring holds it, or empty to drift.
-## A rock that had orbit `was` stays with that body while its ring holds it, and keeps its speed.
+## A rock that was `was` stays with the body it orbited while that ring holds it, and keeps its speed.
 func _orbit_at(at: Vector2, was: Dictionary = {}) -> Dictionary:
 	var bodies: Array = data.get("bodies", [])
-	var kept: int = int(was.get("body", -1))
+	var kept: int = _orbit_body(was)
+	var was_orbit: Dictionary = was.orbit if kept >= 0 else {}
 	var order: Array = range(bodies.size())
 	if kept >= 0 and kept < bodies.size():
 		order.push_front(kept)
@@ -68,11 +69,18 @@ func _orbit_at(at: Vector2, was: Dictionary = {}) -> Dictionary:
 		var body: Dictionary = bodies[i]
 		var distance := _v(body.position).distance_to(at)
 		if (body.kind == "planet" or i == kept) and distance > LevelFormat.body_value(body, "radius") + Asteroid.RADIUS * 2.0 and distance <= LevelFormat.body_value(body, "reach"):
-			var orbit := {"body": i, "radius": roundi(distance), "speed": was.get("speed", ORBIT_SPEED), "angle": snappedf((at - _v(body.position)).angle(), 0.0001)}
-			if not was.is_empty() and not was.has("speed"):
-				orbit.erase("speed")  # the game's own default applies, as before the move
+			var orbit := {"body": i, "radius": roundi(distance), "angle": snappedf((at - _v(body.position)).angle(), 0.0001)}
+			if was_orbit.is_empty() or was_orbit.has("speed"):
+				orbit.speed = was_orbit.get("speed", ORBIT_SPEED)  # an unset speed stays unset: the game's default applies
 			return orbit
 	return {}
+
+
+## The body index `rock` orbits, or -1 when it drifts or its orbit names no body.
+static func _orbit_body(rock: Dictionary) -> int:
+	var orbit: Variant = rock.get("orbit")
+	var body: Variant = orbit.get("body") if orbit is Dictionary else null
+	return int(body) if body is int or body is float else -1
 
 
 ## Add a point to the wall being drawn, starting a new wall of `kind` if none is. Tapping near
@@ -232,20 +240,17 @@ func move(ref: Dictionary, at: Vector2) -> void:
 		var shift: Vector2 = _v(entry_position) - _v(entry.position)
 		entry.position = entry_position
 		if ref.type == "asteroid":  # a moved rock orbits the ring it lands on, as a placed one does
-			# Judge from the rock as it was before this edit, so a drag that crosses a gap keeps its orbit speed.
-			var earlier: Array = (_edit_snapshot if _editing else _history.back()).get("asteroids", [])
-			var was: Dictionary = earlier[ref.index] if ref.index < earlier.size() else {}
-			var orbit := _orbit_at(_v(entry_position), was.get("orbit", {}))
+			# Judge from the rock as it was before this edit (what _record() just saved), so a drag that
+			# crosses a gap keeps its orbit. Its velocity stays: the game ignores it while the rock orbits.
+			var earlier: Array = _history.back().get("asteroids", [])
+			var orbit := _orbit_at(_v(entry_position), earlier[ref.index] if ref.index < earlier.size() else {})
 			if orbit.is_empty():
 				entry.erase("orbit")
-				if was.has("velocity"):
-					entry.velocity = was.velocity
 			else:
 				entry.orbit = orbit
-				entry.erase("velocity")  # an orbiting rock does not drift
 		elif ref.type == "body":
 			for rock: Dictionary in data.get("asteroids", []):
-				if rock.has("orbit") and int(rock.orbit.body) == ref.index:
+				if _orbit_body(rock) == ref.index:
 					rock.position = _p(_v(rock.position) + shift)  # its orbit is relative to the body, so it moves along
 
 

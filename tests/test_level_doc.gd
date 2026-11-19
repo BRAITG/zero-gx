@@ -53,11 +53,10 @@ func test_a_drag_across_a_gap_keeps_the_orbit_speed_and_the_drift() -> void:
 	check(doc.data.asteroids[0].orbit.speed == -1.5, "a drag that leaves the ring on the way keeps the clockwise speed: %s" % doc.data.asteroids[0])
 	var drifter: Dictionary = doc.place("asteroid", Vector2(3000, 600))
 	doc.set_property(drifter, "velocity", [100, 0])
-	doc.begin_edit()
-	doc.move(drifter, Vector2(1400, 600))
-	check(not doc.data.asteroids[1].has("velocity"), "an orbiting rock has no drift: %s" % doc.data.asteroids[1])
-	doc.move(drifter, Vector2(3000, 800))
-	doc.end_edit()
+	for at: Vector2 in [Vector2(1400, 600), Vector2(3000, 800)]:  # onto the ring, then off it in a later drag
+		doc.begin_edit()
+		doc.move(drifter, at)
+		doc.end_edit()
 	check(doc.data.asteroids[1].get("velocity") == [100, 0] and not doc.data.asteroids[1].has("orbit"), "dragged off the ring again, it drifts as before: %s" % doc.data.asteroids[1])
 
 
@@ -71,6 +70,26 @@ func test_a_moved_rock_stays_with_its_planet_where_rings_overlap() -> void:
 	doc.move(ref, Vector2(1351, 800))
 	var orbit: Dictionary = doc.data.asteroids[0].orbit
 	check(orbit.body == 1 and not orbit.has("speed"), "a nudge keeps its planet and leaves the speed unset: %s" % orbit)
+
+
+func test_a_rock_orbiting_a_star_keeps_its_orbit_when_nudged() -> void:
+	var doc := LevelDoc.new()
+	doc.place("star", Vector2(0, 0))
+	var ref: Dictionary = doc.place("asteroid", Vector2(0, 1800))
+	check(not doc.data.asteroids[0].has("orbit"), "control: placing never orbits a star")
+	doc.set_property(ref, "orbit", {"body": 0, "radius": 1800, "speed": 0.5, "angle": snappedf(PI / 2, 0.0001)})  # written by hand
+	doc.move(ref, Vector2(1, 1800))
+	check(doc.data.asteroids[0].get("orbit", {}).get("body", -1) == 0, "a nudge keeps a hand-written star orbit: %s" % doc.data.asteroids[0])
+
+
+func test_moving_a_body_ignores_an_orbit_that_names_no_body() -> void:
+	var doc := LevelDoc.new()
+	var planet: Dictionary = doc.place("planet", Vector2(1200, 600))
+	var ref: Dictionary = doc.place("asteroid", Vector2(3000, 600))
+	doc.set_property(ref, "orbit", {"radius": 200})  # an invalid draft: LevelFormat reports "orbit names no body"
+	doc.move(planet, Vector2(2000, 600))
+	doc.move(ref, Vector2(3100, 600))
+	check(doc.data.asteroids[0].position == [3100, 600], "an orbit without a body neither crashes nor follows the planet: %s" % doc.data.asteroids[0])
 
 
 func test_moving_a_planet_carries_its_orbiting_rocks() -> void:
