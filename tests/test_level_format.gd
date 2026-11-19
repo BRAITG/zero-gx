@@ -327,3 +327,18 @@ func test_sketch_bounds_grow_by_the_ships_radius() -> void:
 	var bounds: Array = LevelFormat.sketch(data).bounds
 	check(bounds[0] == roundi(-400 - Ship.RADIUS) and bounds[1] == roundi(-200 - Ship.RADIUS), "the box starts a ship radius before the lowest point: %s" % [bounds])
 	check(bounds[0] + bounds[2] == roundi(3000 + Ship.RADIUS) and bounds[1] + bounds[3] == roundi(500 + Ship.RADIUS), "and ends a ship radius after the highest: %s" % [bounds])
+
+
+func test_an_orbiting_rock_starts_without_its_drift_and_saves_it_back() -> void:
+	var data := minimal()
+	data.bodies = [{"kind": "planet", "position": [1200, 600]}]
+	data.asteroids = [
+		{"position": [1200, 400], "velocity": [300, 0], "orbit": {"body": 0, "radius": 200, "angle": -PI / 2}},
+		{"position": [3000, 600], "velocity": [300, 0]},
+	]
+	var lvl := LevelFormat.build(data)
+	var rocks: Array = lvl.find_children("Rock*", "Asteroid", false, false)
+	check(rocks.size() == 2 and rocks[0].linear_velocity == Vector2.ZERO and rocks[1].linear_velocity == Vector2(300, 0), "only the drifting rock starts with its drift: %s" % [rocks.map(func(r: Asteroid) -> Vector2: return r.linear_velocity)])
+	var saved: Array = LevelFormat.serialize(lvl).asteroids
+	check(saved[0].get("velocity") == [300, 0] and saved[1].get("velocity") == [300, 0], "saving keeps both drifts: %s" % [saved])
+	lvl.free()
