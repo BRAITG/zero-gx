@@ -88,14 +88,18 @@ func test_moving_a_body_ignores_an_orbit_that_names_no_body() -> void:
 	var ref: Dictionary = doc.place("asteroid", Vector2(3000, 600))
 	doc.set_property(ref, "orbit", {"radius": 200})  # an invalid draft: LevelFormat reports "orbit names no body"
 	doc.move(planet, Vector2(2000, 600))
+	check(doc.data.asteroids[0].position == [3000, 600], "an orbit without a body does not follow the planet: %s" % doc.data.asteroids[0])
+	doc.erase(planet)
+	check(doc.data.asteroids[0].has("orbit"), "erasing the planet leaves an orbit that names no body alone: %s" % doc.data.asteroids[0])
 	doc.move(ref, Vector2(3100, 600))
-	check(doc.data.asteroids[0].position == [3100, 600], "an orbit without a body neither crashes nor follows the planet: %s" % doc.data.asteroids[0])
+	check(doc.data.asteroids[0].position == [3100, 600], "moving the rock does not crash: %s" % doc.data.asteroids[0])
 
 
 func test_moving_a_planet_carries_its_orbiting_rocks() -> void:
 	var doc := LevelDoc.new()
 	var planet: Dictionary = doc.place("planet", Vector2(1200, 600))
 	doc.place("asteroid", Vector2(1200, 400))
+	doc.data.asteroids[0].orbit.body = 0.0  # as JSON loads it
 	doc.place("asteroid", Vector2(3000, 600))
 	doc.move(planet, Vector2(2000, 700))
 	check(doc.data.asteroids[0].position == [2000, 500] and doc.data.asteroids[1].position == [3000, 600], "the orbiting rock moves with its planet, the drifting one stays: %s" % [doc.data.asteroids])

@@ -57,11 +57,14 @@ func place(kind: String, at: Vector2) -> Dictionary:
 
 
 ## The orbit of an asteroid at `at`: around the first planet whose ring holds it, or empty to drift.
-## A rock that was `was` stays with the body it orbited while that ring holds it, and keeps its speed.
-func _orbit_at(at: Vector2, was: Dictionary = {}) -> Dictionary:
+## A rock that orbited a body (`before`, the rock as it was) stays with it while its ring holds the
+## rock, and keeps its own orbit speed wherever it lands.
+func _orbit_at(at: Vector2, before: Dictionary = {}) -> Dictionary:
 	var bodies: Array = data.get("bodies", [])
-	var kept: int = _orbit_body(was)
-	var was_orbit: Dictionary = was.orbit if kept >= 0 else {}
+	var kept: int = _orbit_body(before)
+	if kept >= bodies.size():
+		kept = -1
+	var was_orbit: Dictionary = before.orbit if kept >= 0 else {}
 	var order: Array = range(bodies.size())
 	if kept >= 0 and kept < bodies.size():
 		order.push_front(kept)
@@ -240,8 +243,8 @@ func move(ref: Dictionary, at: Vector2) -> void:
 		var shift: Vector2 = _v(entry_position) - _v(entry.position)
 		entry.position = entry_position
 		if ref.type == "asteroid":  # a moved rock orbits the ring it lands on, as a placed one does
-			# Judge from the rock as it was before this edit (what _record() just saved), so a drag that
-			# crosses a gap keeps its orbit. Its velocity stays: the game ignores it while the rock orbits.
+			# Judge from the rock as it was before this edit (the snapshot _record() keeps for it), so a drag
+			# that crosses a gap keeps its orbit. Its velocity stays: the game ignores it while the rock orbits.
 			var earlier: Array = _history.back().get("asteroids", [])
 			var orbit := _orbit_at(_v(entry_position), earlier[ref.index] if ref.index < earlier.size() else {})
 			if orbit.is_empty():
@@ -315,11 +318,11 @@ func erase(ref: Dictionary, reclose := true) -> void:
 		"body":
 			data.bodies.remove_at(ref.index)
 			for rock in data.get("asteroids", []):  # orbits follow the bodies' new indices
-				if rock.has("orbit"):
-					if rock.orbit.body == ref.index:
-						rock.erase("orbit")
-					elif rock.orbit.body > ref.index:
-						rock.orbit.body -= 1
+				var orbited: int = _orbit_body(rock)
+				if orbited == ref.index:
+					rock.erase("orbit")
+				elif orbited > ref.index:
+					rock.orbit.body = orbited - 1
 		_:
 			data[ref.type + "s"].remove_at(ref.index)
 

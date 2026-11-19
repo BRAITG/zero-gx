@@ -273,9 +273,10 @@ static func build(data: Dictionary, script: Script = LEVEL_SCRIPT) -> Level:
 		var rock: Asteroid = ASTEROID.instantiate()
 		rock.name = "Rock%d" % (i + 1)
 		rock.position = _vec(rocks[i].position)
-		rock.linear_velocity = _vec(rocks[i].get("velocity", [0, 0]))
 		var orbit: Variant = rocks[i].get("orbit")
-		if orbit is Dictionary:
+		if not orbit is Dictionary:  # a rock on rails keeps its drift for when it is off them, as the editor does
+			rock.linear_velocity = _vec(rocks[i].get("velocity", [0, 0]))
+		else:
 			rock.orbit_parent = NodePath("../Body%d" % (int(orbit.body) + 1))
 			rock.orbit_radius = orbit.get("radius", rock.orbit_radius)
 			rock.orbit_speed = orbit.get("speed", rock.orbit_speed)
