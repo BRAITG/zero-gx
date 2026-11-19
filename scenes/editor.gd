@@ -8,6 +8,7 @@ const PREVIEW := preload("res://scenes/level_preview.gd")
 const TOOLS := ["select", "wall", "planet", "black_hole", "star", "asteroid", "pickup", "start", "goal", "erase"]
 const TOOL_LABELS := {"select": "Select", "wall": "Wall", "planet": "Planet", "black_hole": "Black hole", "star": "Star", "asteroid": "Asteroid", "pickup": "Pickup", "start": "Start", "goal": "Goal", "erase": "Erase"}
 const PLACING := ["planet", "black_hole", "star", "asteroid", "pickup"]  # tools that add a thing
+const NODE_THINGS := ["bodies", "asteroids", "pickups"]  # doc collections of things a snapped placement must not stack on
 const ZOOM_RANGE := Vector2(0.1, 1.5)
 const DRIFT_PER_PX := 1.0  # px/s of asteroid drift per px dragged
 const MAX_DRIFT := 400.0  # px/s
@@ -43,6 +44,7 @@ var tool := "select"
 var wall_kind := "blue"
 var pickup_kind := "thrust_up"
 var fine_snap := false
+var snap_objects := false  # planets, stars, asteroids and pickups snap their centers to the grid too
 
 var _camera: Camera2D
 var _preview: Node2D
@@ -359,7 +361,7 @@ func press(world: Vector2, mouse: bool = false) -> void:
 		doc.begin_edit()
 	elif tool == "wall":
 		doc.begin_edit()
-	elif tool in ["planet", "black_hole", "star", "pickup", "asteroid"]:
+	elif tool in PLACING and not (snap_objects and _node_taken(at)):  # never stack on a node
 		doc.begin_edit()
 		if tool == "asteroid":
 			_held = doc.place("asteroid", at)
@@ -376,6 +378,15 @@ func press(world: Vector2, mouse: bool = false) -> void:
 		_press_position = doc.position_of(_held)
 		doc.begin_edit()
 	_refresh()
+
+
+## Whether a body, asteroid or pickup has its center on, or snapping to, the node `at`.
+func _node_taken(at: Vector2) -> bool:
+	for collection: String in NODE_THINGS:
+		for entry: Dictionary in doc.data.get(collection, []):
+			if LevelDoc.snap(LevelDoc._v(entry.position), fine_snap) == at:
+				return true
+	return false
 
 
 func _insert_wall_point(wall_index: int, after: int, at: Vector2) -> bool:
@@ -415,7 +426,7 @@ func drag(world: Vector2) -> void:
 	elif tool == "asteroid":
 		var rock: Dictionary = doc.data.asteroids[_held.index]
 		if not rock.has("orbit"):
-			var velocity: Vector2 = ((world - LevelDoc._v(rock.position)) * DRIFT_PER_PX).limit_length(MAX_DRIFT)
+			var velocity: Vector2 = ((world - _press_world) * DRIFT_PER_PX).limit_length(MAX_DRIFT)  # from the finger, not the possibly snapped rock
 			doc.set_property(_held, "velocity", LevelDoc._p(velocity))
 	_refresh()
 
@@ -749,9 +760,9 @@ func _long_press(press_number: int) -> void:
 
 
 
-## Walls, the start and the goal snap to the grid; everything else goes exactly where it is put.
+## Walls, the start and the goal snap to the grid; everything else snaps only with Snap objects on.
 func _place_at(world: Vector2, kind: String) -> Vector2:
-	return LevelDoc.snap(world, fine_snap) if kind in ["wall", "wall_point", "start", "goal", "ship"] else world.round()
+	return LevelDoc.snap(world, fine_snap) if snap_objects or kind in ["wall", "wall_point", "start", "goal", "ship"] else world.round()
 
 
 func _to_world(screen: Vector2) -> Vector2:
@@ -1081,6 +1092,10 @@ func _build_ui() -> void:
 		fine_snap = on
 		_marks.queue_redraw())
 	_top_bar.add_child(fine)
+	var snap_toggle := CheckButton.new()
+	snap_toggle.text = "Snap objects"
+	snap_toggle.toggled.connect(func(on: bool) -> void: snap_objects = on)
+	_top_bar.add_child(snap_toggle)
 	_title_label = Label.new()
 	_title_label.add_theme_font_size_override("font_size", 20)
 	_title_label.clip_text = true

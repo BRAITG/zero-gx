@@ -186,6 +186,83 @@ func test_fine_grid_toggle_snaps_to_one_metre() -> void:
 	check(LevelDoc._v(e.doc.data.walls[0].points[0]) == Vector2(3050, 950), "Fine grid snaps to 1 m: %s" % [e.doc.data.walls[0].points])
 
 
+func test_snap_objects_toggle_snaps_centers_to_the_grid() -> void:
+	var e := editor()
+	await frames(1)
+	var toggle := _button_named(e, "Snap objects")
+	check(toggle != null, "the editor has a Snap objects toggle")
+	e.select_tool("planet")
+	e.press(Vector2(4035.4, 1013.2))
+	e.release(Vector2(4035.4, 1013.2), false)
+	var ref := {"type": "body", "index": 0}
+	check(e.doc.position_of(ref) == Vector2(4035, 1013), "off: a planet goes where it is put: %s" % e.doc.position_of(ref))
+	toggle.button_pressed = true
+	e.select_tool("select")
+	e.press(Vector2(4045, 1013))  # 10 px right of the center
+	e.drag(Vector2(4355, 1170))  # the pointer alone would snap to x 4400; the center, 10 px left of it, snaps to x 4300
+	e.release(Vector2(4355, 1170), true)
+	check(e.doc.position_of(ref) == Vector2(4300, 1200), "on: the dragged center lands on a 10 m node: %s" % e.doc.position_of(ref))
+	e.fine_snap = true
+	e.press(Vector2(4300, 1200))
+	e.drag(Vector2(4333.4, 1188.6))
+	e.release(Vector2(4333.4, 1188.6), true)
+	check(e.doc.position_of(ref) == Vector2(4330, 1190), "on with Fine grid: the center lands on a 1 m node: %s" % e.doc.position_of(ref))
+
+
+func test_snap_objects_places_on_a_node_without_stacking_and_drifts_from_the_finger() -> void:
+	var e := editor()
+	await frames(1)
+	e.snap_objects = true
+	e.select_tool("pickup")
+	e.press(Vector2(3004, 2003))
+	e.release(Vector2(3004, 2003), false)
+	var pickups: Array = e.doc.data.get("pickups", [])
+	check(pickups.size() == 1 and LevelDoc._v(pickups[0].position) == Vector2(3000, 2000), "a pickup is placed on the node: %s" % [pickups])
+	e._camera.zoom = Vector2.ONE * LevelEditor.ZOOM_RANGE.y  # pick slop is in screen px, so zoom in until the tap misses
+	var far := Vector2(3045, 2045)  # snaps to the pickup's node
+	check(e._pick_world(far, false).is_empty(), "control: the tap misses the pickup itself")
+	e.press(far)
+	e.release(far, false)
+	check(e.doc.data.pickups.size() == 1, "a tap that snaps onto the pickup places nothing: %s" % [e.doc.data.pickups])
+	var ship: Vector2 = e.doc.position_of({"type": "ship", "index": 0})
+	var beside_ship: Vector2 = ship + Vector2(45, 45)
+	check(e._pick_world(beside_ship, false).is_empty() and e._place_at(beside_ship, "pickup") == ship, "control: the tap misses the ship and snaps onto its node")
+	e.press(beside_ship)
+	e.release(beside_ship, false)
+	check(e.doc.position_of({"type": "ship", "index": 0}) == ship and e.doc.data.pickups.size() == 2, "a tap that snaps onto the ship's node places, never grabs the ship: %s" % [e.doc.data.pickups])
+	e.doc.add_wall_point(Vector2(2000, 2040))
+	e.doc.add_wall_point(Vector2(4000, 2040))
+	var by_wall := Vector2(3030, 2045)
+	check(e._pick_world(by_wall, false).get("type", "") == "wall", "control: the tap lands on a wall beside the pickup's node: %s" % [e._pick_world(by_wall, false)])
+	e.press(by_wall)
+	e.release(by_wall, false)
+	check(e.doc.data.pickups.size() == 2, "a tap on a wall that snaps onto the pickup does not stack a second: %s" % [e.doc.data.pickups])
+	e.doc.place("boost", Vector2(6030, 2020))  # off the grid, placed with Snap objects off; snaps to (6000, 2000) only on the 10 m grid
+	var near_node := Vector2(5960, 1960)
+	check(e._pick_world(near_node, false).is_empty(), "control: the tap misses the off-grid pickup")
+	e.press(near_node)
+	e.drag(near_node + Vector2(30, 0))
+	e.release(near_node + Vector2(30, 0), true)
+	check(LevelDoc._v(e.doc.data.pickups[2].position) == Vector2(6030, 2020), "the press does not grab the off-grid pickup: %s" % [e.doc.data.pickups[2]])
+	check(e.doc.data.pickups.size() == 3, "a tap that snaps to the node an off-grid pickup snaps to places nothing: %s" % [e.doc.data.pickups])
+	e.select_tool("asteroid")
+	e.press(Vector2(5045, 5045))
+	e.drag(Vector2(5058, 5045))
+	e.release(Vector2(5058, 5045), true)
+	var rock: Dictionary = e.doc.data.asteroids[0]
+	check(LevelDoc._v(rock.position) == Vector2(5000, 5000) and LevelDoc._v(rock.velocity) == Vector2(13, 0) * LevelEditor.DRIFT_PER_PX, "the rock snaps and its drift follows the finger: %s" % [rock])
+	e.select_tool("pickup")
+	var beside_rock := Vector2(5045, 5045)
+	check(e._pick_world(beside_rock, false).is_empty(), "control: the tap misses the rock")
+	e.press(beside_rock)
+	e.release(beside_rock, false)
+	check(e.doc.data.pickups.size() == 3, "a tap that snaps onto the rock's node places nothing: %s" % [e.doc.data.pickups])
+	e.snap_objects = false
+	e.press(Vector2(6000, 2000))  # misses the off-grid pickup whose center snaps here
+	e.release(Vector2(6000, 2000), false)
+	check(e.doc.data.pickups.size() == 4, "with Snap objects off a free spot places, whatever snaps there: %s" % [e.doc.data.pickups])
+
+
 func test_closing_a_wall_scales_with_zoom() -> void:
 	var e := editor()
 	await frames(1)
