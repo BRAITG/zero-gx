@@ -71,7 +71,7 @@ func _orbit_at(at: Vector2, before: Dictionary = {}) -> Dictionary:
 		if (body.kind == "planet" or i == kept) and distance > LevelFormat.body_value(body, "radius") + Asteroid.RADIUS * 2.0 and distance <= LevelFormat.body_value(body, "reach"):
 			var orbit := {"body": i, "radius": roundi(distance), "angle": snappedf((at - _v(body.position)).angle(), 0.0001)}
 			if was_orbit.is_empty() or was_orbit.has("speed"):
-				orbit.speed = was_orbit.get("speed", Asteroid.ORBIT_SPEED)  # an unset speed stays unset: the game's default applies
+				orbit.speed = was_orbit.get("speed", Asteroid.ORBIT_SPEED)  # a new orbit gets the default; one moved without a speed keeps none
 			return orbit
 	return {}
 
