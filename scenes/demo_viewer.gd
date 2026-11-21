@@ -23,6 +23,7 @@ var _demo: Demo
 var _back: Callable
 var _camera: Camera2D
 var _rocks := {}  # demo asteroid id -> Asteroid node
+var _bodies: Array[Node] = []
 var _hidden_from := {}  # pickup or planet node -> the frame its event hid it
 var _play: Button
 var _slider: HSlider
@@ -42,12 +43,12 @@ func _ready() -> void:
 	add_child(Starfield.new())
 	move_child(get_child(-1), 0)  # behind the level
 	var pickups := level.get_children().filter(func(n: Node) -> bool: return n is Pickup)
-	var planets := level.get_children().filter(func(n: Node) -> bool: return n is GravityBody)
+	_bodies = level.get_children().filter(func(n: Node) -> bool: return n is GravityBody)
 	for event: Array in _demo.events():
 		if event[1] == Demo.Event.PICKUP_TAKEN:
 			_hidden_from[pickups[event[2][0]]] = event[0]
 		elif event[1] == Demo.Event.PLANET_SHATTERED:
-			_hidden_from[planets[event[2][0]]] = event[0]
+			_hidden_from[_bodies[event[2][0]]] = event[0]
 	ship = level.get_children().filter(func(n: Node) -> bool: return n is Ship)[0]
 	# The demo's ids need not match the built level's asteroids (one may be gone before the first
 	# thrust), so every asteroid is made from the demo.
@@ -91,6 +92,9 @@ func _show(at: float) -> void:
 		ship.firing = now.firing
 		ship.queue_redraw()
 	_camera.position = ship.global_position
+	for body: GravityBody in _bodies:  # the frozen level never runs their _process
+		body.clock = at * Demo.STEP
+		body.queue_redraw()
 	for node: Node2D in _hidden_from:
 		node.visible = f < _hidden_from[node]
 	var here := _demo.asteroids_at(f)

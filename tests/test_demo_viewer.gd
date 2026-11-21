@@ -81,6 +81,18 @@ func test_seeking_back_restores_unspawned_shards() -> void:
 	check(visible_asteroids(viewer) == 2, "the shard must come back: %d visible" % visible_asteroids(viewer))
 
 
+func test_black_holes_and_stars_turn_with_the_replay_clock() -> void:
+	var data := scripted_level()
+	data.bodies = [{"kind": "black_hole", "position": [2000, 1000]}, {"kind": "star", "position": [3000, -2000]}]
+	var viewer := DemoViewer.create(data, scripted(90, -1, Demo.Event.GOAL_REACHED), func() -> void: pass)
+	world.add_child(viewer)
+	var bodies := viewer.level.get_children().filter(func(n: Node) -> bool: return n is GravityBody)
+	for at in [60, 15]:
+		viewer.seek(at)
+		for body: GravityBody in bodies:
+			check(is_equal_approx(body.clock, at * Demo.STEP), "frame %d must show %s s, not %s" % [at, at * Demo.STEP, body.clock])
+
+
 func test_a_lost_run_plays_to_its_end() -> void:
 	var demo := scripted(60, 20, Demo.Event.SHIP_LOST)
 	var viewer := DemoViewer.create(scripted_level(), demo, func() -> void: pass)
