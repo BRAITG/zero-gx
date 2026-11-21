@@ -40,7 +40,11 @@ const RIPPLE_TINT_BLACK_HOLE := Color(0.5, 0.56, 0.85)
 var _shattering := false
 ## Seconds of animation shown: black holes spin and stars pulse with it. The replay viewer sets it
 ## from the replay's clock, since its frozen level never runs _process.
-var clock := 0.0
+var clock := 0.0:
+	set(value):
+		clock = value
+		if preset != Preset.PLANET:  # planets do not animate
+			queue_redraw()
 
 @export var preset: Preset = Preset.PLANET:
 	set(value):
@@ -188,9 +192,7 @@ func _draw() -> void:
 
 
 func _process(delta: float) -> void:
-	if preset != Preset.PLANET:  # black holes spin and stars pulse
-		clock += delta
-		queue_redraw()
+	clock += delta
 
 
 ## A lit sphere: lighter, smaller discs stacked toward the light (top left), and a thin atmosphere.

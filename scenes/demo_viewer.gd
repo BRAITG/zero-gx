@@ -94,7 +94,6 @@ func _show(at: float) -> void:
 	_camera.position = ship.global_position
 	for body: GravityBody in _bodies:  # the frozen level never runs their _process
 		body.clock = at * Demo.STEP
-		body.queue_redraw()
 	for node: Node2D in _hidden_from:
 		node.visible = f < _hidden_from[node]
 	var here := _demo.asteroids_at(f)
