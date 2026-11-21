@@ -38,7 +38,13 @@ const RIPPLE_TINT := Color(0.62, 0.72, 0.9)
 const RIPPLE_TINT_BLACK_HOLE := Color(0.5, 0.56, 0.85)
 
 var _shattering := false
-var _time := 0.0
+## Seconds of animation shown: black holes spin and stars pulse with it. The replay viewer sets it
+## from the replay's clock, since its frozen level never runs _process.
+var clock := 0.0:
+	set(value):
+		clock = value
+		if preset != Preset.PLANET:  # planets do not animate
+			queue_redraw()
 
 @export var preset: Preset = Preset.PLANET:
 	set(value):
@@ -186,9 +192,7 @@ func _draw() -> void:
 
 
 func _process(delta: float) -> void:
-	if preset != Preset.PLANET:  # black holes spin and stars pulse
-		_time += delta
-		queue_redraw()
+	clock += delta
 
 
 ## A lit sphere: lighter, smaller discs stacked toward the light (top left), and a thin atmosphere.
@@ -207,7 +211,7 @@ func _draw_black_hole(r: float) -> void:
 	for ring in 3:
 		var radius := r * (1.35 + ring * 0.22)
 		for k in 6:
-			var start := _time * (1.4 - ring * 0.35) + k * TAU / 6.0
+			var start := clock * (1.4 - ring * 0.35) + k * TAU / 6.0
 			draw_arc(Vector2.ZERO, radius, start, start + 0.75, 24, Color(DISK_COLORS[(k + ring) % 3], 0.45 - ring * 0.1), 6.0 - ring, true)
 	draw_circle(Vector2.ZERO, r, Color("#020106"))
 	draw_arc(Vector2.ZERO, r + 3.0, 0.0, TAU, 96, DISK_COLORS[2], 3.0, true)
@@ -215,7 +219,7 @@ func _draw_black_hole(r: float) -> void:
 
 ## A hot core inside a slowly pulsing corona, with flickering flames and looping prominences.
 func _draw_star(r: float) -> void:
-	var pulse := 0.5 + 0.5 * sin(_time * 1.3)
+	var pulse := 0.5 + 0.5 * sin(clock * 1.3)
 	for k in range(8, 0, -1):
 		_disc(r * (1.0 + k * (0.035 + 0.01 * pulse)), Color(STAR_COLOR, 0.05))
 	var rim := TAU * r
@@ -226,14 +230,14 @@ func _draw_star(r: float) -> void:
 		var color := Color(FLARE_COLORS[layer], 0.35 + 0.35 * layer)
 		for n in range(floori(arc.x / TAU * count), ceili(arc.y / TAU * count) + 1):
 			var i := posmod(n, count)
-			var at := i * TAU / count + 0.3 * half * sin(_time * 0.7 + i)
-			var flicker := 0.5 + 0.5 * sin(_time * (2.0 + i % 5 * 0.6) + i * 1.7 + layer)
+			var at := i * TAU / count + 0.3 * half * sin(clock * 0.7 + i)
+			var flicker := 0.5 + 0.5 * sin(clock * (2.0 + i % 5 * 0.6) + i * 1.7 + layer)
 			var length := (FLAME_LENGTH.x + (FLAME_LENGTH.y - FLAME_LENGTH.x) * flicker) * (1.0 - 0.5 * layer)
 			draw_colored_polygon(PackedVector2Array([Vector2.from_angle(at - half) * (r - 2.0), Vector2.from_angle(at) * (r + length), Vector2.from_angle(at + half) * (r - 2.0)]), color)
 	var arches := maxi(STAR_PROMINENCES, int(rim / 1500.0))
 	for i in arches:  # slow arches of plasma rising off the surface
-		var at := i * TAU / arches + _time * 0.03 * 600.0 / r
-		var rise := 0.5 + 0.5 * sin(_time * 0.9 + i * 2.3)
+		var at := i * TAU / arches + clock * 0.03 * 600.0 / r
+		var rise := 0.5 + 0.5 * sin(clock * 0.9 + i * 2.3)
 		draw_arc(Vector2.from_angle(at) * r, PROMINENCE_SIZE.x + (PROMINENCE_SIZE.y - PROMINENCE_SIZE.x) * rise, at - PI / 2.0, at + PI / 2.0, 24, Color(FLARE_COLORS[0], 0.5 + 0.4 * rise), 8.0, true)
 	_disc(r, STAR_COLOR)
 	for k in 5:

@@ -81,6 +81,24 @@ func test_seeking_back_restores_unspawned_shards() -> void:
 	check(visible_asteroids(viewer) == 2, "the shard must come back: %d visible" % visible_asteroids(viewer))
 
 
+func test_black_holes_and_stars_turn_with_the_replay_clock() -> void:
+	var data := scripted_level()
+	data.bodies = [{"kind": "black_hole", "position": [2000, 1000]}, {"kind": "star", "position": [3000, -2000]}]
+	var viewer := DemoViewer.create(data, scripted(90, -1, Demo.Event.GOAL_REACHED), func() -> void: pass)
+	world.add_child(viewer)
+	var bodies := viewer.level.get_children().filter(func(n: Node) -> bool: return n is GravityBody)
+	var drawn := {}  # bodies drawn since the last seek
+	for body: GravityBody in bodies:
+		body.draw.connect(func() -> void: drawn[body] = true)
+	for at in [60.0, 15.0, 30.5]:  # 30.5: playback sits between recorded frames
+		viewer._show(at)
+		for body: GravityBody in bodies:
+			check(is_equal_approx(body.clock, at * Demo.STEP), "frame %s must show %s s, not %s" % [at, at * Demo.STEP, body.clock])
+		drawn.clear()
+		await world.get_tree().process_frame
+		check(drawn.size() == bodies.size(), "each body must redraw at frame %s: %d of %d did" % [at, drawn.size(), bodies.size()])
+
+
 func test_a_lost_run_plays_to_its_end() -> void:
 	var demo := scripted(60, 20, Demo.Event.SHIP_LOST)
 	var viewer := DemoViewer.create(scripted_level(), demo, func() -> void: pass)
