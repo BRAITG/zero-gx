@@ -17,7 +17,7 @@ const FUEL_SCALE := 10.0  # tenths
 const MAX_ALIVE := 1024  # most asteroids alive at once
 const MAX_ASTEROID_FRAMES := 4_000_000  # sum over frames of asteroids alive (12 bytes each stored)
 
-enum Event { PICKUP_TAKEN = 1, PLANET_SHATTERED = 2, SHIP_LOST = 3, GOAL_REACHED = 4, ASTEROID_SPAWNED = 5, ASTEROID_REMOVED = 6, CLOCK_STARTED = 7 }
+enum Event { PICKUP_TAKEN = 1, PLANET_SHATTERED = 2, SHIP_LOST = 3, GOAL_REACHED = 4, ASTEROID_SPAWNED = 5, ASTEROID_REMOVED = 6, CLOCK_STARTED = 7 }  # PLANET_SHATTERED retired; code 2 stays reserved for wire compatibility
 
 # Asteroid log entry flags: how an entry's three values relate to the asteroid's previous ones.
 const DELTA := 0

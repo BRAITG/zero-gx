@@ -4,10 +4,6 @@ const ASTEROID := "res://scenes/asteroid.tscn"
 const GRAVITY_BODY := "res://scenes/gravity_body.tscn"
 
 
-func asteroids() -> Array:
-	return world.get_children().filter(func(n): return n is Asteroid)
-
-
 func record(sig: Signal) -> Array:
 	var hits := []
 	sig.connect(func(arg = null): hits.append(arg))
