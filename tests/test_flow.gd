@@ -1450,7 +1450,7 @@ func test_ready_hold_freezes_ship_shows_initial_velocity_and_launches_on_first_i
 	check(lvl.ship.position.is_equal_approx(ship_start), "ship stays frozen until launch: %s vs %s" % [lvl.ship.position, ship_start])
 	check(rock.position.is_equal_approx(rock_start), "asteroid stays frozen until launch: %s vs %s" % [rock.position, rock_start])
 	check(lvl.ship.show_initial_velocity and not lvl.ship.show_velocity, "initial velocity arrow is forced on during Ready hold even when Settings.show_velocity is off")
-	check(lvl.hud.ready_text().contains("READY"), "Ready pill is shown: '%s'" % lvl.hud.ready_text())
+	check(lvl.hud.ready_text() == "READY · PRESS FIRE TO LAUNCH", "mouse_aim Ready pill is concise: '%s'" % lvl.hud.ready_text())
 	var hover := InputEventMouseMotion.new()
 	hover.position = Vector2(640, 360)
 	Input.parse_input_event(hover)

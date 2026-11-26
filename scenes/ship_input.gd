@@ -133,13 +133,13 @@ func launch_hint() -> String:
 		"mouse_click":
 			return "READY · CLICK ANYWHERE TO LAUNCH"
 		"mouse_aim":
-			return "READY · PRESS %s TO LAUNCH" % _fire_names().to_upper()
+			return "READY · PRESS FIRE TO LAUNCH"
 		"stick":
 			return "READY · DRAG STICK OR FIRE TO LAUNCH"
 		"finger_button":
 			return "READY · TOUCH TO AIM OR FIRE TO LAUNCH"
 		_:
-			return "READY · STEER OR PRESS %s TO LAUNCH" % _fire_names().to_upper()
+			return "READY · STEER OR PRESS FIRE TO LAUNCH"
 
 
 ## The fire bindings as the player reads them, e.g. "Space or Left Mouse Button or A / Cross".
