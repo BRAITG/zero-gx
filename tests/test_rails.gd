@@ -31,13 +31,3 @@ func test_ship_knocks_asteroid_off_rails() -> void:
 	await frames(60)
 	var d := rock.global_position.distance_to(planet.global_position)
 	check(abs(d - 150.0) > 5.0, "released asteroid still on its circle (d=%f)" % d)
-
-
-func test_released_when_parent_shatters() -> void:
-	var planet = spawn(GRAVITY_BODY, Vector2.ZERO, {"destructible": true})
-	var rock := orbiter(planet, 250.0)
-	await frames(2)
-	planet.take_damage(1e9)
-	await frames(2)
-	check(is_instance_valid(rock) and not rock.on_rails, "the orbiter must be released when its planet shatters")
-	check(abs(rock.linear_velocity.length() - 250.0) <= 12.5, "released with speed %f, expected orbital 250" % rock.linear_velocity.length())

@@ -26,7 +26,7 @@ const MAX_TITLE := 40
 const MAX_TEXT := 200
 const MAX_PAR := 1_000_000
 const TANK_RANGE := Vector2(1, 1000)  # fuel and hull, unless unlimited
-const BODY_RANGES := {"radius": Vector2(8, 3000), "strength": Vector2(0, 6000000), "reach": Vector2(0, 10000), "health": Vector2(1, 10000)}  # strength covers the heaviest, smallest black hole
+const BODY_RANGES := {"radius": Vector2(8, 3000), "strength": Vector2(0, 6000000), "reach": Vector2(0, 10000)}  # strength covers the heaviest, smallest black hole
 ## Per-kind limits, each independent of the others so radius and pull can be set apart. Total
 ## pull is the pull at 1000 px, which acts like mass: strength (the surface pull) is total pull
 ## divided by (radius / 1000)². As in reality, black holes and stars overlap in mass, but any
@@ -264,7 +264,7 @@ static func build(data: Dictionary, script: Script = LEVEL_SCRIPT) -> Level:
 		body.name = "Body%d" % (i + 1)
 		body.preset = BODY_KINDS.find(bodies[i].kind)
 		body.position = _vec(bodies[i].position)
-		for key: String in ["radius", "strength", "reach", "destructible", "health"]:
+		for key: String in ["radius", "strength", "reach"]:
 			if bodies[i].has(key):
 				body.set(key, bodies[i][key])
 		root.add_child(body)
@@ -351,9 +351,6 @@ static func serialize(root: Node) -> Dictionary:
 			for key: String in ["radius", "strength", "reach"]:
 				if child.get(key) >= 0.0:
 					body[key] = _num(child.get(key))
-			if child.destructible:
-				body.destructible = true
-				body.health = _num(child.health)
 			data.get_or_add("bodies", []).append(body)
 		elif child is Asteroid:
 			var rock := {"position": _list_of(child.position)}

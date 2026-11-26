@@ -26,11 +26,6 @@ func _ready() -> void:
 		pickups[i].body_entered.connect(func(body: Node) -> void:
 			if body is Ship and not _finished:
 				demo.add_event(Demo.Event.PICKUP_TAKEN, [i]))
-	var planets := _level.get_children().filter(func(n: Node) -> bool: return n is GravityBody)
-	for i in planets.size():
-		planets[i].shattered.connect(func() -> void:
-			if not _finished:
-				demo.add_event(Demo.Event.PLANET_SHATTERED, [i]))
 
 
 func _physics_process(_delta: float) -> void:

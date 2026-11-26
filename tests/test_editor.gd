@@ -1476,10 +1476,7 @@ func test_body_context_menus_match_the_body_kind() -> void:
 		await _open_context_menu(e, screen)
 		for item: String in ["Radius", "Mass", "Reach", "Delete"]:
 			check(_button_named(e, item) != null, "%s menu includes %s" % [kind, item])
-		if kind == "planet":
-			check(_button_named(e, "Destructible") != null and _button_named(e, "Health") != null, "planet menu includes Destructible and Health")
-		else:
-			check(_button_named(e, "Destructible") == null and _button_named(e, "Health") == null, "%s menu omits planet-only properties" % kind)
+		check(_button_named(e, "Destructible") == null and _button_named(e, "Health") == null, "%s menu omits removed Destructible/Health properties" % kind)
 		_route(_key(KEY_ESCAPE))
 		await frames(1)
 		index += 1
@@ -1552,24 +1549,6 @@ func test_pickup_kind_menu_action_changes_kind_immediately() -> void:
 	var chosen: bool = await _choose_menu_option(e, "Kind", "Boost")
 	check(chosen, "Boost is available from the pickup Kind menu")
 	check(e.doc.data.pickups[0].kind == "boost", "choosing Boost changes the pickup immediately")
-
-
-func test_destructible_menu_toggle_acts_immediately() -> void:
-	var e: LevelEditor = editor()
-	await frames(1)
-	e._camera.zoom = Vector2.ONE * 0.5
-	await frames(2)
-	var screen := Vector2(800, 400)
-	e.doc.place("planet", e._to_world(screen))
-	await _open_context_menu(e, screen)
-	var item := _button_named(e, "Destructible")
-	check(item != null, "planet menu offers Destructible")
-	if item is CheckButton:
-		var toggle: CheckButton = item as CheckButton
-		toggle.button_pressed = true
-	elif item != null:
-		item.pressed.emit()
-	check(e.doc.data.bodies[0].get("destructible", false), "enabling Destructible updates the planet immediately")
 
 
 func test_delete_menu_action_deletes_body_immediately() -> void:
@@ -2253,8 +2232,7 @@ func test_context_menu_rows_form_one_left_aligned_list() -> void:
 	e._camera.zoom = Vector2.ONE * 0.5
 	await frames(2)
 	var screen := Vector2(800, 400)
-	var ref: Dictionary = e.doc.place("planet", e._to_world(screen))
-	e.doc.set_property(ref, "destructible", true)
+	e.doc.place("planet", e._to_world(screen))
 	await _open_context_menu(e, screen)
 	await frames(2)
 	var scrolls: Array[Node] = e._menu_panel.find_children("*", "ScrollContainer", true, false)
@@ -2271,11 +2249,7 @@ func test_context_menu_rows_form_one_left_aligned_list() -> void:
 		check(delete.get_theme_color("font_color").is_equal_approx(Color("#ff8a6a")), "Delete uses the destructive colour")
 		var index: int = rows.get_children().find(delete)
 		check(index > 0 and rows.get_child(index - 1) is ColorRect, "a separator precedes Delete")
-	var destructible := _button_named(e, "Destructible")
-	check(destructible is CheckButton and (destructible as CheckButton).button_pressed, "Destructible is a checked toggle row")
-	if destructible != null:
-		check(destructible.alignment == HORIZONTAL_ALIGNMENT_LEFT, "Destructible is left aligned")
-		check(destructible.size.x >= scroll.size.x - 1.0, "Destructible fills the menu row (%s/%s)" % [destructible.size.x, scroll.size.x])
+	check(_button_named(e, "Destructible") == null and _button_named(e, "Health") == null, "planet menu omits removed Destructible/Health rows")
 
 
 func test_property_panel_title_names_thing_and_inlines_desktop_units() -> void:
