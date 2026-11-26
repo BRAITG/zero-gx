@@ -1368,6 +1368,8 @@ func test_campaign_selector_keeps_its_original_width_with_rank_badges() -> void:
 	var scroll: ScrollContainer = main._levels.get_parent()
 	var row: Button = stage_rows(main)["Level 01"]
 	check(scroll.size.x <= MAIN.LIST_WIDTH and row.size.x <= scroll.size.x, "rank badges fit the selector without widening it: %s / %s" % [scroll.size, row.size])
+	var play: Control = row.find_child("Play", true, false) as Control
+	check(play != null and row.get_global_rect().encloses(play.get_global_rect()), "Play CTA stays inside the 900 px cleared row: %s vs %s" % [play.get_global_rect(), row.get_global_rect()])
 	check(_campaign_badge(main).visible and row.get_global_rect().encloses(_campaign_badge(main).get_global_rect()), "the badge remains visible inside the compact row")
 	check(_campaign_badge(main).text == "~≤25" and _campaign_badge(main).tooltip_text.contains("#25 or better"), "the compact badge retains the estimate's upper-rank bound without clipping its meaning")
 
