@@ -9,6 +9,7 @@ var _level: Level
 var _started := false
 var _clock_started := false
 var _tick := 0
+var _launch_frame := -1
 var _rocks := {}  # id -> Asteroid alive
 var _next_id := 0
 var _finished := false
@@ -33,6 +34,8 @@ func _ready() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if _launch_frame == Engine.get_physics_frames():
+		return
 	_start()
 	if not _clock_started and _level.ship.flight_time > 0.0:
 		_clock_started = true
@@ -40,6 +43,16 @@ func _physics_process(_delta: float) -> void:
 	if _tick % 2 == 0:
 		_record_frame()
 	_tick += 1
+
+
+## Captures frame 0 right as the pre-launch Ready hold releases, before the ship burns fuel on tick 0.
+func begin_recording() -> void:
+	_start()
+	if _tick == 0:
+		_record_frame()
+		_tick = 1
+		_launch_frame = Engine.get_physics_frames()
+	set_physics_process(true)
 
 
 ## The run is over: the last state and the result, whether or not a tick has run yet.

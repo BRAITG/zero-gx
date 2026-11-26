@@ -48,6 +48,8 @@ const AXIS_NAMES := {
 
 ## Emitted when the scheme changes, so the intro card can name the controls in use.
 signal scheme_changed
+## Emitted on the first deliberate gameplay input while the level is waiting to launch.
+signal launch_requested
 
 var ship: Ship
 ## "finger", "mouse_click", "mouse_aim", "keys", "pad", "stick" or "finger_button".
@@ -123,6 +125,23 @@ func intro_hint() -> String:
 		_:
 			return "Steer with the keys or a stick and hold %s to fire its engine. Reach the green ring." % _fire_names()
 
+## Short scheme-aware launch prompt shown on the Ready card before the stage activates.
+func launch_hint() -> String:
+	match scheme:
+		"finger":
+			return "READY · TOUCH ANYWHERE TO LAUNCH"
+		"mouse_click":
+			return "READY · CLICK ANYWHERE TO LAUNCH"
+		"mouse_aim":
+			return "READY · PRESS %s TO LAUNCH" % _fire_names().to_upper()
+		"stick":
+			return "READY · DRAG STICK OR FIRE TO LAUNCH"
+		"finger_button":
+			return "READY · TOUCH TO AIM OR FIRE TO LAUNCH"
+		_:
+			return "READY · STEER OR PRESS %s TO LAUNCH" % _fire_names().to_upper()
+
+
 ## The fire bindings as the player reads them, e.g. "Space or Left Mouse Button or A / Cross".
 func _fire_names() -> String:
 	var names := " or ".join(InputMap.action_get_events(&"fire").map(binding_name))
@@ -169,6 +188,10 @@ func _physics_process(_delta: float) -> void:
 	var direction := steer_direction()
 	var gated := scheme in GATED
 	var active := not ship.controls_locked and (ship.accept_input or not gated) and (direction != Vector2.ZERO or _fire or _pointer != null)
+	if get_parent().get("waiting_to_launch"):
+		if not active or (scheme == "mouse_aim" and not _fire):
+			return
+		launch_requested.emit()
 	if not (active or _applied):
 		return
 	_applied = active  # going idle writes once, to let go of the ship

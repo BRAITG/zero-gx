@@ -79,6 +79,9 @@ var _arrow: Control
 var _intro: PanelContainer
 var _intro_title: Label
 var _intro_hint: Label
+var _ready_pill: PanelContainer
+var _ready_label: Label
+var _intro_fade: Tween
 var _intro_fading := false
 
 
@@ -149,6 +152,7 @@ func _ready() -> void:
 	_intro.hide()
 	var card := VBoxContainer.new()
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_theme_constant_override("separation", 8)
 	_intro.add_child(card)
 	_intro_title = Label.new()
 	_intro_title.add_theme_font_override("font", Style.display_font)
@@ -161,6 +165,13 @@ func _ready() -> void:
 	_intro_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_intro_hint.custom_minimum_size.x = INTRO_WIDTH
 	card.add_child(_intro_hint)
+	_ready_pill = Style.pill("", Style.ACCENT, 18)
+	_ready_pill.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_ready_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ready_pill.hide()
+	_ready_label = _ready_pill.get_child(0) as Label
+	assert(_ready_label != null, "Style.pill must contain a Label child")
+	card.add_child(_ready_pill)
 	add_child(_intro)
 
 	_result_frame = Style.menu_frame(self)
@@ -319,11 +330,10 @@ func _process(_delta: float) -> void:
 		_show_countdown(left)
 		_arrow.queue_redraw()
 		_time.text = "%.1f s" % ship.flight_time
+		if _ready_pill.visible:
+			_ready_pill.modulate.a = 0.775 + 0.225 * cos(Time.get_ticks_msec() * 0.001 * PI / 0.8)
 		if _intro.visible and ship.flight_time > 0.0 and not _intro_fading:
-			_intro_fading = true
-			var fade := create_tween()
-			fade.tween_property(_intro, "modulate:a", 0.0, INTRO_FADE)
-			fade.tween_callback(_intro.hide)
+			_fade_intro()
 
 
 ## Shows or hides the pause card, pausing or unpausing the tree. Does nothing on the end panel.
@@ -346,14 +356,58 @@ func _exit_tree() -> void:
 	Monetization.clear_surface(self)
 
 
-func show_intro(title: String, hint: String) -> void:
+func show_intro(title: String, hint: String, ready_prompt := "") -> void:
+	_kill_intro_fade()
 	_intro_title.text = title
+	_intro_title.visible = title != ""
 	_intro_hint.text = hint
 	_intro_hint.visible = hint != ""
+	_ready_label.text = ready_prompt
+	_ready_pill.visible = ready_prompt != ""
+	_ready_pill.modulate.a = 1.0
+	_intro_fading = false
+	_intro.modulate.a = 1.0
+	if ready_prompt != "":
+		_intro.add_theme_stylebox_override("panel", Style.box(Style.PANEL, Style.ACCENT, 12, 14))
+	else:
+		_intro.remove_theme_stylebox_override("panel")
 	_intro.show()
 	_intro.reset_size()
 	_intro.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 110)
 	_intro.grow_horizontal = Control.GROW_DIRECTION_BOTH
+
+
+## Clears the Ready launch prompt once the stage goes live and fades the intro card out.
+func dismiss_ready() -> void:
+	_ready_pill.hide()
+	_ready_pill.modulate.a = 1.0
+	_intro.remove_theme_stylebox_override("panel")
+	if not _intro.visible:
+		return
+	if not _intro_title.visible and not _intro_hint.visible:
+		_kill_intro_fade()
+		_intro_fading = false
+		_intro.hide()
+	elif not _intro_fading:
+		_fade_intro()
+
+
+func is_intro_fading() -> bool:
+	return _intro_fading
+
+
+func _kill_intro_fade() -> void:
+	if _intro_fade != null:
+		_intro_fade.kill()
+		_intro_fade = null
+
+
+func _fade_intro() -> void:
+	_kill_intro_fade()
+	_intro_fading = true
+	_intro_fade = create_tween()
+	_intro_fade.tween_property(_intro, "modulate:a", 0.0, INTRO_FADE)
+	_intro_fade.tween_callback(_intro.hide)
 
 
 ## The intro card's text while it is shown, for tests.
@@ -361,10 +415,18 @@ func intro_text() -> String:
 	return "%s\n%s" % [_intro_title.text, _intro_hint.text] if _intro.visible else ""
 
 
+## The Ready launch pill's text while waiting to launch, for tests.
+func ready_text() -> String:
+	return _ready_label.text if _intro.visible and _ready_pill.visible else ""
+
+
 ## `result` keys: name; won → points, fuel_points, hull_points, time_points, new_best, has_next, has_par,
 ## par (the medal slots show only with has_par, and fill as the total counts up to points);
 ## lost → cause; optional can_rate (a community stage whose feedback the player may give) shows Rate level.
 func show_result(won: bool, result: Dictionary) -> void:
+	_kill_intro_fade()
+	_intro_fading = false
+	_ready_pill.hide()
 	_intro.hide()
 	_result_name.text = result.name
 	_result_name.visible = result.name != ""
