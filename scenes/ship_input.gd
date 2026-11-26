@@ -135,25 +135,11 @@ func launch_hint() -> String:
 		"mouse_aim":
 			return "READY · PRESS %s TO LAUNCH" % _fire_names().to_upper()
 		"stick":
-			return "READY · TOUCH STICK OR FIRE TO LAUNCH"
+			return "READY · DRAG STICK OR FIRE TO LAUNCH"
 		"finger_button":
 			return "READY · TOUCH TO AIM OR FIRE TO LAUNCH"
 		_:
 			return "READY · STEER OR PRESS %s TO LAUNCH" % _fire_names().to_upper()
-
-
-## True when the player is giving deliberate flight input that should activate a waiting stage.
-## Passive cursor movement in `mouse_aim` does not launch the level on its own.
-func wants_launch() -> bool:
-	if ship.controls_locked:
-		return false
-	if scheme == "mouse_aim":
-		return _fire
-	if scheme in GATED:
-		return ship.accept_input and _pointer != null
-	if scheme in TWO_HANDED:
-		return touch.fire or touch.aim_screen != null or touch.direction != Vector2.ZERO
-	return _fire or steer_direction() != Vector2.ZERO
 
 
 ## The fire bindings as the player reads them, e.g. "Space or Left Mouse Button or A / Cross".
@@ -199,13 +185,13 @@ func _physics_process(_delta: float) -> void:
 	if scheme in TWO_HANDED:
 		_pointer = touch.aim_screen
 		_fire = touch.fire
-	if get_parent().get("waiting_to_launch"):
-		if not wants_launch():
-			return
-		launch_requested.emit()
 	var direction := steer_direction()
 	var gated := scheme in GATED
 	var active := not ship.controls_locked and (ship.accept_input or not gated) and (direction != Vector2.ZERO or _fire or _pointer != null)
+	if get_parent().get("waiting_to_launch"):
+		if not active or (scheme == "mouse_aim" and not _fire):
+			return
+		launch_requested.emit()
 	if not (active or _applied):
 		return
 	_applied = active  # going idle writes once, to let go of the ship

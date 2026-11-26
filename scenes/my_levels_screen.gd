@@ -29,7 +29,6 @@ func _ready() -> void:
 	frame.add_child(_column)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 24)
-	top.custom_minimum_size.x = LIST_WIDTH
 	top.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_column.add_child(top)
 	Style.subtle(_button(top, "Back", func() -> void: get_tree().change_scene_to_file(MENU)))
@@ -45,12 +44,18 @@ func _ready() -> void:
 	Style.subtle(_button(top, "Import", _import))
 	Style.primary(_button(top, "New level", func() -> void: _edit(MyLevels.new_id())))
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size.x = LIST_WIDTH
 	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true  # keys and pads reach the rows below the fold
 	_column.add_child(scroll)
+	var fit_width := func() -> void:
+		var available := frame.size.x - 48.0
+		var w := minf(LIST_WIDTH, available) if available > 0.0 else LIST_WIDTH
+		top.custom_minimum_size.x = w
+		scroll.custom_minimum_size.x = w
+	frame.resized.connect(fit_width)
+	fit_width.call()
 	_list = VBoxContainer.new()
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_list.add_theme_constant_override("separation", 12)

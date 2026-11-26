@@ -36,7 +36,7 @@ var level_sha256 := ""
 var demo: Demo
 var _recorder: DemoRecorder
 var _launch_velocity := Vector2.ZERO
-var _held_asteroids: Array = []  # [Asteroid, on_rails, linear_velocity]
+var _held_asteroids := {}  # Asteroid -> saved linear_velocity
 var _done := false
 ## The community attempt this run counts: its id, "" when none was recorded. Set once, when the run first goes live.
 var _attempt := ""
@@ -162,7 +162,7 @@ func _enter_ready_hold() -> void:
 	for child in get_children():
 		if child is Asteroid:
 			var rock := child as Asteroid
-			_held_asteroids.append([rock, rock.on_rails, rock.linear_velocity])
+			_held_asteroids[rock] = rock.linear_velocity
 			if rock.on_rails:
 				rock.set_physics_process(false)
 			else:
@@ -182,16 +182,15 @@ func launch() -> void:
 	ship.linear_velocity = _launch_velocity
 	ship._previous_velocity = _launch_velocity
 	ship.queue_redraw()
-	for entry: Array in _held_asteroids:
-		var rock: Asteroid = entry[0]
+	for rock in _held_asteroids:
 		if not is_instance_valid(rock):
 			continue
-		if entry[1]:
+		if rock.on_rails:
 			rock.set_physics_process(true)
 		else:
 			rock.freeze = false
-			rock.linear_velocity = entry[2]
-			rock._previous_velocity = entry[2]
+			rock.linear_velocity = _held_asteroids[rock]
+			rock._previous_velocity = _held_asteroids[rock]
 	_held_asteroids.clear()
 	if _recorder:
 		_recorder.begin_recording()
@@ -226,8 +225,8 @@ func _settings_changed() -> void:
 
 ## The intro card is redrawn while shown, so the controls it names stay current.
 func _refresh_intro() -> void:
-	if hud.intro_text() != "" or hud.ready_text() != "":
-		hud.show_intro(_intro_title(), _intro_text(), input.launch_hint() if waiting_to_launch else "")
+	if not hud.is_intro_fading() and (hud.intro_text() != "" or hud.ready_text() != ""):
+		_show_intro()
 
 
 ## How the stage is named to the player: "Level 2 · Drift", "Training 6 · Black holes", or
@@ -313,6 +312,7 @@ func finish(won: bool) -> void:
 	_done = true
 	waiting_to_launch = false
 	ship.show_initial_velocity = false
+	ship.queue_redraw()
 	ship.thrusting = false
 	if _attempt != "":
 		Community.record_play_finish(_attempt, "cleared" if won else "failed")  # saved before the result card shows

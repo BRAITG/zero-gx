@@ -81,7 +81,7 @@ var _intro_title: Label
 var _intro_hint: Label
 var _ready_pill: PanelContainer
 var _ready_label: Label
-var _ready_pulse: Tween
+var _intro_fade: Tween
 var _intro_fading := false
 
 
@@ -170,6 +170,7 @@ func _ready() -> void:
 	_ready_pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_ready_pill.hide()
 	_ready_label = _ready_pill.get_child(0) as Label
+	assert(_ready_label != null, "Style.pill must contain a Label child")
 	card.add_child(_ready_pill)
 	add_child(_intro)
 
@@ -329,6 +330,8 @@ func _process(_delta: float) -> void:
 		_show_countdown(left)
 		_arrow.queue_redraw()
 		_time.text = "%.1f s" % ship.flight_time
+		if _ready_pill.visible:
+			_ready_pill.modulate.a = 0.775 + 0.225 * cos(Time.get_ticks_msec() * 0.001 * PI / 0.8)
 		if _intro.visible and ship.flight_time > 0.0 and not _intro_fading:
 			_fade_intro()
 
@@ -354,23 +357,19 @@ func _exit_tree() -> void:
 
 
 func show_intro(title: String, hint: String, ready_prompt := "") -> void:
+	_kill_intro_fade()
 	_intro_title.text = title
 	_intro_title.visible = title != ""
 	_intro_hint.text = hint
 	_intro_hint.visible = hint != ""
 	_ready_label.text = ready_prompt
 	_ready_pill.visible = ready_prompt != ""
+	_ready_pill.modulate.a = 1.0
 	_intro_fading = false
 	_intro.modulate.a = 1.0
 	if ready_prompt != "":
 		_intro.add_theme_stylebox_override("panel", Style.box(Style.PANEL, Style.ACCENT, 12, 14))
-		if _ready_pulse == null or not _ready_pulse.is_running():
-			_ready_pill.modulate.a = 1.0
-			_ready_pulse = create_tween().set_loops()
-			_ready_pulse.tween_property(_ready_pill, "modulate:a", 0.55, 0.8).set_trans(Tween.TRANS_SINE)
-			_ready_pulse.tween_property(_ready_pill, "modulate:a", 1.0, 0.8).set_trans(Tween.TRANS_SINE)
 	else:
-		_stop_ready_pulse()
 		_intro.remove_theme_stylebox_override("panel")
 	_intro.show()
 	_intro.reset_size()
@@ -380,25 +379,35 @@ func show_intro(title: String, hint: String, ready_prompt := "") -> void:
 
 ## Clears the Ready launch prompt once the stage goes live and fades the intro card out.
 func dismiss_ready() -> void:
-	_stop_ready_pulse()
 	_ready_pill.hide()
+	_ready_pill.modulate.a = 1.0
 	_intro.remove_theme_stylebox_override("panel")
-	if _intro.visible and not _intro_fading:
+	if not _intro.visible:
+		return
+	if not _intro_title.visible and not _intro_hint.visible:
+		_kill_intro_fade()
+		_intro_fading = false
+		_intro.hide()
+	elif not _intro_fading:
 		_fade_intro()
 
 
-func _stop_ready_pulse() -> void:
-	if _ready_pulse != null:
-		_ready_pulse.kill()
-		_ready_pulse = null
-	_ready_pill.modulate.a = 1.0
+func is_intro_fading() -> bool:
+	return _intro_fading
+
+
+func _kill_intro_fade() -> void:
+	if _intro_fade != null:
+		_intro_fade.kill()
+		_intro_fade = null
 
 
 func _fade_intro() -> void:
+	_kill_intro_fade()
 	_intro_fading = true
-	var fade := create_tween()
-	fade.tween_property(_intro, "modulate:a", 0.0, INTRO_FADE)
-	fade.tween_callback(_intro.hide)
+	_intro_fade = create_tween()
+	_intro_fade.tween_property(_intro, "modulate:a", 0.0, INTRO_FADE)
+	_intro_fade.tween_callback(_intro.hide)
 
 
 ## The intro card's text while it is shown, for tests.
@@ -415,7 +424,8 @@ func ready_text() -> String:
 ## par (the medal slots show only with has_par, and fill as the total counts up to points);
 ## lost → cause; optional can_rate (a community stage whose feedback the player may give) shows Rate level.
 func show_result(won: bool, result: Dictionary) -> void:
-	_stop_ready_pulse()
+	_kill_intro_fade()
+	_intro_fading = false
 	_ready_pill.hide()
 	_intro.hide()
 	_result_name.text = result.name

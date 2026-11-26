@@ -225,7 +225,7 @@ func test_imported_invalid_level_shows_its_thumbnail_and_keeps_play_disabled() -
 
 func test_a_narrow_window_keeps_the_row_inside_and_the_title_ellipsises() -> void:
 	var viewport := SubViewport.new()
-	viewport.size = Vector2i(960, 720)
+	viewport.size = Vector2i(800, 720)
 	world.add_child(viewport)
 	var data: Dictionary = LevelFormat.read("res://levels/level_05.json")
 	var long_title := "A very long level title ".repeat(20)

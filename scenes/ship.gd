@@ -346,7 +346,7 @@ func _process(delta: float) -> void:
 		_trail.add_point(global_position)
 		if _trail.get_point_count() > TRAIL_POINTS:
 			_trail.remove_point(0)
-	if _flash > 0.0 or _heat > 0.0 or show_velocity or show_initial_velocity:
+	if _flash > 0.0 or _heat > 0.0 or show_velocity:
 		queue_redraw()
 
 
