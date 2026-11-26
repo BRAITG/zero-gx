@@ -171,22 +171,34 @@ func test_clock_waits_for_first_thrust() -> void:
 ## The stage rows under `node`, by name ("Level 01", "Training 2"); the home page's Training button is not one.
 func stage_rows(node: Node) -> Dictionary:
 	var rows := {}
-	for button: Button in node.find_children("*", "Button", true, false):
-		var label := row_title(button).get_slice(" · ", 0)
+	for card: PanelContainer in node.find_children("*", "PanelContainer", true, false):
+		if card.find_child("Title", true, false) == null:
+			continue
+		var label := row_title(card).get_slice(" · ", 0)
 		if label.begins_with("Level ") or (label.begins_with("Training ") and label.get_slice(" ", 1).is_valid_int()):
-			rows[label] = button
+			rows[label] = card
 	return rows
 
 
 ## A stage row's title ("Level 01 · Launch"), or a plain button's text.
-func row_title(button: Button) -> String:
-	var title := button.find_child("Title", true, false)
-	return title.text if title else button.text
+func row_title(node: Control) -> String:
+	var title := node.find_child("Title", true, false)
+	if title:
+		return title.text
+	if node.name == "Play" and node.get_parent() and node.get_parent().get_parent():
+		var parent_title := node.get_parent().get_parent().find_child("Title", true, false)
+		if parent_title:
+			return parent_title.text
+	return node.text if node is Button else ""
 
 
 ## Everything a stage row says: its title and the best-score cells.
-func row_text(button: Button) -> String:
-	return " ".join(button.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text))
+func row_text(node: Control) -> String:
+	return " ".join(node.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text))
+
+
+func row_play(row: Control) -> Button:
+	return row.find_child("Play", true, false) as Button
 
 
 ## The first button under `node` whose label starts with `prefix`, or null.
@@ -200,20 +212,20 @@ func button_starting(node: Node, prefix: String) -> Button:
 func test_menu_locks_levels() -> void:
 	var list := menu(MAIN.Page.OFFICIAL)
 	world.add_child(list)
-	var buttons := stage_rows(list)
-	check(not buttons.has("Training 1"), "the official list must not list training stages")
-	check(not buttons["Level 01"].disabled and buttons["Level 02"].disabled, "fresh progress: only level 1 open")
+	var rows := stage_rows(list)
+	check(not rows.has("Training 1"), "the official list must not list training stages")
+	check(row_play(rows["Level 01"]) != null and row_play(rows["Level 02"]) == null, "fresh progress: only level 1 open")
 	list.queue_free()
 	var training := menu(MAIN.Page.TRAINING)
 	world.add_child(training)
-	buttons = stage_rows(training)
-	check(not buttons.has("Level 01"), "the training list must not list levels")
-	check(not buttons["Training 1"].disabled and buttons["Training 2"].disabled, "fresh progress: only training 1 open")
+	rows = stage_rows(training)
+	check(not rows.has("Level 01"), "the training list must not list levels")
+	check(row_play(rows["Training 1"]) != null and row_play(rows["Training 2"]) == null, "fresh progress: only training 1 open")
 	Progress.record_win("tutorial_1", 1780, 30.0)
 	await frames(1)
-	buttons = stage_rows(training)
-	check(not buttons["Training 2"].disabled, "winning training 1 must open training 2 on the list")
-	check(row_text(buttons["Training 1"]).contains("1780"), "best points missing: %s" % row_text(buttons["Training 1"]))
+	rows = stage_rows(training)
+	check(row_play(rows["Training 2"]) != null, "winning training 1 must open training 2 on the list")
+	check(row_text(rows["Training 1"]).contains("1780"), "best points missing: %s" % row_text(rows["Training 1"]))
 
 
 func test_intro_card_until_first_thrust() -> void:
@@ -1112,9 +1124,9 @@ func test_campaign_board_updates_in_place_and_board_return_preserves_selection()
 	var main := menu(MAIN.Page.OFFICIAL)
 	world.add_child(main)
 	await frames(2)
-	var selected: Button = stage_rows(main)["Level 02"]
+	var selected: Button = row_play(stage_rows(main)["Level 02"])
 	selected.grab_focus()
-	var row: Button = stage_rows(main)["Level 01"]
+	var row: Control = stage_rows(main)["Level 01"]
 	net.release_hold("GET", "/boards/" + sha)
 	await frames(3)
 	check(stage_rows(main)["Level 01"] == row and focused() == selected, "async badge update preserves existing rows and selection")
@@ -1201,7 +1213,7 @@ func test_campaign_long_title_and_badge_fit_above_reserved_footer() -> void:
 	world.add_child(main)
 	Monetization.set_surface(main, true)  # stress the same frame with a reserved footer
 	await frames(4)
-	var row: Button = stage_rows(main)["Level 01"]
+	var row: Control = stage_rows(main)["Level 01"]
 	var title := row.find_child("Title", true, false) as Label
 	title.text = "Level 01 · An extremely long orbital slalom through an abandoned interstellar shipyard"
 	await frames(3)
@@ -1366,8 +1378,10 @@ func test_campaign_selector_keeps_its_original_width_with_rank_badges() -> void:
 	world.add_child(main)
 	await frames(3)
 	var scroll: ScrollContainer = main._levels.get_parent()
-	var row: Button = stage_rows(main)["Level 01"]
-	check(scroll.size.x <= 1280.0 and row.size.x <= scroll.size.x, "rank badges fit the selector without widening it: %s / %s" % [scroll.size, row.size])
+	var row: Control = stage_rows(main)["Level 01"]
+	check(scroll.size.x <= MAIN.LIST_WIDTH and row.size.x <= scroll.size.x, "rank badges fit the selector without widening it: %s / %s" % [scroll.size, row.size])
+	var play: Control = row.find_child("Play", true, false) as Control
+	check(play != null and row.get_global_rect().encloses(play.get_global_rect()), "Play CTA stays inside the 900 px cleared row: %s vs %s" % [play.get_global_rect(), row.get_global_rect()])
 	check(_campaign_badge(main).visible and row.get_global_rect().encloses(_campaign_badge(main).get_global_rect()), "the badge remains visible inside the compact row")
 	check(_campaign_badge(main).text == "~≤25" and _campaign_badge(main).tooltip_text.contains("#25 or better"), "the compact badge retains the estimate's upper-rank bound without clipping its meaning")
 
@@ -1394,12 +1408,13 @@ func test_official_rows_show_play_button_for_cleared_and_next_levels_only() -> v
 	world.add_child(list)
 	await frames(2)
 	var rows := stage_rows(list)
-	var cleared_play: Control = rows["Level 01"].find_child("Play", true, false) as Control
-	var next_play: Control = rows["Level 02"].find_child("Play", true, false) as Control
-	var locked_play: Control = rows["Level 03"].find_child("Play", true, false) as Control
-	check(cleared_play != null and cleared_play.visible and cleared_play.mouse_filter == Control.MOUSE_FILTER_IGNORE, "cleared official level shows non-interactive Play CTA")
-	check(next_play != null and next_play.visible and next_play.mouse_filter == Control.MOUSE_FILTER_IGNORE, "next unplayed official level shows non-interactive Play CTA")
-	check(locked_play == null, "locked official level shows no Play CTA")
+	var cleared_play: Button = row_play(rows["Level 01"])
+	var next_play: Button = row_play(rows["Level 02"])
+	var locked_play: Button = row_play(rows["Level 03"])
+	check(rows["Level 01"] is PanelContainer and cleared_play != null and cleared_play.visible, "cleared official level is a card with a Play button")
+	check(cleared_play.get_theme_stylebox("normal").bg_color == Color("#1658a6"), "cleared Play button uses the primary blue colour")
+	check(next_play != null and next_play.visible and next_play.get_theme_stylebox("normal").bg_color == Color("#1658a6"), "next unplayed official level shows primary Play button")
+	check(locked_play == null, "locked official level shows no Play button")
 
 
 func test_home_official_button_shows_progress_pill_when_levels_cleared() -> void:
