@@ -137,7 +137,8 @@ func _status_parts(id: String, data: Dictionary) -> Dictionary:
 			"open":
 				return {"pill": "In review", "detail": "", "separator": "", "color": Style.AMBER, "detail_color": Style.INK_DIM, "sheet_color": Style.INK_DIM}
 			"rejected":
-				var comment: String = status.get("comment", "")
+				var raw_comment: Variant = status.get("comment")
+				var comment: String = raw_comment if raw_comment is String else ""
 				return {"pill": "Rejected", "detail": comment, "separator": ": ", "color": FIX_COLOR, "detail_color": FIX_COLOR, "sheet_color": FIX_COLOR}
 			"approved":
 				var version := "Published v%d" % int(status.get("version", 1))

@@ -147,8 +147,8 @@ func focus_first(root: Node) -> void:
 
 
 func _style_button(button: Button, normal: StyleBoxFlat, hover: StyleBoxFlat, pressed: StyleBoxFlat, hover_pressed: StyleBoxFlat, font_normal: Color, font_hover: Color, font_pressed: Color, font_hover_pressed: Color) -> Button:
-	button.remove_meta(&"touch_hover")  # resnapshot fresh hover overrides even if already added under touch
-	button.remove_meta(&"saved_hover")
+	for key in [&"touch_hover", &"saved_hover", &"press_delay", &"saved_press"]:
+		button.remove_meta(key)  # cancel any in-flight press delay and resnapshot fresh hover overrides
 	button.set_meta(&"style_hover", true)
 	button.add_theme_stylebox_override("normal", normal)
 	button.add_theme_stylebox_override("hover", hover)
