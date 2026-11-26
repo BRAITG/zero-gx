@@ -68,6 +68,8 @@ var boosting := false
 var firing := false
 ## Draw the velocity vector from the ship (tutorials and the first levels).
 var show_velocity := false
+## Always draw the initial velocity arrow while waiting to launch, regardless of Settings.show_velocity.
+var show_initial_velocity := false
 ## Set once the nose first meets the finger during a press; cleared when the finger lifts. A drag
 ## keeps the engine on while the nose catches up; only a fresh press waits for alignment.
 var _press_aligned := false
@@ -344,7 +346,7 @@ func _process(delta: float) -> void:
 		_trail.add_point(global_position)
 		if _trail.get_point_count() > TRAIL_POINTS:
 			_trail.remove_point(0)
-	if _flash > 0.0 or _heat > 0.0 or show_velocity:
+	if _flash > 0.0 or _heat > 0.0 or show_velocity or show_initial_velocity:
 		queue_redraw()
 
 
@@ -467,10 +469,11 @@ func _draw() -> void:
 	draw_colored_polygon(hull.slice(0, 4), HULL.lerp(Color("#ff5a4a"), _flash).lerp(HEAT_RED, glow))
 	draw_polyline(hull, HULL_EDGE.lerp(HEAT_RED, glow), 2.0, true)
 	draw_circle(Vector2(RADIUS * 0.35, 0), RADIUS * 0.18, Color("#3aa0ff"))
-	if show_velocity and linear_velocity.length() > 1.0:
+	if (show_velocity or show_initial_velocity) and linear_velocity.length() > 1.0:
 		# World direction: undo the ship's own rotation.
 		var tip := velocity_arrow_tip()
-		var arrow := Color(1, 1, 1, 0.45)
-		draw_line(Vector2.ZERO, tip, arrow, 3.0, true)
+		var arrow := Color("#7fd4ff") if show_initial_velocity else Color(1, 1, 1, 0.45)
+		var width := 4.0 if show_initial_velocity else 3.0
+		draw_line(Vector2.ZERO, tip, arrow, width, true)
 		var back := -tip.normalized() * 14.0
 		draw_colored_polygon(PackedVector2Array([tip, tip + back.rotated(0.45), tip + back.rotated(-0.45)]), arrow)

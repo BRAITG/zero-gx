@@ -70,6 +70,7 @@ func test_a_lost_run_is_still_a_whole_demo() -> void:
 
 func test_recording_starts_with_the_first_tick_and_marks_the_clock() -> void:
 	var lvl := draft(blank_with({}))
+	lvl.launch()
 	var start := lvl.ship.global_position
 	await frames(60)  # idle: no thrust, no clock
 	check(lvl.demo.frame_count() >= 25, "an idle second must be recorded, got %d frames" % lvl.demo.frame_count())

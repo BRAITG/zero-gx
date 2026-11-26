@@ -26,6 +26,8 @@ var testing := false
 var publishing := false
 ## The running first-flight tour, or null.
 var tour: Tour
+## True while the stage is frozen on tick 0 waiting for the player's first flight input.
+var waiting_to_launch := false
 ## Set by Progress.build for levels that record a demo (not tutorials): the level data this run
 ## was built from and its hash.
 var level_data := {}
@@ -33,6 +35,8 @@ var level_sha256 := ""
 ## This run's demo; complete once `finished` is emitted. Null when the level records none.
 var demo: Demo
 var _recorder: DemoRecorder
+var _launch_velocity := Vector2.ZERO
+var _held_asteroids: Array = []  # [Asteroid, on_rails, linear_velocity]
 var _done := false
 ## The community attempt this run counts: its id, "" when none was recorded. Set once, when the run first goes live.
 var _attempt := ""
@@ -79,6 +83,7 @@ func _ready() -> void:
 	input = ShipInput.new(ship)
 	add_child(input)
 	input.scheme_changed.connect(_refresh_intro)
+	input.launch_requested.connect(launch)
 	if Tuning.tours and not testing and has_node("Tour") and Progress.best_points(level_id) < 0 and not Progress.toured.has(level_id):
 		Progress.toured[level_id] = true
 		hud.visible = false
@@ -86,7 +91,7 @@ func _ready() -> void:
 		tour.finished.connect(_end_tour)
 		add_child(tour)
 	else:
-		_show_intro()
+		_enter_ready_hold()
 	hud.retry_requested.connect(func(): Progress.open(level_id, testing, publishing))
 	hud.menu_requested.connect(_to_menu)
 	hud.replay_requested.connect(_replay)
@@ -103,6 +108,8 @@ func _ready() -> void:
 
 ## A run goes live on its first physics tick that is not paused and has no tour: physics callbacks run before the ship's step, so nothing has moved yet.
 func _physics_process(_delta: float) -> void:
+	if waiting_to_launch and (ship.thrusting or ship.steering or ship.boosting):
+		launch()
 	if _start_checked or _done or tour != null:
 		return
 	_start_checked = true
@@ -140,10 +147,69 @@ func _ship_stranded() -> void:
 	finish(false)
 
 
-## The title card; tutorials skip it, as their lesson is the introduction.
+## Holds the ship, asteroids, and demo recorder at tick 0 until the player's first flight input,
+## keeping the initial velocity arrow visible regardless of Settings.show_velocity.
+func _enter_ready_hold() -> void:
+	if self is Tutorial or process_mode == PROCESS_MODE_DISABLED:
+		_show_intro()
+		return
+	waiting_to_launch = true
+	_launch_velocity = ship.linear_velocity
+	ship.freeze = true
+	ship.show_initial_velocity = true
+	ship.queue_redraw()
+	_held_asteroids.clear()
+	for child in get_children():
+		if child is Asteroid:
+			var rock := child as Asteroid
+			_held_asteroids.append([rock, rock.on_rails, rock.linear_velocity])
+			if rock.on_rails:
+				rock.set_physics_process(false)
+			else:
+				rock.freeze = true
+	if _recorder:
+		_recorder.set_physics_process(false)
+	_show_intro()
+
+
+## Releases the pre-launch Ready hold and restores initial velocities for tick 0.
+func launch() -> void:
+	if not waiting_to_launch:
+		return
+	waiting_to_launch = false
+	ship.show_initial_velocity = false
+	ship.freeze = false
+	ship.linear_velocity = _launch_velocity
+	ship._previous_velocity = _launch_velocity
+	ship.queue_redraw()
+	for entry: Array in _held_asteroids:
+		var rock: Asteroid = entry[0]
+		if not is_instance_valid(rock):
+			continue
+		if entry[1]:
+			rock.set_physics_process(true)
+		else:
+			rock.freeze = false
+			rock.linear_velocity = entry[2]
+			rock._previous_velocity = entry[2]
+	_held_asteroids.clear()
+	if _recorder:
+		_recorder.begin_recording()
+	hud.dismiss_ready()
+
+
+## The title/ready card; tutorials skip it, as their lesson is the introduction.
 func _show_intro() -> void:
+	var heading := _intro_title()
+	var prompt := input.launch_hint() if waiting_to_launch else ""
+	if heading != "" or prompt != "":
+		hud.show_intro(heading, _intro_text(), prompt)
+
+
+func _intro_title() -> String:
 	if title != "":
-		hud.show_intro(display_name(), _intro_text())
+		return display_name()
+	return "Test flight" if testing else ""
 
 
 ## The intro card's hint: level 1's names the controls in use; other levels keep their own words.
@@ -160,8 +226,8 @@ func _settings_changed() -> void:
 
 ## The intro card is redrawn while shown, so the controls it names stay current.
 func _refresh_intro() -> void:
-	if hud.intro_text() != "":
-		hud.show_intro(display_name(), _intro_text())
+	if hud.intro_text() != "" or hud.ready_text() != "":
+		hud.show_intro(_intro_title(), _intro_text(), input.launch_hint() if waiting_to_launch else "")
 
 
 ## How the stage is named to the player: "Level 2 · Drift", "Training 6 · Black holes", or
@@ -176,6 +242,7 @@ func _end_tour() -> void:
 	tour = null
 	hud.visible = true
 	ship.use_camera()
+	_enter_ready_hold()
 
 
 func _notification(what: int) -> void:
@@ -244,6 +311,8 @@ func finish(won: bool) -> void:
 	if _done:
 		return
 	_done = true
+	waiting_to_launch = false
+	ship.show_initial_velocity = false
 	ship.thrusting = false
 	if _attempt != "":
 		Community.record_play_finish(_attempt, "cleared" if won else "failed")  # saved before the result card shows

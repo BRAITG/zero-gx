@@ -28,6 +28,7 @@ func results(lvl: Level) -> Array:
 
 func test_reaching_goal_wins() -> void:
 	var lvl := level(Vector2(300, 0), {"linear_velocity": Vector2(300, 0)})
+	lvl.launch()
 	var seen := results(lvl)
 	await frames(120)
 	check(seen == [true], "results %s, expected [true]" % [seen])
@@ -128,6 +129,7 @@ func test_loss_saves_nothing() -> void:
 
 func test_loss_cause_out_of_fuel() -> void:
 	var lvl := scored_level(Vector2(3000, 0), {"fuel": 0.0})
+	lvl.launch()
 	await frames(310)
 	check(lvl.hud.result_text().contains("Out of fuel"), "loss cause missing: %s" % lvl.hud.result_text())
 
@@ -432,6 +434,7 @@ func test_result_card_takes_focus() -> void:
 ## A fire tap just after the finish must not skip the card by pressing its first button.
 func test_fire_tap_after_finish_presses_nothing() -> void:
 	var lvl := scored_level(Vector2(300, 0), {"linear_velocity": Vector2(300, 0)})
+	lvl.launch()
 	var pressed := []
 	lvl.hud.retry_requested.connect(func(): pressed.append("retry"))
 	lvl.hud.next_requested.connect(func(): pressed.append("next"))
@@ -674,6 +677,7 @@ func test_focused_button_is_visible() -> void:
 
 func test_ui_pause_settings_keeps_flight_frozen_until_resume() -> void:
 	var lvl := level(Vector2(3000, 0), {"linear_velocity": Vector2(120, 0)})
+	lvl.launch()
 	await frames(2)
 	var pause_buttons := lvl.hud.find_children("*", "Button", true, false).filter(func(b: Button): return b.text == "Pause")
 	if pause_buttons.is_empty():
@@ -1428,3 +1432,59 @@ func test_home_official_button_shows_progress_pill_when_levels_cleared() -> void
 	var texts: Array = home._official_progress.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
 	check(home._official_progress.visible and ("1 / %d cleared" % Progress.levels().size()) in texts, "progress pill shows cleared count: %s" % [texts])
 	check(home._official.text == "Official levels", "button text still matches Official levels with progress shown")
+
+
+func test_ready_hold_freezes_ship_shows_initial_velocity_and_launches_on_first_input() -> void:
+	Settings.show_velocity = false
+	Settings.mouse_aims = true
+	var lvl := level(Vector2(3000, 0), {"linear_velocity": Vector2(250, 0)})
+	var rock: Asteroid = load("res://scenes/asteroid.tscn").instantiate()
+	rock.position = Vector2(400, 400)
+	rock.linear_velocity = Vector2(0, 200)
+	lvl.add_child(rock)
+	lvl._enter_ready_hold()
+	var ship_start := lvl.ship.position
+	var rock_start := rock.position
+	await frames(15)
+	check(lvl.waiting_to_launch, "level starts in Ready hold")
+	check(lvl.ship.position.is_equal_approx(ship_start), "ship stays frozen until launch: %s vs %s" % [lvl.ship.position, ship_start])
+	check(rock.position.is_equal_approx(rock_start), "asteroid stays frozen until launch: %s vs %s" % [rock.position, rock_start])
+	check(lvl.ship.show_initial_velocity and not lvl.ship.show_velocity, "initial velocity arrow is forced on during Ready hold even when Settings.show_velocity is off")
+	check(lvl.hud.ready_text().contains("READY"), "Ready pill is shown: '%s'" % lvl.hud.ready_text())
+	var hover := InputEventMouseMotion.new()
+	hover.position = Vector2(640, 360)
+	Input.parse_input_event(hover)
+	Input.flush_buffered_events()
+	await frames(5)
+	check(lvl.waiting_to_launch, "passive mouse movement in mouse_aim must not launch the level")
+	send_action(&"fire", true)
+	await frames(2)
+	send_action(&"fire", false)
+	await frames(15)
+	check(not lvl.waiting_to_launch, "first fire input launches the level")
+	check(not lvl.ship.show_initial_velocity and not lvl.ship.show_velocity, "initial velocity arrow clears on launch when setting is off")
+	check(lvl.hud.ready_text() == "", "Ready pill clears on launch: '%s'" % lvl.hud.ready_text())
+	check(lvl.ship.position.x > ship_start.x + 20.0, "ship moves with its initial velocity after launch: %s" % lvl.ship.position)
+	check(rock.position.y > rock_start.y + 10.0, "asteroid resumes moving after launch: %s" % rock.position)
+	Settings.reset_controls()
+
+
+func test_editor_test_flight_also_holds_ready_with_fallback_title() -> void:
+	Settings.show_velocity = false
+	var root := Node2D.new()
+	root.set_script(load("res://scenes/level.gd"))
+	root.testing = true
+	var ship: Ship = load(SHIP).instantiate()
+	ship.linear_velocity = Vector2(300, 0)
+	root.add_child(ship)
+	var goal: Node2D = load(GOAL).instantiate()
+	goal.position = Vector2(3000, 0)
+	root.add_child(goal)
+	world.add_child(root)
+	var lvl := root as Level
+	var start := lvl.ship.position
+	await frames(15)
+	check(lvl.waiting_to_launch and lvl.ship.show_initial_velocity, "Editor test flight starts in Ready hold with initial velocity shown")
+	check(lvl.hud.intro_text().contains("Test flight"), "untitled Editor test flight shows fallback title: '%s'" % lvl.hud.intro_text())
+	check(lvl.hud.ready_text().contains("READY"), "Editor test flight shows Ready pill: '%s'" % lvl.hud.ready_text())
+	check(lvl.ship.position.is_equal_approx(start), "Editor test flight stays frozen until player input")

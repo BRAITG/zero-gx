@@ -1,9 +1,11 @@
 class_name MyLevelsScreen
 extends Control
-## The player's own levels: one status row each. A row opens the level's sheet (edit, play, publish, export, delete); New level and Import are in the header.
+## The player's own levels: one status card each, with More (sheet), Edit and Play buttons; New level and Import are in the header.
 
 const MENU := "res://scenes/main.tscn"
+const LIST_WIDTH := 900.0
 const ROW_HEIGHT := 100
+const ROW_MARGIN := 8
 const FIX_COLOR := Color("#ff8a6a")
 
 ## Set only by a won Publish test flight; opening the screen never submits it.
@@ -27,6 +29,8 @@ func _ready() -> void:
 	frame.add_child(_column)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 24)
+	top.custom_minimum_size.x = LIST_WIDTH
+	top.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_column.add_child(top)
 	Style.subtle(_button(top, "Back", func() -> void: get_tree().change_scene_to_file(MENU)))
 	var title := Label.new()
@@ -41,6 +45,8 @@ func _ready() -> void:
 	Style.subtle(_button(top, "Import", _import))
 	Style.primary(_button(top, "New level", func() -> void: _edit(MyLevels.new_id())))
 	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size.x = LIST_WIDTH
+	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true  # keys and pads reach the rows below the fold
@@ -70,22 +76,24 @@ func _fill() -> void:
 		_add_row(id)
 
 
-## A level's row: the whole row is one button that opens the level's sheet.
+## A level's row card: thumbnail, title + status pill, and explicit More / Edit / Play buttons.
 func _add_row(id: String) -> void:
 	var data := MyLevels.load_level(id)
-	var button := Button.new()
-	button.name = "Row"
-	button.custom_minimum_size.y = ROW_HEIGHT
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.clip_contents = true
-	button.pressed.connect(Sfx.play.bind("tap"))
-	button.pressed.connect(_open_sheet.bind(id))
-	_list.add_child(button)
+	var card := PanelContainer.new()
+	card.name = "Row"
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
+	card.custom_minimum_size.y = ROW_HEIGHT
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	card.clip_contents = true
+	var card_box := Style.box(Style.PANEL, Style.BORDER_SOFT, 12, 12)
+	card_box.content_margin_top = ROW_MARGIN
+	card_box.content_margin_bottom = ROW_MARGIN
+	card.add_theme_stylebox_override("panel", card_box)
+	_list.add_child(card)
 	var content := HBoxContainer.new()
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 8)
 	content.add_theme_constant_override("separation", 16)
-	button.add_child(content)
+	card.add_child(content)
 	var thumbnail := Thumbnail.of_sketch(LevelFormat.sketch(data))
 	thumbnail.custom_minimum_size = Vector2(128, 72)
 	thumbnail.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -95,10 +103,25 @@ func _add_row(id: String) -> void:
 	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text.alignment = BoxContainer.ALIGNMENT_CENTER
-	text.add_theme_constant_override("separation", 2)
+	text.add_theme_constant_override("separation", 4)
 	content.add_child(text)
 	text.add_child(_label(str(data.get("title", "?")), 24, Style.INK))
 	text.add_child(_status_badges(id, data))
+	var actions := HBoxContainer.new()
+	actions.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	actions.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	actions.add_theme_constant_override("separation", 8)
+	content.add_child(actions)
+	var more := Style.subtle(_button(actions, "More", _open_sheet.bind(id)))
+	more.name = "More"
+	more.custom_minimum_size = Vector2(88, 52)
+	var edit := Style.subtle(_button(actions, "Edit", _edit.bind(id)))
+	edit.name = "Edit"
+	edit.custom_minimum_size = Vector2(80, 52)
+	var play := Style.primary(_button(actions, "Play", func() -> void: Progress.open(id)))
+	play.name = "Play"
+	play.custom_minimum_size = Vector2(92, 52)
+	play.disabled = not LevelFormat.validate(data).is_empty()
 
 
 ## Color-coded status pill (with optional detail text beside it) for a My Levels row.

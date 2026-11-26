@@ -147,7 +147,12 @@ func test_my_levels_screen_offers_import_and_export() -> void:
 	await frames(2)
 	var labels: Array = screen.find_children("*", "Button", true, false).map(func(b: Button): return b.text)
 	check("Import" in labels and "New level" in labels, "header buttons: %s" % [labels])
-	screen._list.get_child(0).pressed.emit()
+	var row := screen._list.get_child(0) as PanelContainer
+	var row_play := row.find_child("Play", true, false) as Button
+	var row_edit := row.find_child("Edit", true, false) as Button
+	check(row != null and row.size.x <= MyLevelsScreen.LIST_WIDTH + 1.0, "My levels row caps at LIST_WIDTH")
+	check(row_edit != null and row_play != null and not row_play.disabled, "valid row exposes Edit and enabled Play buttons")
+	(row.find_child("More", true, false) as Button).pressed.emit()
 	await frames(2)
 	labels = screen.find_children("*", "Overlay", true, false)[0].body.find_children("*", "Button", true, false).map(func(b: Button): return b.text)
 	check("Export" in labels, "the level's sheet offers Export: %s" % [labels])
@@ -174,10 +179,12 @@ func test_an_invalid_draft_says_why_play_is_off() -> void:
 	await frames(2)
 	var labels: Array = screen.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
 	check("Needs fixes" in labels and problems[0] in labels, "the row's status is the first problem: %s" % [problems[0]])
-	screen._list.get_child(0).pressed.emit()
+	var row_play := screen._list.get_child(0).find_child("Play", true, false) as Button
+	check(row_play != null and row_play.disabled, "Play on the row card is off for the invalid draft")
+	(screen._list.get_child(0).find_child("More", true, false) as Button).pressed.emit()
 	await frames(2)
-	var plays: Array = screen.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == "Play")
-	check(plays.size() == 1 and plays[0].disabled, "Play is off for the invalid draft")
+	var sheet_plays: Array = screen.find_children("*", "Overlay", true, false)[0].body.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == "Play")
+	check(sheet_plays.size() == 1 and sheet_plays[0].disabled, "Play in the sheet is off for the invalid draft")
 	screen.queue_free()
 
 
@@ -206,10 +213,12 @@ func test_imported_invalid_level_shows_its_thumbnail_and_keeps_play_disabled() -
 		check(thumbnail.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the thumbnail ignores the mouse")
 	var warnings: Array = screen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text == "Needs fixes")
 	check(warnings.size() == 1, "the row says what to fix")
-	screen._list.get_child(0).pressed.emit()
+	var row_play := screen._list.get_child(0).find_child("Play", true, false) as Button
+	check(row_play != null and row_play.disabled, "Play on the row card stays off for the invalid imported level")
+	(screen._list.get_child(0).find_child("More", true, false) as Button).pressed.emit()
 	await frames(2)
-	var plays: Array = screen.find_children("*", "Button", true, false).filter(func(button: Button) -> bool: return button.text == "Play")
-	check(plays.size() == 1 and plays[0].disabled, "Play stays off for the invalid imported level")
+	var sheet_plays: Array = screen.find_children("*", "Overlay", true, false)[0].body.find_children("*", "Button", true, false).filter(func(button: Button) -> bool: return button.text == "Play")
+	check(sheet_plays.size() == 1 and sheet_plays[0].disabled, "Play in the sheet stays off for the invalid imported level")
 	screen.queue_free()
 	MyLevels.delete(id)
 
@@ -231,15 +240,20 @@ func test_a_narrow_window_keeps_the_row_inside_and_the_title_ellipsises() -> voi
 	viewport.add_child(screen)
 	await frames(2)
 	var bounds := Rect2(Vector2.ZERO, viewport.size)
-	var row: Button = screen._list.get_child(0)
+	var row: PanelContainer = screen._list.get_child(0)
 	check(bounds.encloses(row.get_global_rect()), "the row stays inside the narrow screen: %s" % row.get_global_rect())
+	check(row.size.x <= MyLevelsScreen.LIST_WIDTH + 1.0, "the row caps at LIST_WIDTH: %.0f" % row.size.x)
 	var scrolls: Array = screen.find_children("*", "ScrollContainer", true, false)
 	check(scrolls.size() == 1 and scrolls[0].horizontal_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED, "the level list has no horizontal scrolling")
 	var titles: Array = screen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.contains(long_title))
 	check(titles.size() == 1 and titles[0].text_overrun_behavior == TextServer.OVERRUN_TRIM_ELLIPSIS, "the long level title ellipsises")
 	var thumbnail: Thumbnail = screen.find_children("*", "Thumbnail", true, false)[0]
 	check(thumbnail.size.y > 0.0 and is_equal_approx(thumbnail.size.x / thumbnail.size.y, 16.0 / 9.0), "the thumbnail stays 16:9: %s" % thumbnail.size)
-	row.pressed.emit()
+	var more := row.find_child("More", true, false) as Button
+	var edit := row.find_child("Edit", true, false) as Button
+	var play := row.find_child("Play", true, false) as Button
+	check(more != null and edit != null and play != null, "row exposes More, Edit and Play buttons")
+	more.pressed.emit()
 	await frames(2)
 	var expected_actions := ["Edit", "Play", "Watch", "Export", "Delete"]
 	var buttons: Array = screen.find_children("*", "Overlay", true, false)[0].body.find_children("*", "Button", true, false)

@@ -42,6 +42,15 @@ func _physics_process(_delta: float) -> void:
 	_tick += 1
 
 
+## Captures frame 0 right as the pre-launch Ready hold releases, before the ship burns fuel on tick 0.
+func begin_recording() -> void:
+	_start()
+	if _tick == 0:
+		_record_frame()
+		_tick = 1
+	set_physics_process(true)
+
+
 ## The run is over: the last state and the result, whether or not a tick has run yet.
 func finish(won: bool) -> void:
 	set_physics_process(false)

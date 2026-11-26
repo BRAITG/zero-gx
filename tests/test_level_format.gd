@@ -117,12 +117,14 @@ func test_unlimited_hull_ignores_damage_but_not_red() -> void:
 	data.walls = [WALL]
 	var lvl := LevelFormat.build(data)
 	world.add_child(lvl)
+	lvl.launch()
 	await frames(60)
 	check(lvl.ship.health == Ship.MAX_HEALTH and lvl.ship.visible, "a hard orange hit hurt an unlimited hull")
 	lvl.free()
 	data.walls = [{"kind": "red", "points": WALL.points}]
 	lvl = LevelFormat.build(data)
 	world.add_child(lvl)
+	lvl.launch()
 	await frames(60)
 	check(lvl.ship.health == 0.0, "a red wall must still destroy an unlimited hull")
 
@@ -134,6 +136,7 @@ func test_unlimited_resources_score_nothing() -> void:
 	var lvl := LevelFormat.build(data)
 	lvl.level_id = "level_01"
 	world.add_child(lvl)
+	lvl.launch()
 	await frames(500)
 	var text: String = lvl.hud.result_text()
 	check(text.contains("+0\n+0"), "unlimited fuel and hull must score 0 each: %s" % text)

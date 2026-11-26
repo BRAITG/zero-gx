@@ -70,9 +70,9 @@ func _posts(net: FakeTransport) -> int:
 	return net.requests.filter(func(r: Dictionary) -> bool: return r.method == "POST").size()
 
 
-## Taps row `index` of My levels: the level's sheet.
+## Taps More on row `index` of My levels: the level's sheet.
 func _open_row(screen: MyLevelsScreen, index := 0) -> void:
-	screen._list.get_child(index).pressed.emit()
+	(screen._list.get_child(index).find_child("More", true, false) as Button).pressed.emit()
 	await frames(2)
 
 
@@ -810,7 +810,7 @@ func test_a_row_is_one_status_per_the_spec() -> void:
 		{"level_id": "lvl_dddddddddd", "version": 3, "status": "approved", "comment": null, "sha256": "%064x" % 5, "rated": "hard", "starters": 64, "likes": 42},
 	])
 	var screen := await _my_levels()
-	var statuses: Array = screen._list.get_children().map(func(row: Button) -> String:
+	var statuses: Array = screen._list.get_children().map(func(row: Control) -> String:
 		var labels := row.find_children("*", "Label", true, false)
 		return labels[1].text if labels.size() == 2 else "%s · %s" % [labels[1].text, labels[2].text])
 	statuses.sort()
