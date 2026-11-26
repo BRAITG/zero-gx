@@ -1340,8 +1340,8 @@ func test_result_centers_the_personal_score_block_beside_the_board() -> void:
 	var lvl := _result_level()
 	lvl.finish(true)
 	await frames(3)
-	var parts: Control = lvl.hud._parts[ScoreIcon.Kind.TIME].get_parent().get_parent()
-	var score_center := (lvl.hud._total.get_global_rect().position.y + parts.get_global_rect().end.y) / 2.0
+	var breakdown: Control = lvl.hud._parts[ScoreIcon.Kind.TIME].get_parent().get_parent().get_parent()
+	var score_center := (lvl.hud._total.get_global_rect().position.y + breakdown.get_global_rect().end.y) / 2.0
 	var board_center: float = lvl.hud._board_scroll.get_global_rect().get_center().y
 	check(absf(score_center - board_center) < 2.0, "the total, medals and breakdown form one vertically centered block: %s vs %s" % [score_center, board_center])
 
@@ -1367,6 +1367,22 @@ func test_campaign_selector_keeps_its_original_width_with_rank_badges() -> void:
 	await frames(3)
 	var scroll: ScrollContainer = main._levels.get_parent()
 	var row: Button = stage_rows(main)["Level 01"]
-	check(scroll.size.x <= 760.0 and row.size.x <= 760.0, "rank badges fit the original selector instead of widening it: %s / %s" % [scroll.size, row.size])
+	check(scroll.size.x <= 1280.0 and row.size.x <= scroll.size.x, "rank badges fit the selector without widening it: %s / %s" % [scroll.size, row.size])
 	check(_campaign_badge(main).visible and row.get_global_rect().encloses(_campaign_badge(main).get_global_rect()), "the badge remains visible inside the compact row")
 	check(_campaign_badge(main).text == "~≤25" and _campaign_badge(main).tooltip_text.contains("#25 or better"), "the compact badge retains the estimate's upper-rank bound without clipping its meaning")
+
+
+func test_result_shows_next_medal_threshold_and_gold_earned_caption() -> void:
+	var lvl := _result_level()
+	lvl.hud.show_result(true, {
+		"name": "Level 5 · Swing", "points": 1420, "fuel_points": 640, "hull_points": 960, "time_points": 180,
+		"new_best": true, "has_next": true, "has_par": true, "par": 1600,
+	})
+	await frames(2)
+	check(lvl.hud._par_box.visible and lvl.hud._par_next.text == "Next: Gold 1600 (180 pts to go)", "below gold shows next threshold: %s" % lvl.hud._par_next.text)
+	lvl.hud.show_result(true, {
+		"name": "Level 5 · Swing", "points": 1650, "fuel_points": 800, "hull_points": 1000, "time_points": 150,
+		"new_best": true, "has_next": true, "has_par": true, "par": 1600,
+	})
+	await frames(2)
+	check(lvl.hud._par_next.text == "Gold medal earned!", "at or above par shows gold earned: %s" % lvl.hud._par_next.text)

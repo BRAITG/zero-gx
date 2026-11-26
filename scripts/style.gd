@@ -5,8 +5,13 @@ extends Node
 const INK := Color("#dfe9ff")
 const INK_DIM := Color("#6f7d96")
 const ACCENT := Color("#3aa0ff")
+const LIKE := Color("#ff5c8a")
+const WARNING := Color("#ffcf4a")
 const PANEL := Color(0.04, 0.06, 0.12, 0.88)
+const PANEL_INSET := Color(0.02, 0.035, 0.075, 0.82)
+const PANEL_SUBTLE := Color(0.035, 0.055, 0.11, 0.65)
 const BORDER := Color("#2a4a7a")
+const BORDER_SOFT := Color(0.165, 0.29, 0.478, 0.55)
 const PRESS_DELAY := 0.1  # s: Android's tap timeout, before a listed button looks pressed
 
 ## Orbitron, for titles and big numbers.
@@ -86,11 +91,17 @@ func _delay_press_look(button: Button) -> void:
 
 ## Godot turns each touch into an emulated mouse as well, which hovers whatever lies under the finger, even
 ## after it lifts. A finger has no hover, so after a touch a button's hover look is its look at rest, copied
-## from it: override a button's own looks before adding it. A button's own hover looks are left alone.
+## from it: override a button's own looks before adding it. A button's own hover looks are left alone unless
+## Style itself installed them (`style_hover`).
 func _fit_hover(button: Button) -> void:
-	if button.has_theme_stylebox_override("hover") and not button.has_meta(&"touch_hover"):
+	if button.has_theme_stylebox_override("hover") and not button.has_meta(&"touch_hover") and not button.has_meta(&"style_hover"):
 		return
 	if touch:
+		if button.has_meta(&"style_hover") and not button.has_meta(&"touch_hover"):
+			button.set_meta(&"saved_hover", button.get_theme_stylebox("hover"))
+			button.set_meta(&"saved_hover_pressed", button.get_theme_stylebox("hover_pressed"))
+			button.set_meta(&"saved_font_hover", button.get_theme_color("font_hover_color"))
+			button.set_meta(&"saved_font_hover_pressed", button.get_theme_color("font_hover_pressed_color"))
 		button.set_meta(&"touch_hover", true)
 		button.add_theme_stylebox_override("hover", button.get_theme_stylebox("normal"))
 		button.add_theme_stylebox_override("hover_pressed", button.get_theme_stylebox("pressed"))
@@ -98,10 +109,18 @@ func _fit_hover(button: Button) -> void:
 		button.add_theme_color_override("font_hover_pressed_color", button.get_theme_color("font_pressed_color"))
 	elif button.has_meta(&"touch_hover"):
 		button.remove_meta(&"touch_hover")
-		button.remove_theme_stylebox_override("hover")
-		button.remove_theme_stylebox_override("hover_pressed")
-		button.remove_theme_color_override("font_hover_color")
-		button.remove_theme_color_override("font_hover_pressed_color")
+		if button.has_meta(&"saved_hover"):
+			button.add_theme_stylebox_override("hover", button.get_meta(&"saved_hover"))
+			button.add_theme_stylebox_override("hover_pressed", button.get_meta(&"saved_hover_pressed"))
+			button.add_theme_color_override("font_hover_color", button.get_meta(&"saved_font_hover"))
+			button.add_theme_color_override("font_hover_pressed_color", button.get_meta(&"saved_font_hover_pressed"))
+			for key in [&"saved_hover", &"saved_hover_pressed", &"saved_font_hover", &"saved_font_hover_pressed"]:
+				button.remove_meta(key)
+		else:
+			button.remove_theme_stylebox_override("hover")
+			button.remove_theme_stylebox_override("hover_pressed")
+			button.remove_theme_color_override("font_hover_color")
+			button.remove_theme_color_override("font_hover_pressed_color")
 
 
 ## Gives keyboard and gamepad focus to the first enabled button under `root`, if any, with the
@@ -113,10 +132,115 @@ func focus_first(root: Node) -> void:
 			return
 
 
-## Marks a destructive button: the warning colour in every state, never a fill. Its confirmation, or a Close that acts as Cancel, stands behind it.
-func danger(button: Button) -> void:
+## Primary CTA button: strong accent fill with distinct hover and pressed states.
+func primary(button: Button) -> Button:
+	button.set_meta(&"style_hover", true)
+	button.add_theme_stylebox_override("normal", _box(Color("#1658a6"), Color("#60b8ff"), 10))
+	button.add_theme_stylebox_override("hover", _box(Color("#206dc7"), Color("#96d2ff"), 10))
+	button.add_theme_stylebox_override("pressed", _box(Color("#0f407d"), ACCENT, 10))
+	button.add_theme_stylebox_override("hover_pressed", _box(Color("#154f96"), Color("#60b8ff"), 10))
 	for color in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color", "font_hover_pressed_color"]:
-		button.add_theme_color_override(color, Hud.WARNING)
+		button.add_theme_color_override(color, Color.WHITE)
+	_fit_hover(button)
+	return button
+
+
+## Quiet secondary button (Back, Close, Settings, secondary actions).
+func subtle(button: Button) -> Button:
+	button.set_meta(&"style_hover", true)
+	button.add_theme_stylebox_override("normal", _box(PANEL_SUBTLE, BORDER_SOFT, 10))
+	button.add_theme_stylebox_override("hover", _box(Color(0.07, 0.12, 0.22, 0.92), ACCENT, 10))
+	button.add_theme_stylebox_override("pressed", _box(Color(0.1, 0.2, 0.36, 0.95), ACCENT, 10))
+	button.add_theme_stylebox_override("hover_pressed", _box(Color(0.1, 0.2, 0.36, 0.95), ACCENT, 10))
+	button.add_theme_color_override("font_color", Color("#b7c8e6"))
+	button.add_theme_color_override("font_hover_color", Color.WHITE)
+	button.add_theme_color_override("font_pressed_color", Color.WHITE)
+	button.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
+	_fit_hover(button)
+	return button
+
+
+## Marks a destructive button: warning colour text and subtle red-tinted border/fill.
+func danger(button: Button) -> Button:
+	button.set_meta(&"style_hover", true)
+	button.add_theme_stylebox_override("normal", _box(Color(0.19, 0.055, 0.075, 0.78), Color(Hud.WARNING, 0.55), 10))
+	button.add_theme_stylebox_override("hover", _box(Color(0.35, 0.085, 0.11, 0.92), Hud.WARNING, 10))
+	button.add_theme_stylebox_override("pressed", _box(Color(0.45, 0.1, 0.13, 0.96), Hud.WARNING, 10))
+	button.add_theme_stylebox_override("hover_pressed", _box(Color(0.45, 0.1, 0.13, 0.96), Hud.WARNING, 10))
+	for color in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color", "font_hover_pressed_color"]:
+		button.add_theme_color_override(color, Hud.WARNING if color == "font_color" or color == "font_focus_color" else Color.WHITE)
+	_fit_hover(button)
+	return button
+
+
+## Styles a toggle button so its active (pressed) state stands out with `color`.
+func toggle_tint(button: Button, color: Color, radius := 10) -> Button:
+	button.set_meta(&"style_hover", true)
+	var active_text := color.lightened(0.35)
+	button.add_theme_stylebox_override("normal", _box(PANEL_SUBTLE, BORDER_SOFT, radius))
+	button.add_theme_stylebox_override("hover", _box(Color(0.07, 0.12, 0.22, 0.92), Color(color, 0.75), radius))
+	button.add_theme_stylebox_override("pressed", _box(Color(color, 0.22), color, radius))
+	button.add_theme_stylebox_override("hover_pressed", _box(Color(color, 0.28), color.lightened(0.2), radius))
+	button.add_theme_color_override("font_color", INK_DIM)
+	button.add_theme_color_override("font_hover_color", INK)
+	button.add_theme_color_override("font_pressed_color", active_text)
+	button.add_theme_color_override("font_hover_pressed_color", Color.WHITE)
+	_fit_hover(button)
+	return button
+
+
+## Compact rounded pill badge for status, likes, or metadata.
+static func pill(text: String, color: Color, filled := false, font_size := 18) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var box := StyleBoxFlat.new()
+	box.set_corner_radius_all(12)
+	box.content_margin_left = 10
+	box.content_margin_right = 10
+	box.content_margin_top = 2
+	box.content_margin_bottom = 2
+	box.bg_color = color if filled else Color(color, 0.14)
+	box.border_color = color if filled else Color(color, 0.5)
+	box.set_border_width_all(0 if filled else 1)
+	panel.add_theme_stylebox_override("panel", box)
+	var label := Label.new()
+	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_color_override("font_color", Color("#06101f") if filled else color.lightened(0.28))
+	panel.add_child(label)
+	return panel
+
+
+## Inset stat tile: large display number over a dim caption.
+func kpi_tile(value: String, caption: String, value_color := INK) -> PanelContainer:
+	var panel := PanelContainer.new()
+	panel.mouse_filter = Control.MOUSE_FILTER_PASS
+	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var box := _box(PANEL_INSET, BORDER_SOFT, 10, 10)
+	box.set_border_width_all(1)
+	panel.add_theme_stylebox_override("panel", box)
+	var col := VBoxContainer.new()
+	col.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	col.add_theme_constant_override("separation", 2)
+	panel.add_child(col)
+	var num := Label.new()
+	num.text = value
+	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	num.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	num.add_theme_font_override("font", display_font)
+	num.add_theme_font_size_override("font_size", 26)
+	num.add_theme_color_override("font_color", value_color)
+	col.add_child(num)
+	var cap := Label.new()
+	cap.text = caption
+	cap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	cap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	cap.add_theme_font_size_override("font_size", 16)
+	cap.add_theme_color_override("font_color", INK_DIM)
+	col.add_child(cap)
+	return panel
 
 
 ## Coroutine: runs `work` while `button` says `label` and cannot be tapped again, so the player sees the wait; afterwards the button is as it was, if it is still on screen.

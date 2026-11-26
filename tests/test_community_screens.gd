@@ -102,15 +102,12 @@ func _confirmation(screen: MyLevelsScreen) -> void:
 
 ## Chooses a Suggested difficulty in the open confirmation, as a player does: the choice Submit for review waits for.
 func _suggest(node: Node, value := "hard") -> void:
-	var options := node.find_children("*", "OptionButton", true, false)
-	check(options.size() == 1, "the confirmation asks for one Suggested difficulty: %d" % options.size())
-	if options.size() != 1:
+	var picks := _buttons(node, value.capitalize())
+	check(picks.size() == 1, "the confirmation asks for one Suggested difficulty: %d" % picks.size())
+	if picks.size() != 1:
 		return
-	var option: OptionButton = options[0]
-	for i in option.item_count:
-		if option.get_item_metadata(i) == value:
-			option.select(i)
-			option.item_selected.emit(i)
+	picks[0].button_pressed = true
+	picks[0].pressed.emit()
 
 
 ## Publish, then `choice` ("Play to prove it" or "Play again"): the flight that replaces the screen, or null.
@@ -410,7 +407,7 @@ func test_a_long_title_is_trimmed_and_a_row_without_a_chip_leaves_no_gap() -> vo
 	var heart: Label = screen.find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text == "♥ 7")[0]
 	var font := title.get_theme_font("font")
 	check(title.text_overrun_behavior == TextServer.OVERRUN_TRIM_ELLIPSIS and title.size.x < font.get_string_size(title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 24).x, "the long title must be trimmed, not widen the row: %s" % title.size)
-	check(heart.get_global_rect().position.x == title.get_global_rect().position.x, "without a chip the meta line starts at the text edge: %s vs %s" % [heart.global_position, title.global_position])
+	check(heart.get_parent().get_global_rect().position.x == title.get_global_rect().position.x, "without a chip the meta line starts at the text edge: %s vs %s" % [heart.get_parent().global_position, title.global_position])
 	check(screen.find_children("*", "DifficultyChip", true, false).is_empty(), "no chip for a level without a difficulty")
 	var play: Button = _buttons(screen, "Play")[0]
 	check(play.get_global_rect().end.x <= screen.get_viewport_rect().size.x, "Play must stay on screen: %s" % play.get_global_rect())
@@ -749,7 +746,7 @@ func test_tapping_a_row_opens_its_sheet_with_edit_first_and_delete_last_in_dange
 	check(actions.map(func(b: Button) -> String: return b.text) == ["Edit", "Play", "Watch", "Publish", "Export", "Delete"], "actions: %s" % [actions.map(func(b: Button) -> String: return b.text)])
 	check(sheet.find_children("*", "Label", true, false).any(func(l: Label) -> bool: return l.text == MyLevels.load_level(id).title), "the sheet is titled with the level")
 	var edit: Button = actions[0]
-	check(edit.get_theme_stylebox("normal") == edit.get_theme_stylebox("pressed"), "Edit is the primary action")
+	check(edit.get_theme_stylebox("normal").bg_color != Style.PANEL and edit.get_theme_stylebox("normal") != edit.get_theme_stylebox("pressed"), "Edit is the primary action with distinct press feedback")
 	check(actions.back().get_theme_color("font_color") == Hud.WARNING, "Delete is in the danger colour")
 	var width := screen.get_viewport_rect().size.x
 	check(actions.all(func(b: Button) -> bool: return b.get_global_rect().end.x <= width), "no button runs off the screen")
@@ -812,9 +809,11 @@ func test_a_row_is_one_status_per_the_spec() -> void:
 		{"level_id": "lvl_dddddddddd", "version": 3, "status": "approved", "comment": null, "sha256": "%064x" % 5, "rated": "hard", "starters": 64, "likes": 42},
 	])
 	var screen := await _my_levels()
-	var statuses: Array = screen._list.get_children().map(func(row: Button) -> String: return row.find_children("*", "Label", true, false)[1].text)
+	var statuses: Array = screen._list.get_children().map(func(row: Button) -> String:
+		var labels := row.find_children("*", "Label", true, false)
+		return labels[1].text if labels.size() == 2 else "%s · %s" % [labels[1].text, labels[2].text])
 	statuses.sort()
-	var expected := ["Needs fixes: " + LevelFormat.validate(broken)[0], "Not tested yet", "Ready to publish", "In review", "Rejected: Too easy.", "Published v2 · Hard · 64 players · ♥ 42", "Published v3 · edited since"]
+	var expected := ["Needs fixes · " + LevelFormat.validate(broken)[0], "Not tested yet", "Ready to publish", "In review", "Rejected · Too easy.", "Published v2 · Hard · 64 players · ♥ 42", "Published v3 · edited since"]
 	expected.sort()
 	check(statuses == expected, "status lines: %s" % [statuses])
 	check(screen._list.get_child_count() == 7, "one row per level")
@@ -1150,7 +1149,7 @@ func test_my_levels_maps_submission_statuses_to_row_text() -> void:
 	world.add_child(screen)
 	await frames(2)
 	var texts := _texts(screen)
-	check("In review" in texts and "Published v2" in texts and "Rejected: Too easy." in texts, "status lines: %s" % [texts])
+	check("In review" in texts and "Published v2" in texts and "Rejected" in texts and "Too easy." in texts, "status lines: %s" % [texts])
 	for index in 3:
 		check(not "Publish" in await _actions(screen, index), "unchanged in-review, published and rejected drafts must offer no repeat Publish")
 
@@ -1344,9 +1343,10 @@ func test_a_card_with_a_paragraph_and_a_button_is_exactly_one_column_wide() -> v
 func test_the_danger_style_colours_every_state_and_never_fills() -> void:
 	var button := Button.new()
 	Style.danger(button)
-	for color in ["font_color", "font_hover_color", "font_focus_color", "font_pressed_color", "font_hover_pressed_color"]:
-		check(button.get_theme_color(color) == Hud.WARNING, "%s must be the warning colour" % color)
-	check(not button.has_theme_stylebox_override("normal") and not button.has_theme_stylebox_override("pressed"), "danger changes text only, never the fill")
+	check(button.get_theme_color("font_color") == Hud.WARNING and button.get_theme_color("font_focus_color") == Hud.WARNING, "resting and focused danger text use the warning colour")
+	var normal: StyleBoxFlat = button.get_theme_stylebox("normal")
+	var hover: StyleBoxFlat = button.get_theme_stylebox("hover")
+	check(normal.border_color.r > 0.8 and hover.border_color == Hud.WARNING, "danger tints border and hover with the warning colour")
 	button.free()
 
 
@@ -1362,7 +1362,7 @@ func test_every_destructive_button_is_in_danger_and_the_confirmations_are_full_w
 	deletion.pressed.emit()
 	await frames(2)
 	var confirm: Button = _buttons(screen, "Delete account")[0]
-	check(confirm.get_theme_color("font_hover_color") == Hud.WARNING and confirm.size == Vector2(Overlay.WIDTH, 56), "Delete account is red, 1000×56: %s" % confirm.size)
+	check(confirm.get_theme_color("font_color") == Hud.WARNING and confirm.size == Vector2(Overlay.WIDTH, 56), "Delete account is red, 1000×56: %s" % confirm.size)
 	check(tree.root.gui_get_focus_owner().text == "Close", "focus stays on Close, the way out")
 	screen.free()
 	_fake()
@@ -1372,7 +1372,7 @@ func test_every_destructive_button_is_in_danger_and_the_confirmations_are_full_w
 	_buttons(mine, "Delete")[0].pressed.emit()
 	await frames(2)
 	var delete: Button = _buttons(mine, "Delete")[0]
-	check(delete.get_theme_color("font_pressed_color") == Hud.WARNING and delete.size == Vector2(Overlay.WIDTH, 56), "Delete level's Delete is red, 1000×56: %s" % delete.size)
+	check(delete.get_theme_color("font_color") == Hud.WARNING and delete.size == Vector2(Overlay.WIDTH, 56), "Delete level's Delete is red, 1000×56: %s" % delete.size)
 	check(MyLevels.ids().has(id), "control: nothing deleted yet")
 
 

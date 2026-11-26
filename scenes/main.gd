@@ -9,7 +9,6 @@ enum Page { HOME, OFFICIAL, TRAINING }
 const SCENE := "res://scenes/main.tscn"
 const MENU_DRIFT := Vector2(-40, -12)  # px/s
 const HOME_WIDTH := 440.0  # px: the column of home buttons
-const LIST_SIZE := Vector2(760, 520)  # px: the scrolling stage list
 const ROW_HEIGHT := 108.0  # px: a stage row; its thumbnail fills the height less the margins
 const ROW_MARGIN := 8.0
 
@@ -19,6 +18,7 @@ var page := Page.HOME
 var _column: VBoxContainer
 var _official: Button  # the home page's primary: it takes focus when HOME opens
 var _training_button: Button
+var _tally: HBoxContainer  # medal & clear tally in the list header
 var _levels: VBoxContainer  # the stage rows of OFFICIAL or TRAINING
 
 var _board_badges := {}  # current bundled hash → its existing row's button
@@ -59,8 +59,7 @@ func _exit_tree() -> void:
 
 func _build_home() -> void:
 	_column.add_child(_title("ZERO-GX"))
-	_official = _button("Official levels", Vector2(HOME_WIDTH, 96), 30)
-	_official.add_theme_stylebox_override("normal", _official.get_theme_stylebox("pressed"))  # the strongest look, at rest
+	_official = Style.primary(_button("Official levels", Vector2(HOME_WIDTH, 96), 30))
 	_official.pressed.connect(_go_to.bind(Page.OFFICIAL))
 	_column.add_child(_official)
 	if Community.available():
@@ -77,19 +76,36 @@ func _build_home() -> void:
 	_column.add_child(utility)
 	var entries := [["My levels", func(): get_tree().change_scene_to_node(MyLevelsScreen.new())], ["Settings", SettingsScreen.open.bind(self)], ["Credits", func(): Credits.open(self)]]
 	for entry in entries:  # all share the row's width
-		var button := _button(entry[0], Vector2(0, 44), 18)
+		var button := Style.subtle(_button(entry[0], Vector2(0, 44), 18))
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		button.pressed.connect(entry[1])
 		utility.add_child(button)
 
 
 func _build_list() -> void:
-	_column.add_child(_title("OFFICIAL LEVELS" if page == Page.OFFICIAL else "TRAINING"))
-	var back := _button("Back")
+	_column.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 24)
+	_column.add_theme_constant_override("separation", 16)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 24)
+	_column.add_child(top)
+	var back := Style.subtle(_button("Back", Vector2(160, 56), 22))
 	back.pressed.connect(_go_to.bind(Page.HOME))
-	_column.add_child(back)
+	top.add_child(back)
+	var heading := Label.new()
+	heading.text = "Official levels" if page == Page.OFFICIAL else "Training"
+	heading.add_theme_font_override("font", Style.display_font)
+	heading.add_theme_font_size_override("font_size", 36)
+	top.add_child(heading)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(spacer)
+	_tally = HBoxContainer.new()
+	_tally.add_theme_constant_override("separation", 12)
+	_tally.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	top.add_child(_tally)
 	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = LIST_SIZE
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true  # keyboard and gamepad navigation scrolls the focused row into view
 	_column.add_child(scroll)
@@ -128,27 +144,54 @@ func _list_levels() -> void:
 	_board_badges.clear()
 	var training := page == Page.TRAINING
 	var suggested: Button
-	for id in Progress.trainings() if training else Progress.levels():
+	var ids := Progress.trainings() if training else Progress.levels()
+	var cleared := 0
+	var medals := {Progress.Medal.GOLD: 0, Progress.Medal.SILVER: 0, Progress.Medal.BRONZE: 0}
+	for id in ids:
 		var best := Progress.best_points(id)
 		var unlocked := Progress.is_unlocked(id)
 		var next := suggested == null and unlocked and best < 0
 		var data := LevelFormat.read((Progress.TUTORIALS_DIR if training else Progress.LEVELS_DIR) + id + LevelFormat.EXTENSION)
+		var par := int(data.get("par", 0))
+		if best >= 0:
+			cleared += 1
+			var m := Progress.medal(best, par)
+			if medals.has(m):
+				medals[m] += 1
 		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
 		var sha := LevelFormat.sha256(data) if not training and Community.available() and best >= 0 else ""
-		var button := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next, int(data.get("par", 0)), sha)
+		var button := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next, par, sha)
 		button.disabled = not unlocked
 		if not unlocked:
 			button.modulate = Color(1, 1, 1, 0.55)  # the thumbnail dims with the text
 		button.pressed.connect(func(): Progress.open(id))
 		if next:
 			suggested = button
-			button.add_theme_stylebox_override("normal", button.get_theme_stylebox("pressed"))
+			button.add_theme_stylebox_override("normal", Style._box(Color(0.06, 0.13, 0.25, 0.94), Style.ACCENT, 10))
 		_levels.add_child(button)
+	_update_tally(cleared, ids.size(), medals)
 	if get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
 		if suggested:
 			suggested.grab_focus(true)
 		else:
 			Style.focus_first(_levels)
+
+
+func _update_tally(cleared: int, total_count: int, medals: Dictionary) -> void:
+	if _tally == null:
+		return
+	for old in _tally.get_children():
+		old.free()
+	for tier in [Progress.Medal.GOLD, Progress.Medal.SILVER, Progress.Medal.BRONZE]:
+		if medals[tier] > 0:
+			var pair := HBoxContainer.new()
+			pair.add_theme_constant_override("separation", 4)
+			var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, tier, 20.0)
+			icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			pair.add_child(icon)
+			pair.add_child(_label(str(medals[tier]), 20, Style.INK))
+			_tally.add_child(pair)
+	_tally.add_child(_label("%d / %d cleared" % [cleared, total_count], 20, Style.INK_DIM))
 
 
 ## A stage row: the thumbnail on the left; the title over one line of the best run's fuel, hull and
@@ -157,7 +200,8 @@ func _list_levels() -> void:
 ## A best saved before fuel and hull were kept shows "—" for them rather than an invented value.
 ## The title Label is named "Title" so tests and tools can read the row's name.
 func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: String) -> Button:
-	var button := _button("", Vector2(LIST_SIZE.x - 24, ROW_HEIGHT))  # less the scrollbar
+	var button := _button("", Vector2(0, ROW_HEIGHT))
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var content := HBoxContainer.new()
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, ROW_MARGIN)
@@ -183,7 +227,9 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 	if not unlocked:
 		parts.add_child(_label("Locked", 18, Style.INK_DIM))
 	elif best < 0:
-		parts.add_child(_label("Next · Not played" if next else "Not played", 18, Style.INK_DIM))
+		if next:
+			parts.add_child(Style.pill("Next", Style.ACCENT, false, 16))
+		parts.add_child(_label("Not played", 18, Style.INK_DIM))
 	else:
 		var fuel := Progress.best_fuel(id)
 		var hull := Progress.best_hull(id)
@@ -192,7 +238,9 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 			[ScoreIcon.Kind.HULL, "—" if hull < 0 else "+%d" % roundi(hull * Tuning.points_hull)],
 			[ScoreIcon.Kind.TIME, "−%d" % roundi(Progress.best_time(id) * Tuning.points_per_second)],
 		]:
-			parts.add_child(ScoreIcon.new(part[0]))
+			var sub_icon := ScoreIcon.new(part[0], Progress.Medal.NONE, 20.0)
+			sub_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			parts.add_child(sub_icon)
 			var value := _label(part[1], 18, Style.INK_DIM)
 			value.custom_minimum_size.x = 70  # the icons line up across rows
 			parts.add_child(value)
@@ -214,9 +262,10 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 		if sha != "":
 			var run := Progress.best_demo(id)
 			var local_points := best if run != null and run.level_sha256 == sha else -1
-			var badge := _button("", Vector2(100, 28), 18)
+			var badge := _button("", Vector2(100, 28), 16)
 			badge.name = "BoardBadge"
-			badge.add_theme_color_override("font_color", Style.INK_DIM)
+			badge.add_theme_stylebox_override("normal", Style._box(Color(Style.ACCENT, 0.14), Color(Style.ACCENT, 0.45), 12, 4))
+			badge.add_theme_color_override("font_color", Style.ACCENT.lightened(0.3))
 			badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			badge.size_flags_horizontal = Control.SIZE_SHRINK_END
 			badge.clip_text = true
@@ -287,12 +336,10 @@ func _label(text: String, font_size: int, color := Style.INK) -> Label:
 	return label
 
 
-## Centres the column in the frame. Anchored to the frame's centre, it stays centred when the viewport changes.
+## Centres the column in the frame on HOME; list pages fill the frame directly.
 func _center_column() -> void:
-	if _levels != null:
-		var frame := _column.get_parent() as Control
-		var fixed_height: float = _column.get_child(0).get_combined_minimum_size().y + _column.get_child(1).get_combined_minimum_size().y + 24
-		(_levels.get_parent() as ScrollContainer).custom_minimum_size.y = clampf(frame.size.y - fixed_height, 0.0, LIST_SIZE.y)
+	if page != Page.HOME:
+		return
 	_column.reset_size()
 	_column.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
 

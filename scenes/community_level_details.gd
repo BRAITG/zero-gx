@@ -68,16 +68,18 @@ func _build(parent: Node, row: Dictionary, on_play: Callable, to_you: bool) -> O
 	_to_you = to_you
 	_overlay = Overlay.open(parent, str(row.get("title", "Level")), false, true)
 	_overlay.set_meta("details", self)  # the sheet owns this object; a request in flight owns it too
+	var hero_card := _overlay.card()
 	var hero := HBoxContainer.new()
 	hero.add_theme_constant_override("separation", 24)
-	_overlay.body.add_child(hero)
+	hero_card.add_child(hero)
 	var thumbnail := Thumbnail.of_sketch(row.get("sketch"))
 	thumbnail.custom_minimum_size = Vector2(320, 180)
-	thumbnail.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	thumbnail.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	hero.add_child(thumbnail)
 	var text := VBoxContainer.new()
 	text.add_theme_constant_override("separation", 10)
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.alignment = BoxContainer.ALIGNMENT_CENTER
 	hero.add_child(text)
 	var byline := PackedStringArray()
 	if row.get("author") is String:
@@ -87,13 +89,13 @@ func _build(parent: Node, row: Dictionary, on_play: Callable, to_you: bool) -> O
 	if not byline.is_empty():
 		text.add_child(_label(" · ".join(byline), 24, Style.INK_DIM))
 	_chip_slot = HBoxContainer.new()
+	_chip_slot.add_theme_constant_override("separation", 10)
 	text.add_child(_chip_slot)
 	_meta = _label("", 22, Style.INK_DIM)
 	text.add_child(_meta)
 	if on_play.is_valid():
-		var play := _button(text, "Play", on_play, "Loading…")
-		play.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-		play.add_theme_stylebox_override("normal", play.get_theme_stylebox("pressed"))  # primary, like the row's Play
+		var play := Style.primary(_button(hero, "Play", on_play, "Loading…"))
+		play.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	_overlay.heading("Difficulty")
 	_difficulty = _overlay.card()
 	_overlay.heading("How players did")
@@ -104,7 +106,7 @@ func _build(parent: Node, row: Dictionary, on_play: Callable, to_you: bool) -> O
 	_best = HBoxContainer.new()
 	_best.add_theme_constant_override("separation", 12)
 	mine.add_child(_best)
-	_like = _button(mine, "♥ Like", _liked_pressed)
+	_like = Style.toggle_tint(_button(mine, "♥ Like", _liked_pressed), Style.LIKE)
 	_like.toggle_mode = true
 	_like.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_like_note = _overlay.paragraph("", 22, Style.INK_DIM, mine)
@@ -113,7 +115,7 @@ func _build(parent: Node, row: Dictionary, on_play: Callable, to_you: bool) -> O
 	_votes.add_theme_constant_override("separation", 12)
 	mine.add_child(_votes)
 	for difficulty: String in DIFFICULTIES:
-		var vote := _button(_votes, difficulty.capitalize(), _voted.bind(difficulty))
+		var vote := Style.toggle_tint(_button(_votes, difficulty.capitalize(), _voted.bind(difficulty)), DifficultyChip.COLORS[difficulty])
 		vote.toggle_mode = true
 		_vote_buttons[difficulty] = vote
 	_vote_note = _overlay.paragraph("", 22, Style.INK_DIM, mine)
@@ -127,13 +129,13 @@ func _build(parent: Node, row: Dictionary, on_play: Callable, to_you: bool) -> O
 	_pending_label = _overlay.paragraph("", 22, Style.ACCENT, _sync_row)
 	_refusal_label = _overlay.paragraph("", 22, Style.INK, mine)
 	_hint = _overlay.paragraph("", 22, Style.INK_DIM, mine)
-	_refresh = _button(mine, "Refresh", _refresh_now, "Refreshing…")
+	_refresh = Style.subtle(_button(mine, "Refresh", _refresh_now, "Refreshing…"))
 	_refresh.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	if Community.available():
 		# After You: delayed board expansion cannot move the result-origin anchor or steal manual scroll.
 		_overlay.heading("Board")
 		_board_slot = _overlay.card()
-		var full := _button(_overlay.body, "Full board", _open_board)
+		var full := Style.subtle(_button(_overlay.body, "Full board", _open_board))
 		full.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		Community.board_updated.connect(_board_updated)
 		_board = Community.cached_board(_sha)
@@ -486,17 +488,28 @@ func _show_difficulty(ready: bool) -> void:
 		_overlay.paragraph("Rated: " + ("Loading…" if _loading else "Not available"), 24, Style.INK, _difficulty)
 		return
 	var rated: Variant = _data.get("rated")
+	var badges := HBoxContainer.new()
+	badges.add_theme_constant_override("separation", 10)
+	_difficulty.add_child(badges)
 	if rated in DifficultyChip.LABELS:
-		_overlay.paragraph(DifficultyChip.text_of({"rated": rated, "rated_high": _data.get("rated_high")}), 26, Style.INK, _difficulty)
+		var rated_chip := DifficultyChip.of({"rated": rated, "rated_high": _data.get("rated_high")})
+		if rated_chip:
+			badges.add_child(rated_chip)
+	else:
+		var starters: int = _counts().players
+		badges.add_child(Style.pill("Estimating · %d %s" % [starters, "player" if starters == 1 else "players"], Style.INK_DIM, false, 20))
+	var reviewed: Variant = _data.get("reviewed_difficulty")
+	var reviewed_chip := DifficultyChip.of({"reviewed_difficulty": reviewed})
+	if reviewed_chip:
+		badges.add_child(reviewed_chip)
+	else:
+		badges.add_child(Style.pill(reviewed_label(reviewed), Style.INK_DIM, false, 20))
+	if rated in DifficultyChip.LABELS:
 		var sentence := _rated_sentence(rated, _data.get("rated_high"))
 		if sentence != "":
 			_overlay.paragraph(sentence, 22, Style.INK, _difficulty)
-	else:
-		var starters: int = _counts().players
-		_overlay.paragraph("Estimating · %d %s" % [starters, "player" if starters == 1 else "players"], 26, Style.INK, _difficulty)
-	_overlay.paragraph(reviewed_label(_data.get("reviewed_difficulty")), 24, Style.INK, _difficulty)
 	_show_votes()
-	var gap := _disagreement(rated, _data.get("rated_high"), _data.get("reviewed_difficulty"))
+	var gap := _disagreement(rated, _data.get("rated_high"), reviewed)
 	if gap != "":
 		_overlay.paragraph(gap, 22, Style.ACCENT, _difficulty)
 	if rated in DifficultyChip.LABELS:  # the limits qualify a rating; Estimating has none
@@ -558,6 +571,7 @@ func _show_votes() -> void:
 			bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			var fill := StyleBoxFlat.new()
 			fill.bg_color = DifficultyChip.COLORS[difficulty]
+			fill.set_corner_radius_all(6)
 			bar.add_theme_stylebox_override("fill", fill)
 			line.add_child(bar)
 			var number := _label(str(count), 22, Style.INK)
@@ -574,7 +588,7 @@ func _show_votes() -> void:
 	_overlay.paragraph(text, 22, Style.INK_DIM, _difficulty)
 
 
-## How the players so far did, up to each player's first clear: the curve, the three numbers and the audience line. Observed shares only; nothing here is a difficulty grade.
+## How the players so far did, up to each player's first clear: KPI tiles, the curve, and the audience line. Observed shares only; nothing here is a difficulty grade.
 func _show_facts() -> void:
 	for old in _facts.get_children():
 		old.free()
@@ -583,6 +597,17 @@ func _show_facts() -> void:
 	var counts := _counts()
 	var started: int = counts.players
 	var cleared: int = counts.cleared
+	var missing := maxi(0, started - cleared)
+	var slow: int = counts.slow
+	var kpis := HBoxContainer.new()
+	kpis.add_theme_constant_override("separation", 12)
+	_facts.add_child(kpis)
+	kpis.add_child(Style.kpi_tile(str(started), "Players"))
+	if started >= MIN_STARTERS:
+		kpis.add_child(Style.kpi_tile("%d%%" % roundi(100.0 * cleared / started), "Cleared (%d)" % cleared, Hud.GOAL_GREEN))
+	else:
+		kpis.add_child(Style.kpi_tile(str(cleared), "Cleared", Hud.GOAL_GREEN))
+	kpis.add_child(Style.kpi_tile(str(missing), "Not cleared (%d at 20+)" % slow if slow > 0 else "Not cleared"))
 	var curve: Variant = _data.get("curve")
 	if counts.row and started >= MIN_STARTERS and curve is Array and curve.size() > 1:
 		var plot := ClearCurve.new(curve)
@@ -591,12 +616,6 @@ func _show_facts() -> void:
 		var late := cleared - roundi(plot.shares.back() * started)
 		if late > 0:
 			_overlay.paragraph("%d cleared after more than %d tries" % [late, ClearCurve.MAX_TRIES], 20, Style.INK_DIM, _facts)
-	_overlay.paragraph("Players: %d" % started, 22, Style.INK, _facts)
-	var share := " (%d%%)" % roundi(100.0 * cleared / started) if started >= MIN_STARTERS else ""
-	_overlay.paragraph("Cleared: %d%s" % [cleared, share], 22, Style.INK, _facts)
-	var missing := maxi(0, started - cleared)
-	var slow: int = counts.slow
-	_overlay.paragraph("%d not cleared%s" % [missing, ", %d of them after 20+ tries" % slow if slow > 0 else ""], 22, Style.INK, _facts)
 	var audience: Variant = _data.get("audience")
 	if (audience is float or audience is int) and absf(audience) >= 0.5:
 		_overlay.paragraph("Players so far were %s than typical" % ("stronger" if audience > 0 else "weaker"), 22, Style.ACCENT, _facts)
@@ -652,29 +671,6 @@ static func _name(value: Variant, fallback: String) -> String:
 
 static func _count(value: Variant) -> int:
 	return int(value) if value is int or value is float else 0
-
-
-## The native choice of a difficulty: item 0 is the unselected placeholder (metadata ""), items 1-4 the four labels with their wire values as metadata. Used by the Publish confirmation.
-static func difficulty_option() -> OptionButton:
-	var option := OptionButton.new()
-	option.custom_minimum_size = Vector2(320, 56)
-	option.add_theme_font_size_override("font_size", 22)
-	option.get_popup().add_theme_font_size_override("font_size", 22)
-	option.get_popup().add_theme_constant_override("v_separation", 12)
-	option.add_item("Choose difficulty")
-	option.set_item_metadata(0, "")
-	option.set_item_disabled(0, true)  # the placeholder is a state, not a vote
-	for difficulty: String in DIFFICULTIES:
-		option.add_item(difficulty.capitalize())
-		option.set_item_metadata(option.item_count - 1, difficulty)
-	option.select(0)
-	return option
-
-
-## The wire value chosen in a `difficulty_option`; "" for the placeholder.
-static func chosen(option: OptionButton) -> String:
-	var value: Variant = option.get_item_metadata(option.selected) if option.selected >= 0 else ""
-	return value if value is String else ""
 
 
 ## "Reviewed: Hard" or "Reviewed: Not rated".
