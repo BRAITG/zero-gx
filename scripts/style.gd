@@ -210,9 +210,10 @@ func toggle_tint(button: Button, color: Color, radius := 10) -> Button:
 ## Adjusts bottom content margin across every state of a Style-managed button (including touch-saved hover).
 func set_padding_bottom(button: Button, margin: float) -> void:
 	for state in ["normal", "hover", "pressed", "hover_pressed"]:
-		var sb := button.get_theme_stylebox(state) as StyleBoxFlat
-		if sb != null:
-			sb.content_margin_bottom = margin
+		if button.has_theme_stylebox_override(state):
+			var sb := button.get_theme_stylebox(state) as StyleBoxFlat
+			if sb != null:
+				sb.content_margin_bottom = margin
 	if button.has_meta(&"saved_hover"):
 		var saved: Dictionary = button.get_meta(&"saved_hover")
 		for key in ["hover", "hover_pressed"]:

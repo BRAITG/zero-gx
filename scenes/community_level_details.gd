@@ -497,7 +497,8 @@ func _show_hero(ready: bool) -> void:
 
 ## Rated (or Estimating), Reviewed, the vote distribution, the disagreement line and the known limits.
 func _show_difficulty(ready: bool) -> void:
-	var focus := _overlay.get_viewport().gui_get_focus_owner()
+	var vp := _overlay.get_viewport()
+	var focus := vp.gui_get_focus_owner() if vp != null else null
 	var had_focus := focus != null and _difficulty.is_ancestor_of(focus)
 	for old in _difficulty.get_children():
 		old.free()
@@ -541,7 +542,7 @@ func _show_difficulty(ready: bool) -> void:
 			limits_label.visible = _limits_open
 			toggle.text = _limits_toggle_text())
 		if had_focus:
-			toggle.grab_focus(true)
+			toggle.grab_focus(Style.touch)
 
 
 func _limits_toggle_text() -> String:
