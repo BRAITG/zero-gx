@@ -37,16 +37,24 @@ func _draw() -> void:
 		draw_string(font, Vector2(pad_l, base_y), "1 try", HORIZONTAL_ALIGNMENT_LEFT, 60, fsize, Style.INK_DIM)
 		draw_string(font, Vector2(pad_l + w * (9.0 / (MAX_TRIES - 1)) - 14, base_y), "10", HORIZONTAL_ALIGNMENT_CENTER, 28, fsize, Style.INK_DIM)
 		draw_string(font, Vector2(pad_l + w * (19.0 / (MAX_TRIES - 1)) - 14, base_y), "20", HORIZONTAL_ALIGNMENT_CENTER, 28, fsize, Style.INK_DIM)
-		draw_string(font, Vector2(pad_l + w - 64, base_y), "30 tries", HORIZONTAL_ALIGNMENT_RIGHT, 64, fsize, Style.INK_DIM)
+		draw_string(font, Vector2(pad_l + w - 64, base_y), "%d tries" % MAX_TRIES, HORIZONTAL_ALIGNMENT_RIGHT, 64, fsize, Style.INK_DIM)
 	var points := PackedVector2Array()
 	for i in shares.size():
 		points.append(Vector2(pad_l + w * i / (MAX_TRIES - 1), pad_t + h * (1.0 - shares[i])))
 	var fill_top := Color(Style.ACCENT, 0.24)
 	var fill_bot := Color(Style.ACCENT, 0.0)
+	var bottom_y := pad_t + h
 	for i in range(points.size() - 1):
+		var s0 := shares[i]
+		var s1 := shares[i + 1]
+		if s0 <= 0.0 and s1 <= 0.0:
+			continue
 		var a := points[i]
 		var b := points[i + 1]
-		var quad := PackedVector2Array([a, b, Vector2(b.x, pad_t + h), Vector2(a.x, pad_t + h)])
-		var cols := PackedColorArray([fill_top, fill_top, fill_bot, fill_bot])
-		draw_polygon(quad, cols)
+		if s0 <= 0.0:
+			draw_polygon(PackedVector2Array([a, b, Vector2(b.x, bottom_y)]), PackedColorArray([fill_bot, fill_top, fill_bot]))
+		elif s1 <= 0.0:
+			draw_polygon(PackedVector2Array([a, b, Vector2(a.x, bottom_y)]), PackedColorArray([fill_top, fill_bot, fill_bot]))
+		else:
+			draw_polygon(PackedVector2Array([a, b, Vector2(b.x, bottom_y), Vector2(a.x, bottom_y)]), PackedColorArray([fill_top, fill_top, fill_bot, fill_bot]))
 	draw_polyline(points, Style.ACCENT, 3.0, true)

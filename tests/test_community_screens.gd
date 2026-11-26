@@ -1341,14 +1341,26 @@ func test_a_card_with_a_paragraph_and_a_button_is_exactly_one_column_wide() -> v
 	check(body_text.size.x == Overlay.WIDTH, "a paragraph in the body keeps the column width: %s" % body_text.size.x)
 
 
-func test_the_danger_style_colours_every_state_and_never_fills() -> void:
+func test_the_danger_and_primary_styles_preserve_hover_across_touch_toggle() -> void:
+	var prev_touch := Style.touch
+	Style.touch = false
 	var button := Button.new()
+	world.add_child(button)
 	Style.danger(button)
 	check(button.get_theme_color("font_color") == Hud.WARNING and button.get_theme_color("font_focus_color") == Hud.WARNING, "resting and focused danger text use the warning colour")
 	var normal: StyleBoxFlat = button.get_theme_stylebox("normal")
 	var hover: StyleBoxFlat = button.get_theme_stylebox("hover")
 	check(normal.border_color.r > 0.8 and hover.border_color == Hud.WARNING, "danger tints border and hover with the warning colour")
-	button.free()
+	Style.touch = true
+	var primary := Button.new()
+	world.add_child(primary)  # added while touch == true, then styled
+	Style.primary(primary)
+	check(primary.get_theme_stylebox("hover") == primary.get_theme_stylebox("normal"), "touch hides hover on newly styled primary button")
+	Style.touch = false
+	check(primary.get_theme_stylebox("hover").bg_color == Color("#206dc7"), "returning to mouse restores primary hover stylebox")
+	Style.touch = prev_touch
+	button.queue_free()
+	primary.queue_free()
 
 
 func test_every_destructive_button_is_in_danger_and_the_confirmations_are_full_width() -> void:

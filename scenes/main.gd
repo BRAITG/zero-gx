@@ -167,7 +167,7 @@ func _list_levels() -> void:
 		button.pressed.connect(func(): Progress.open(id))
 		if next:
 			suggested = button
-			button.add_theme_stylebox_override("normal", Style._box(Color(0.06, 0.13, 0.25, 0.94), Style.ACCENT, 10))
+			button.add_theme_stylebox_override("normal", Style.box(Color(0.06, 0.13, 0.25, 0.94), Style.ACCENT, 10))
 		_levels.add_child(button)
 	_update_tally(cleared, ids.size(), medals)
 	if get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
@@ -228,7 +228,7 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 		parts.add_child(_label("Locked", 18, Style.INK_DIM))
 	elif best < 0:
 		if next:
-			parts.add_child(Style.pill("Next", Style.ACCENT, false, 16))
+			parts.add_child(Style.pill("Next", Style.ACCENT, 16))
 		parts.add_child(_label("Not played", 18, Style.INK_DIM))
 	else:
 		var fuel := Progress.best_fuel(id)
@@ -264,7 +264,7 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 			var local_points := best if run != null and run.level_sha256 == sha else -1
 			var badge := _button("", Vector2(100, 28), 16)
 			badge.name = "BoardBadge"
-			badge.add_theme_stylebox_override("normal", Style._box(Color(Style.ACCENT, 0.14), Color(Style.ACCENT, 0.45), 12, 4))
+			badge.add_theme_stylebox_override("normal", Style.box(Color(Style.ACCENT, 0.14), Color(Style.ACCENT, 0.45), 12, 4))
 			badge.add_theme_color_override("font_color", Style.ACCENT.lightened(0.3))
 			badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			badge.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -276,15 +276,17 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 			_board_badges[sha] = badge
 			_update_badge(sha)
 	if unlocked:
-		var play := _button("Play", Vector2(110, 52), 20)
+		var play := PanelContainer.new()  # visual CTA only; the row Button handles click, tap, and focus without double-firing
 		play.name = "Play"
-		play.focus_mode = Control.FOCUS_NONE  # keyboard/gamepad already focus the row itself
+		play.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		play.custom_minimum_size = Vector2(110, 52)
 		play.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		if next:
-			Style.primary(play)
-		else:
-			Style.subtle(play)
-		play.pressed.connect(func(): Progress.open(id))
+		var play_box := Style.box(Color("#1658a6"), Color("#60b8ff"), 10, 10) if next else Style.box(Style.PANEL_SUBTLE, Style.BORDER_SOFT, 10, 10)
+		play.add_theme_stylebox_override("panel", play_box)
+		var play_label := _label("Play", 20, Color.WHITE if next else Color("#b7c8e6"))
+		play_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		play_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		play.add_child(play_label)
 		content.add_child(play)
 	return button
 

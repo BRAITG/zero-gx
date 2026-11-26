@@ -169,7 +169,7 @@ func _add_row(row: Dictionary) -> Button:
 	card.mouse_filter = Control.MOUSE_FILTER_PASS  # a drag starting on the card scrolls the list
 	card.custom_minimum_size.y = ROW_HEIGHT
 	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var box := Style._box(Style.PANEL, Style.BORDER_SOFT, 12, 12)
+	var box := Style.box(Style.PANEL, Style.BORDER_SOFT, 12, 12)
 	box.content_margin_top = 8
 	box.content_margin_bottom = 8
 	card.add_theme_stylebox_override("panel", box)
@@ -202,7 +202,7 @@ func _add_row(row: Dictionary) -> Button:
 		chip_box.content_margin_top = 1  # three text lines must fit the 100 px row
 		chip_box.content_margin_bottom = 1
 		meta.add_child(chip)
-	meta.add_child(Style.pill("♥ %d" % int(row.get("likes", 0)), Style.LIKE, false, 18))
+	meta.add_child(Style.pill("♥ %d" % int(row.get("likes", 0)), Style.LIKE, 18))
 	var starters := int(row.get("starters", 0))
 	var players_label := _label("%d %s" % [starters, "player" if starters == 1 else "players"], 18, Style.INK_DIM)
 	players_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -226,9 +226,9 @@ func _add_row(row: Dictionary) -> Button:
 		pts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		own.add_child(pts)
 	elif mine.cleared:
-		own.add_child(Style.pill("Cleared", Hud.GOAL_GREEN, false, 18))
+		own.add_child(Style.pill("Cleared", Hud.GOAL_GREEN, 18))
 	elif tries > 0:
-		own.add_child(Style.pill("%d %s" % [tries, "try" if tries == 1 else "tries"], Style.INK_DIM, false, 18))
+		own.add_child(Style.pill("%d %s" % [tries, "try" if tries == 1 else "tries"], Style.INK_DIM, 18))
 	var details := Style.subtle(_button(content, "Details", _details.bind(row)))
 	details.custom_minimum_size = Vector2(120, 56)
 	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER

@@ -45,3 +45,11 @@ func test_clear_curve_ignores_malformed_entries() -> void:
 	var none := ClearCurve.new(null)
 	check(none.shares.is_empty(), "null draws nothing")
 	none.free()
+
+
+func test_clear_curve_draws_zero_share_segments_cleanly() -> void:
+	var curve := ClearCurve.new([0.0, 0.0, 0.3, 0.0, 0.0])
+	world.add_child(curve)
+	await frames(2)
+	check(curve.shares == [0.0, 0.0, 0.3, 0.0, 0.0], "zero-share curve renders cleanly")
+	curve.queue_free()

@@ -106,28 +106,10 @@ func _status_badges(id: String, data: Dictionary) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 10)
-	var status := _status_line(id, data)
-	var full: String = status[0]
-	var color: Color = status[1]
-	var pill_text := full
-	var detail := ""
-	if full.begins_with("Published v"):
-		var cut := full.find(" · ")
-		if cut > 0:
-			pill_text = full.left(cut)
-			detail = full.substr(cut + 3)
-		color = Hud.GOAL_GREEN
-	elif full == "In review" or full == "Submitted":
-		color = Style.WARNING
-	elif full.begins_with("Rejected: "):
-		pill_text = "Rejected"
-		detail = full.trim_prefix("Rejected: ")
-	elif full.begins_with("Needs fixes: "):
-		pill_text = "Needs fixes"
-		detail = full.trim_prefix("Needs fixes: ")
-	row.add_child(Style.pill(pill_text, color, false, 18))
-	if detail != "":
-		var extra := _label(detail, 18, FIX_COLOR if color == FIX_COLOR else Style.INK_DIM)
+	var parts := _status_parts(id, data)
+	row.add_child(Style.pill(parts.pill, parts.color, 18))
+	if parts.detail != "":
+		var extra := _label(parts.detail, 18, parts.detail_color)
 		extra.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		extra.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(extra)
@@ -144,32 +126,42 @@ func _label(text: String, font_size: int, color: Color) -> Label:
 	return label
 
 
-## [text, colour] of a level's one status line. Desktop builds (no Community) know only the first three states.
-func _status_line(id: String, data: Dictionary) -> Array:
+## Structured status for a level: {pill, detail, separator, color, detail_color, sheet_color}.
+func _status_parts(id: String, data: Dictionary) -> Dictionary:
 	var problems := LevelFormat.validate(data)
 	if not problems.is_empty():
-		return ["Needs fixes: " + problems[0], FIX_COLOR]
+		return {"pill": "Needs fixes", "detail": problems[0], "separator": ": ", "color": FIX_COLOR, "detail_color": FIX_COLOR, "sheet_color": FIX_COLOR}
 	if Community.available():
 		var status: Dictionary = _statuses.get(Community.level_id_of(id), {})
 		match status.get("status"):
 			"open":
-				return ["In review", Style.INK_DIM]
+				return {"pill": "In review", "detail": "", "separator": "", "color": Style.AMBER, "detail_color": Style.INK_DIM, "sheet_color": Style.INK_DIM}
 			"rejected":
-				return ["Rejected: " + status.comment if status.get("comment", "") != "" else "Rejected", FIX_COLOR]
+				var comment: String = status.get("comment", "")
+				return {"pill": "Rejected", "detail": comment, "separator": ": ", "color": FIX_COLOR, "detail_color": FIX_COLOR, "sheet_color": FIX_COLOR}
 			"approved":
-				return [_published_line(data, status), Style.INK_DIM]
+				var version := "Published v%d" % int(status.get("version", 1))
+				var detail := _published_detail(data, status)
+				return {"pill": version, "detail": detail, "separator": " · ", "color": Hud.GOAL_GREEN, "detail_color": Style.INK_DIM, "sheet_color": Style.INK_DIM}
 		if MyLevels.is_submitted(id):
-			return ["Submitted", Style.INK_DIM]  # the server's word has not come yet, or cannot be reached
+			return {"pill": "Submitted", "detail": "", "separator": "", "color": Style.AMBER, "detail_color": Style.INK_DIM, "sheet_color": Style.INK_DIM}
 	if MyLevels.is_completed(id):
-		return ["Ready to publish", Hud.GOAL_GREEN]
-	return ["Not tested yet", Style.INK_DIM]
+		return {"pill": "Ready to publish", "detail": "", "separator": "", "color": Hud.GOAL_GREEN, "detail_color": Style.INK_DIM, "sheet_color": Hud.GOAL_GREEN}
+	return {"pill": "Not tested yet", "detail": "", "separator": "", "color": Style.INK_DIM, "detail_color": Style.INK_DIM, "sheet_color": Style.INK_DIM}
 
 
-## "Published v2 · Hard · 64 players · ♥ 42"; a part the status lacks (offline, no stats) is left out, and an edited draft says so instead of the numbers.
-func _published_line(data: Dictionary, status: Dictionary) -> String:
-	var parts := ["Published v%d" % int(status.get("version", 1))]
+## [text, colour] of a level's one status line for the detail sheet.
+func _status_line(id: String, data: Dictionary) -> Array:
+	var parts := _status_parts(id, data)
+	var text: String = parts.pill + (parts.separator + parts.detail if parts.detail != "" else "")
+	return [text, parts.sheet_color]
+
+
+## "Hard · 64 players · ♥ 42" or "edited since" after Published vN.
+func _published_detail(data: Dictionary, status: Dictionary) -> String:
 	if status.has("sha256") and LevelFormat.sha256(data) != status.sha256:
-		return parts[0] + " · edited since"
+		return "edited since"
+	var parts: Array[String] = []
 	var chip := DifficultyChip.text_of(status)  # "Rated Hard": the source word is the chip's, the line keeps the label
 	if chip != "":
 		parts.append(chip.get_slice(" ", 1))
@@ -236,7 +228,7 @@ func _publish(id: String, proven := false) -> void:
 	var send := o.card()
 	var state := {"proven": proven, "difficulty": "", "submit": null}  # a lambda copies values, so flags live in a Dictionary
 	var update := func() -> void:
-		state.submit.disabled = not state.proven or state.difficulty == ""
+		state.submit.disabled = _busy or not state.proven or state.difficulty == ""
 	o.paragraph("2. Suggest a difficulty", 24, Style.INK, suggestion)
 	var pills := HBoxContainer.new()
 	pills.add_theme_constant_override("separation", 12)

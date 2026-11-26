@@ -1394,9 +1394,9 @@ func test_official_rows_show_play_button_for_cleared_and_next_levels_only() -> v
 	world.add_child(list)
 	await frames(2)
 	var rows := stage_rows(list)
-	var cleared_play: Button = rows["Level 01"].find_child("Play", true, false) as Button
-	var next_play: Button = rows["Level 02"].find_child("Play", true, false) as Button
-	var locked_play: Button = rows["Level 03"].find_child("Play", true, false) as Button
-	check(cleared_play != null and cleared_play.visible, "cleared official level still shows Play button")
-	check(next_play != null and next_play.visible, "next unplayed official level shows Play button")
-	check(locked_play == null, "locked official level shows no Play button")
+	var cleared_play: Control = rows["Level 01"].find_child("Play", true, false) as Control
+	var next_play: Control = rows["Level 02"].find_child("Play", true, false) as Control
+	var locked_play: Control = rows["Level 03"].find_child("Play", true, false) as Control
+	check(cleared_play != null and cleared_play.visible and cleared_play.mouse_filter == Control.MOUSE_FILTER_IGNORE, "cleared official level shows non-interactive Play CTA")
+	check(next_play != null and next_play.visible and next_play.mouse_filter == Control.MOUSE_FILTER_IGNORE, "next unplayed official level shows non-interactive Play CTA")
+	check(locked_play == null, "locked official level shows no Play CTA")

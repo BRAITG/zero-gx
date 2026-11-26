@@ -497,13 +497,13 @@ func _show_difficulty(ready: bool) -> void:
 			badges.add_child(rated_chip)
 	else:
 		var starters: int = _counts().players
-		badges.add_child(Style.pill("Estimating · %d %s" % [starters, "player" if starters == 1 else "players"], Style.INK_DIM, false, 20))
+		badges.add_child(Style.pill("Estimating · %d %s" % [starters, "player" if starters == 1 else "players"], Style.INK_DIM, 20))
 	var reviewed: Variant = _data.get("reviewed_difficulty")
 	var reviewed_chip := DifficultyChip.of({"reviewed_difficulty": reviewed})
 	if reviewed_chip:
 		badges.add_child(reviewed_chip)
 	else:
-		badges.add_child(Style.pill(reviewed_label(reviewed), Style.INK_DIM, false, 20))
+		badges.add_child(Style.pill(reviewed_label(reviewed), Style.INK_DIM, 20))
 	if rated in DifficultyChip.LABELS:
 		var sentence := _rated_sentence(rated, _data.get("rated_high"))
 		if sentence != "":

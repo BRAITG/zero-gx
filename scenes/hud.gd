@@ -58,17 +58,16 @@ var _result_name: Label
 var _detail: Label
 var _score: VBoxContainer
 var _total: Label
-var _best: Label
 var _best_pill: PanelContainer
 var _medal: HBoxContainer  # three medal slots, filled as the total counts up; only on a stage with a par
 var _slots := {}  # Progress.Medal -> ScoreIcon
+var _slot_tweens := {}  # Progress.Medal -> Tween
 var _par_box: VBoxContainer
 var _par_bar: ParBar
 var _par_next: Label
 var _count: Tween
 var _parts := {}  # ScoreIcon.Kind -> value Label
 var _next: Button
-var _retry: Button
 var _replay: Button
 var _rate: Button
 var _board: Button
@@ -201,8 +200,7 @@ func _ready() -> void:
 	_total.add_theme_font_override("font", Style.display_font)
 	_total.add_theme_font_size_override("font_size", 52)
 	score_head.add_child(_total)
-	_best_pill = Style.pill("New best!", Style.ACCENT, false, 16)
-	_best = _best_pill.get_child(0) as Label
+	_best_pill = Style.pill("New best!", Style.ACCENT, 16)
 	score_head.add_child(_best_pill)
 	_medal = HBoxContainer.new()
 	_medal.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -221,10 +219,7 @@ func _ready() -> void:
 	_par_next.add_theme_font_size_override("font_size", 17)
 	_par_next.add_theme_color_override("font_color", Style.INK_DIM)
 	_par_box.add_child(_par_next)
-	var breakdown := PanelContainer.new()
-	var bd_box := Style._box(Style.PANEL_INSET, Style.BORDER_SOFT, 10, 10)
-	bd_box.set_border_width_all(1)
-	breakdown.add_theme_stylebox_override("panel", bd_box)
+	var breakdown := Style.inset_panel(10)
 	_score.add_child(breakdown)
 	var parts := GridContainer.new()  # three lines of icon + label + value
 	parts.columns = 1
@@ -279,7 +274,7 @@ func _ready() -> void:
 	actions.add_theme_constant_override("separation", 12)
 	column.add_child(actions)
 	_next = Style.primary(_button(actions, next_text, next_requested.emit))
-	_retry = _button(actions, "Retry", retry_requested.emit)
+	_button(actions, "Retry", retry_requested.emit)
 	_replay = Style.subtle(_button(actions, "Replay", replay_requested.emit))
 	_rate = Style.subtle(_button(actions, "Rate level", rate_requested.emit))
 	_board = Style.subtle(_button(actions, "Board", board_requested.emit))
@@ -379,7 +374,6 @@ func show_result(won: bool, result: Dictionary) -> void:
 	_detail.visible = not won
 	if won:
 		_best_pill.visible = result.new_best
-		_best.visible = result.new_best
 		_parts[ScoreIcon.Kind.FUEL].text = "+%d" % result.fuel_points
 		_parts[ScoreIcon.Kind.HULL].text = "+%d" % result.hull_points
 		_parts[ScoreIcon.Kind.TIME].text = "−%d" % result.time_points
@@ -431,6 +425,12 @@ func _focus_result() -> void:
 func _count_up(points: int, par: int) -> void:
 	if _count:
 		_count.kill()
+	for tier in _slot_tweens:
+		if is_instance_valid(_slot_tweens[tier]):
+			_slot_tweens[tier].kill()
+	_slot_tweens.clear()
+	for tier in _slots:
+		_slots[tier].scale = Vector2.ONE
 	_set_count(0, par)
 	_count = create_tween()
 	_count.tween_method(_set_count.bind(par), 0, points, COUNT_SECONDS).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
@@ -444,8 +444,12 @@ func _set_count(value: int, par: int) -> void:
 		var was_empty := slot.empty
 		slot.empty = tier > earned
 		if value > 0 and was_empty and not slot.empty:
+			if _slot_tweens.has(tier) and is_instance_valid(_slot_tweens[tier]):
+				_slot_tweens[tier].kill()
 			slot.scale = Vector2.ONE * 1.28
-			create_tween().tween_property(slot, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			var tween := create_tween()
+			tween.tween_property(slot, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			_slot_tweens[tier] = tween
 	if par > 0:
 		_par_bar.set_progress(float(value) / float(par), earned)
 
@@ -468,11 +472,16 @@ func _update_par_caption(points: int, par: int) -> void:
 class ParBar extends Control:
 	var _ratio := 0.0
 	var _medal := Progress.Medal.NONE
+	var _track := StyleBoxFlat.new()
+	var _fill := StyleBoxFlat.new()
 
 	func _init() -> void:
 		custom_minimum_size = Vector2(0, 10)
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_track.bg_color = Color(Style.BORDER, 0.35)
+		_track.set_corner_radius_all(5)
+		_fill.set_corner_radius_all(5)
 
 	func set_progress(ratio: float, earned: Progress.Medal) -> void:
 		_ratio = clampf(ratio, 0.0, 1.0)
@@ -480,17 +489,11 @@ class ParBar extends Control:
 		queue_redraw()
 
 	func _draw() -> void:
-		var radius := size.y * 0.5
-		var track := StyleBoxFlat.new()
-		track.bg_color = Color(Style.BORDER, 0.35)
-		track.set_corner_radius_all(int(radius))
-		draw_style_box(track, Rect2(Vector2.ZERO, size))
+		draw_style_box(_track, Rect2(Vector2.ZERO, size))
 		if _ratio > 0.0:
 			var fill_w := maxf(size.y, size.x * _ratio)
-			var fill := StyleBoxFlat.new()
-			fill.bg_color = ScoreIcon.MEDAL_COLORS.get(_medal, Style.ACCENT)
-			fill.set_corner_radius_all(int(radius))
-			draw_style_box(fill, Rect2(Vector2.ZERO, Vector2(minf(fill_w, size.x), size.y)))
+			_fill.bg_color = ScoreIcon.MEDAL_COLORS.get(_medal, Style.ACCENT)
+			draw_style_box(_fill, Rect2(Vector2.ZERO, Vector2(minf(fill_w, size.x), size.y)))
 		for mark: float in [Progress.BRONZE_FRACTION, Progress.SILVER_FRACTION]:
 			var x := size.x * mark
 			draw_line(Vector2(x, 0), Vector2(x, size.y), Color(1, 1, 1, 0.45), 2.0)
@@ -501,8 +504,8 @@ func result_text() -> String:
 	var lines := [_result_name.text, _result_label.text]
 	if _score.visible:
 		lines.append(_total.text)
-		if _best.visible:
-			lines.append(_best.text)
+		if _best_pill.visible:
+			lines.append("New best!")
 		if _medal.visible:
 			lines.append("Medals: %s" % ", ".join(_slots.keys().filter(func(t: int) -> bool: return not _slots[t].empty).map(func(t: int) -> String: return Progress.Medal.keys()[t].capitalize())))
 		for kind in _parts:
