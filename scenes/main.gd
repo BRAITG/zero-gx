@@ -275,6 +275,17 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 			scores.add_child(badge)
 			_board_badges[sha] = badge
 			_update_badge(sha)
+	if unlocked:
+		var play := _button("Play", Vector2(110, 52), 20)
+		play.name = "Play"
+		play.focus_mode = Control.FOCUS_NONE  # keyboard/gamepad already focus the row itself
+		play.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		if next:
+			Style.primary(play)
+		else:
+			Style.subtle(play)
+		play.pressed.connect(func(): Progress.open(id))
+		content.add_child(play)
 	return button
 
 ## Automatic reads never discover an identity; failures also consume this process's per-owner/hash hourly opportunity.

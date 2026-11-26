@@ -1386,3 +1386,17 @@ func test_result_shows_next_medal_threshold_and_gold_earned_caption() -> void:
 	})
 	await frames(2)
 	check(lvl.hud._par_next.text == "Gold medal earned!", "at or above par shows gold earned: %s" % lvl.hud._par_next.text)
+
+
+func test_official_rows_show_play_button_for_cleared_and_next_levels_only() -> void:
+	Progress.record_win("level_01", 1200, 12.0, 50.0, 80.0)
+	var list := menu(MAIN.Page.OFFICIAL)
+	world.add_child(list)
+	await frames(2)
+	var rows := stage_rows(list)
+	var cleared_play: Button = rows["Level 01"].find_child("Play", true, false) as Button
+	var next_play: Button = rows["Level 02"].find_child("Play", true, false) as Button
+	var locked_play: Button = rows["Level 03"].find_child("Play", true, false) as Button
+	check(cleared_play != null and cleared_play.visible, "cleared official level still shows Play button")
+	check(next_play != null and next_play.visible, "next unplayed official level shows Play button")
+	check(locked_play == null, "locked official level shows no Play button")
