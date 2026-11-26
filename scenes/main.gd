@@ -223,15 +223,12 @@ func _list_levels() -> void:
 				medals[m] += 1
 		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
 		var sha := LevelFormat.sha256(data) if not training and Community.available() and best >= 0 else ""
-		var button := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next, par, sha)
-		button.disabled = not unlocked
+		var card := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next, par, sha)
 		if not unlocked:
-			button.modulate = Color(1, 1, 1, 0.55)  # the thumbnail dims with the text
-		button.pressed.connect(func(): Progress.open(id))
+			card.modulate = Color(1, 1, 1, 0.55)  # the thumbnail dims with the text
 		if next:
-			suggested = button
-			button.add_theme_stylebox_override("normal", Style.box(Color(0.06, 0.13, 0.25, 0.94), Style.ACCENT, 10))
-		_levels.add_child(button)
+			suggested = card.find_child("Play", true, false) as Button
+		_levels.add_child(card)
 	_update_tally(cleared, ids.size(), medals)
 	if get_viewport().gui_get_focus_owner() == null:  # not while an overlay holds it
 		if suggested:
@@ -249,19 +246,24 @@ func _update_tally(cleared: int, total_count: int, medals: Dictionary) -> void:
 	_tally.add_child(_label("%d / %d cleared" % [cleared, total_count], 20, Style.INK_DIM))
 
 
-## A stage row: the thumbnail on the left; the title over one line of the best run's fuel, hull and
-## time points (each behind its score icon) in the middle; the best total, large, on the right, behind
-## the medal that total earns against `par` (none without a par).
-## A best saved before fuel and hull were kept shows "—" for them rather than an invented value.
+## A stage row: a framed card with the thumbnail on the left; the title over one line of the best run's fuel, hull and
+## time points (each behind its score icon) in the middle; the medal, best total, optional rank badge, and a primary
+## Play button on the right (omitted when locked). Only Play launches the stage.
 ## The title Label is named "Title" so tests and tools can read the row's name.
-func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: String) -> Button:
-	var button := _button("", Vector2(0, ROW_HEIGHT))
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: String) -> PanelContainer:
+	var card := PanelContainer.new()
+	card.name = "Row"
+	card.mouse_filter = Control.MOUSE_FILTER_PASS  # dragging anywhere on the card scrolls the list without launching
+	card.custom_minimum_size = Vector2(0, ROW_HEIGHT)
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var card_box := Style.box(Color(0.06, 0.13, 0.25, 0.94), Style.ACCENT, 12, 12) if next else Style.box(Style.PANEL, Style.BORDER_SOFT, 12, 12)
+	card_box.content_margin_top = ROW_MARGIN
+	card_box.content_margin_bottom = ROW_MARGIN
+	card.add_theme_stylebox_override("panel", card_box)
 	var content := HBoxContainer.new()
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, ROW_MARGIN)
 	content.add_theme_constant_override("separation", 20)
-	button.add_child(content)
+	card.add_child(content)
 	var thumbnail := Thumbnail.new(id)
 	thumbnail.custom_minimum_size = Vector2(Thumbnail.CANVAS.x / Thumbnail.CANVAS.y, 1.0) * (ROW_HEIGHT - 2 * ROW_MARGIN)
 	content.add_child(thumbnail)
@@ -331,19 +333,12 @@ func _row(id: String, title: String, unlocked: bool, next: bool, par: int, sha: 
 			_board_badges[sha] = badge
 			_update_badge(sha)
 	if unlocked:
-		var play := PanelContainer.new()  # visual CTA only; the row Button handles click, tap, and focus without double-firing
+		var play := Style.primary(_button("Play", Vector2(110, 52), 20))
 		play.name = "Play"
-		play.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		play.custom_minimum_size = Vector2(110, 52)
 		play.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		var play_box := Style.box(Color("#1658a6"), Color("#60b8ff"), 10, 10) if next else Style.box(Style.PANEL_SUBTLE, Style.BORDER_SOFT, 10, 10)
-		play.add_theme_stylebox_override("panel", play_box)
-		var play_label := _label("Play", 20, Color.WHITE if next else Color("#b7c8e6"))
-		play_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		play_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		play.add_child(play_label)
+		play.pressed.connect(func(): Progress.open(id))
 		content.add_child(play)
-	return button
+	return card
 
 ## Automatic reads never discover an identity; failures also consume this process's per-owner/hash hourly opportunity.
 func _refresh_boards() -> void:

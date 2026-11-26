@@ -360,7 +360,7 @@ func test_home_community_settings_purchase_gameplay_and_pause_surfaces() -> void
 	if stage_list.get_child_count() != official_levels.size() or stage_list.get_child_count() == 0:
 		_leave_scene()
 		return
-	var first_level: Button = stage_list.get_child(0)
+	var first_level: Button = stage_list.get_child(0).find_child("Play", true, false) as Button
 	check(first_level.is_visible_in_tree() and not first_level.disabled, "the first official stage row must be playable")
 	if not first_level.is_visible_in_tree() or first_level.disabled:
 		_leave_scene()
