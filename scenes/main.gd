@@ -9,6 +9,7 @@ enum Page { HOME, OFFICIAL, TRAINING }
 const SCENE := "res://scenes/main.tscn"
 const MENU_DRIFT := Vector2(-40, -12)  # px/s
 const HOME_WIDTH := 440.0  # px: the column of home buttons
+const LIST_WIDTH := 900.0  # px: centered column for Official / Training header and rows
 const ROW_HEIGHT := 108.0  # px: a stage row; its thumbnail fills the height less the margins
 const ROW_MARGIN := 8.0
 
@@ -106,6 +107,8 @@ func _build_list() -> void:
 	_column.add_theme_constant_override("separation", 16)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 24)
+	top.custom_minimum_size.x = LIST_WIDTH
+	top.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	_column.add_child(top)
 	var back := Style.subtle(_button("Back", Vector2(160, 56), 22))
 	back.pressed.connect(_go_to.bind(Page.HOME))
@@ -124,6 +127,8 @@ func _build_list() -> void:
 	_tally.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	top.add_child(_tally)
 	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size.x = LIST_WIDTH
+	scroll.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	scroll.follow_focus = true  # keyboard and gamepad navigation scrolls the focused row into view
