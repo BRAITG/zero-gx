@@ -347,7 +347,54 @@ func _theme() -> Theme:
 	theme.set_stylebox("focus", "Button", _focus_ring(10))
 	theme.set_stylebox("panel", "PanelContainer", box(PANEL, BORDER, 14, 18))
 	theme.set_stylebox("background", "ProgressBar", box(Color(0.06, 0.09, 0.16, 0.9), Color(BORDER, 0.6), 6, 0))
+	var slider_track := box(Color(0.06, 0.1, 0.19, 0.92), BORDER, 4, 0, 1)
+	slider_track.content_margin_top = 4
+	slider_track.content_margin_bottom = 4
+	var slider_fill := box(ACCENT, ACCENT, 4, 0, 0)
+	slider_fill.content_margin_top = 4
+	slider_fill.content_margin_bottom = 4
+	var slider_fill_hi := box(ACCENT.lightened(0.18), ACCENT, 4, 0, 0)
+	slider_fill_hi.content_margin_top = 4
+	slider_fill_hi.content_margin_bottom = 4
+	theme.set_stylebox("slider", "HSlider", slider_track)
+	theme.set_stylebox("grabber_area", "HSlider", slider_fill)
+	theme.set_stylebox("grabber_area_highlight", "HSlider", slider_fill_hi)
+	theme.set_icon("grabber", "HSlider", _slider_grabber(ACCENT, INK))
+	theme.set_icon("grabber_highlight", "HSlider", _slider_grabber(ACCENT.lightened(0.25), Color.WHITE))
+	theme.set_icon("grabber_disabled", "HSlider", _slider_grabber(BORDER, INK_DIM))
+	var sb_grab := box(Color(ACCENT, 0.45), Color.TRANSPARENT, 4, 0, 0)
+	var sb_grab_hi := box(Color(ACCENT, 0.72), Color.TRANSPARENT, 4, 0, 0)
+	var sb_grab_pressed := box(ACCENT, Color.TRANSPARENT, 4, 0, 0)
+	for sb_type in ["VScrollBar", "HScrollBar"]:
+		var track := box(Color(0.04, 0.07, 0.14, 0.45), Color.TRANSPARENT, 4, 0, 0)
+		if sb_type == "VScrollBar":
+			track.content_margin_left = 4
+			track.content_margin_right = 4
+		else:
+			track.content_margin_top = 4
+			track.content_margin_bottom = 4
+		theme.set_stylebox("scroll", sb_type, track)
+		theme.set_stylebox("scroll_focus", sb_type, track)
+		theme.set_stylebox("grabber", sb_type, sb_grab)
+		theme.set_stylebox("grabber_highlight", sb_type, sb_grab_hi)
+		theme.set_stylebox("grabber_pressed", sb_type, sb_grab_pressed)
 	return theme
+
+
+static func _slider_grabber(ring: Color, core: Color, diameter := 22) -> ImageTexture:
+	var img := Image.create(diameter, diameter, false, Image.FORMAT_RGBA8)
+	var center := (diameter - 1) * 0.5
+	var outer_r := center
+	var inner_r := outer_r - 3.0
+	for y in diameter:
+		for x in diameter:
+			var dist := Vector2(x - center, y - center).length()
+			if dist <= inner_r:
+				img.set_pixel(x, y, core)
+			elif dist <= outer_r:
+				var alpha := clampf(outer_r - dist + 0.5, 0.0, 1.0)
+				img.set_pixel(x, y, Color(ring, ring.a * alpha))
+	return ImageTexture.create_from_image(img)
 
 
 static func box(fill: Color, border: Color, radius: int, margin := 12, border_width := 2) -> StyleBoxFlat:

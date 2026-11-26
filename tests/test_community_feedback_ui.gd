@@ -268,7 +268,7 @@ func _containing(node: Node, word: String) -> Array:
 ## The sheet's controls by role: the Like toggle, and the four vote toggles by wire value (hidden until the player may vote).
 func _controls(node: Node) -> Dictionary:
 	var toggles: Array = node.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.toggle_mode and not (b is OptionButton))
-	var like := toggles.filter(func(b: Button) -> bool: return b.text.contains("Like"))
+	var like := toggles.filter(func(b: Button) -> bool: return b.text.begins_with("♥"))
 	var votes := {}
 	for b: Button in toggles:
 		if b.text.to_lower() in DIFFICULTIES:
@@ -670,11 +670,23 @@ func test_the_audience_line_needs_a_difference_of_half_a_point() -> void:
 func test_the_sheet_ends_its_difficulty_section_with_the_known_limits() -> void:
 	var net := _fake()
 	await _signed_in(net)
-	_serve(_reply({}, {"players_started": 64}, null, {}, SHA, _rich()))
+	_serve(_reply({"like_eligible": true, "liked": false, "attempts": 5}, {"players_started": 64}, null, {}, SHA, _rich()))
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	check(_mentions(_texts(sheet), ["android play audience, not desktop players", "previous version's label is not carried over"]), "the help text states the limits once: %s" % [_texts(sheet)])
+	check(not _mentions(_texts(sheet), ["android play audience, not desktop players"]), "rating limits start collapsed")
+	var toggles := _buttons(sheet, "ⓘ About this rating ▸")
+	check(toggles.size() == 1, "a disclosure button toggles the rating limits")
+	if toggles.size() == 1:
+		toggles[0].pressed.emit()
+		await frames(1)
+		check(_mentions(_texts(sheet), ["android play audience, not desktop players", "previous version's label is not carried over"]), "expanding shows the limits once: %s" % [_texts(sheet)])
+	var c := _controls(sheet)
+	check(c.like != null and c.like.text == "♥ 7", "Like toggle shows the live like count: %s" % (c.like.text if c.like else "null"))
+	if c.like != null:
+		_tap_toggle(c.like)
+		await frames(1)
+		check(c.like.text == "♥ 8", "toggling Like updates the count immediately: %s" % c.like.text)
 
 
 func test_the_sheet_has_an_opaque_backdrop() -> void:

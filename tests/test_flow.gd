@@ -1400,3 +1400,16 @@ func test_official_rows_show_play_button_for_cleared_and_next_levels_only() -> v
 	check(cleared_play != null and cleared_play.visible and cleared_play.mouse_filter == Control.MOUSE_FILTER_IGNORE, "cleared official level shows non-interactive Play CTA")
 	check(next_play != null and next_play.visible and next_play.mouse_filter == Control.MOUSE_FILTER_IGNORE, "next unplayed official level shows non-interactive Play CTA")
 	check(locked_play == null, "locked official level shows no Play CTA")
+
+
+func test_home_official_button_shows_progress_pill_when_levels_cleared() -> void:
+	var home := menu(MAIN.Page.HOME)
+	world.add_child(home)
+	await frames(2)
+	check(home._official.text == "Official levels", "button text stays Official levels")
+	check(not home._official_progress.visible, "progress pill is hidden before any official level is cleared")
+	Progress.record_win("level_01", 2500, 5.0, 90.0, 100.0)
+	await frames(2)
+	var texts: Array = home._official_progress.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
+	check(home._official_progress.visible and ("1 / %d cleared" % Progress.levels().size()) in texts, "progress pill shows cleared count: %s" % [texts])
+	check(home._official.text == "Official levels", "button text still matches Official levels with progress shown")

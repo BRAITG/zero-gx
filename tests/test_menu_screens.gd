@@ -222,3 +222,13 @@ func _slide(viewport: SubViewport, at: Vector2, relative: Vector2) -> void:
 
 func _button(node: Node, text: String) -> Button:
 	return node.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text == text and b.is_visible_in_tree())[0]
+
+
+func test_slider_and_scrollbar_use_zero_gx_theme() -> void:
+	var theme := ThemeDB.get_default_theme()
+	var fill := theme.get_stylebox("grabber_area", "HSlider") as StyleBoxFlat
+	var grabber := theme.get_icon("grabber", "HSlider")
+	var sb_grab := theme.get_stylebox("grabber", "VScrollBar") as StyleBoxFlat
+	check(fill != null and fill.bg_color == Style.ACCENT, "HSlider grabber_area uses accent colour")
+	check(grabber != null and grabber.get_size() == Vector2(22, 22), "HSlider grabber is custom circular icon")
+	check(sb_grab != null and sb_grab.bg_color.b > 0.8 and sb_grab.corner_radius_top_left == 4, "VScrollBar uses slim rounded accent grabber")

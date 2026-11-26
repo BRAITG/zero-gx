@@ -32,6 +32,10 @@ var _refusal := ""  # the server's sentence for a choice it will never take
 
 var _row := {}  # the catalogue-like row the sheet opened for
 var _to_you := false  # scroll to the You section once the first answer is in
+var _limits_open := false  # whether the rating-limits disclosure is expanded
+var _base_likes := -1  # like count from the row, adjusted optimistically when toggled
+var _initial_liked := false
+var _initial_liked_known := false
 var _chip_slot: HBoxContainer
 var _meta: Label
 var _difficulty: VBoxContainer
@@ -66,6 +70,9 @@ func _build(parent: Node, row: Dictionary, on_play: Callable, to_you: bool) -> O
 	_sha = str(row.get("sha256", ""))
 	_row = row
 	_to_you = to_you
+	var row_likes: Variant = row.get("likes")
+	if row_likes is int or row_likes is float:
+		_base_likes = int(row_likes)
 	_overlay = Overlay.open(parent, str(row.get("title", "Level")), false, true)
 	_overlay.set_meta("details", self)  # the sheet owns this object; a request in flight owns it too
 	var hero_card := _overlay.card()
@@ -231,6 +238,9 @@ func _apply(reply: Dictionary) -> void:
 		var adopt := _error == ""  # an online answer is current; a cached one only fills what is not confirmed yet
 		if not _pending.like and (adopt or not _settled.has("like")):
 			_liked = you.get("liked") == true
+			if not _initial_liked_known:
+				_initial_liked = _liked
+				_initial_liked_known = true
 		if not _pending.difficulty and (adopt or not _settled.has("difficulty")):
 			var value: Variant = you.get("difficulty")
 			_vote = value if value is String and value in DIFFICULTIES else ""
@@ -250,6 +260,8 @@ func _forget_owner() -> void:
 	_account = ""
 	_data = {}
 	_liked = false
+	_initial_liked = false
+	_initial_liked_known = false
 	_vote = ""
 	_settled.clear()
 	_pending = {"like": false, "difficulty": false}
@@ -421,7 +433,9 @@ func _render() -> void:
 	_show_facts()
 	_progress.text = "Counted tries: %d%s" % [_count(you.get("attempts")), " · Cleared" if you.get("cleared") == true else ""] if ready else ""
 	_show_best()
-	_like.set_pressed_no_signal(_shown_like())
+	var shown_like := _shown_like()
+	_like.set_pressed_no_signal(shown_like)
+	_like.text = _like_button_text(shown_like)
 	_like.disabled = not ready or not (_liked or like_ok)
 	_like_note.text = "Likes open after you clear this level on any version or try its versions %d times." % Community.FEEDBACK_TRIES if ready and not (_liked or like_ok) else ""
 	var shown := _shown_vote()
@@ -513,7 +527,25 @@ func _show_difficulty(ready: bool) -> void:
 	if gap != "":
 		_overlay.paragraph(gap, 22, Style.ACCENT, _difficulty)
 	if rated in DifficultyChip.LABELS:  # the limits qualify a rating; Estimating has none
-		_overlay.paragraph(LIMITS, 20, Style.INK_DIM, _difficulty)
+		var toggle := Style.subtle(_button(_difficulty, "ⓘ About this rating ▾" if _limits_open else "ⓘ About this rating ▸", func() -> void: pass))
+		toggle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		toggle.custom_minimum_size = Vector2(0, 40)
+		toggle.add_theme_font_size_override("font_size", 18)
+		var limits_label := _overlay.paragraph(LIMITS, 20, Style.INK_DIM, _difficulty)
+		limits_label.visible = _limits_open
+		toggle.pressed.connect(func() -> void:
+			_limits_open = not _limits_open
+			limits_label.visible = _limits_open
+			toggle.text = "ⓘ About this rating ▾" if _limits_open else "ⓘ About this rating ▸")
+
+
+func _like_button_text(shown_like: bool) -> String:
+	if _base_likes < 0:
+		return "♥ Like"
+	var delta := 0
+	if _initial_liked_known:
+		delta = (1 if shown_like else 0) - (1 if _initial_liked else 0)
+	return "♥ %d" % maxi(0, _base_likes + delta)
 
 
 ## "A typical player clears it within 10 tries 35–55% of the time", plus a note while the published label no longer covers the interval.
