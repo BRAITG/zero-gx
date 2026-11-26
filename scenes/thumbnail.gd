@@ -116,6 +116,29 @@ func _draw() -> void:
 		"level_12":  # Burn: the ship at full burn, barely steering, a boost pickup in its way.
 			_ship(Vector2(100, 90), 0.0, 2.25, true, 0.0, 2.2)
 			_pickup(Vector2(262, 90), Pickup.Kind.BOOST, 1.5)
+		"level_13":  # Skim: fast launch vector bending clear of a red ceiling past a planet.
+			_wall([Vector2(-10, 24), Vector2(330, 24)], Barrier.Kind.RED)
+			_planet(Vector2(205, 140), 40)
+			_arrow(Vector2(76, 86), Vector2(164, 56))
+			_ship(Vector2(76, 86), -0.32, 2.0, true)
+		"level_14":  # Rings: a planet with orbiting asteroids sweeping around it.
+			_planet(Vector2(195, 92), 34)
+			draw_arc(Vector2(195, 92), 68, 0.0, TAU, 36, Color(1, 1, 1, 0.16), 1.5, true)
+			_asteroid(Vector2(263, 92), 1.3, 1)
+			_asteroid(Vector2(161, 151), 1.3, 2)
+			_asteroid(Vector2(161, 33), 1.3, 3)
+			_ship(Vector2(66, 92), 0.0, 1.9, false)
+		"level_15":  # Shatter: an asteroid streaking into a planet.
+			_planet(Vector2(230, 92), 46)
+			_wake([Vector2(90, 92), Vector2(166, 92)], false)
+			_asteroid(Vector2(166, 92), 1.8, 4)
+			_ship(Vector2(62, 92), 0.0, 1.9, true)
+		"level_16":  # Gauntlet: twin planets, a thrust pickup, and a black hole beyond.
+			_planet(Vector2(110, 32), 26)
+			_planet(Vector2(110, 148), 26)
+			_pickup(Vector2(182, 90), Pickup.Kind.THRUST_UP, 1.15)
+			_black_hole(Vector2(274, 72), 40)
+			_ship(Vector2(54, 90), 0.0, 1.8, true)
 		"tutorial_1":  # Coast: the ship and its velocity arrow, nothing else.
 			_ship(Vector2(130, 95), -0.2, 2.25, false)
 			_arrow(Vector2(130, 95), Vector2(250, 70))

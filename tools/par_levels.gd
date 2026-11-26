@@ -1,8 +1,12 @@
 extends SceneTree
-## Sets each official level's `par` to the points the autopilot scores on it, and prints `level_NN <points>`.
+## Sets each official level's `par` to a human-achievable fraction of the autopilot's score, and
+## prints `level_NN <par> (autopilot <raw>)`.
 ## A level the autopilot does not finish keeps its file as it is, and the run exits 1. Run from the
 ## project root, at a fixed 60 FPS like the tests, or the flights and so the pars change from run to run:
 ##   godot --headless --path . --fixed-fps 60 -s res://tools/par_levels.gd
+
+## Gold target as a share of the 60 Hz PID autopilot's score: challenging for humans, beatable on leaderboards.
+const PAR_FACTOR := 0.82
 
 # Untyped and loaded after the first frame: a -s script compiles before the autoloads exist and
 # cannot use the global class names.
@@ -33,11 +37,12 @@ func _run() -> void:
 			print("%s unfinished" % id)
 			unfinished = true
 		else:
-			var points: int = pilot.claim_from(lvl).points
-			print("%s %d" % [id, points])
+			var raw: int = pilot.claim_from(lvl).points
+			var par: int = maxi(progress.MIN_POINTS, roundi(raw * PAR_FACTOR))
+			print("%s %d (autopilot %d)" % [id, par, raw])
 			var path: String = progress.LEVELS_DIR + id + _format.EXTENSION
 			var data: Dictionary = _format.read(path)
-			data.par = points
+			data.par = par
 			if _format.write(path, data) != OK:
 				push_error("par_levels: could not write %s" % path)
 				quit(1)

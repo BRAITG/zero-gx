@@ -7,7 +7,7 @@
     ]
   },
   "hint": "Space has no friction. Once moving, you keep moving. Your tank is small: coast.",
-  "par": 306,
+  "par": 251,
   "route": {
     "cruise": 400,
     "points": [
