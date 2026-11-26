@@ -207,6 +207,20 @@ func toggle_tint(button: Button, color: Color, radius := 10) -> Button:
 		INK_DIM, INK, color.lightened(0.35), Color.WHITE)
 
 
+## Adjusts bottom content margin across every state of a Style-managed button (including touch-saved hover).
+func set_padding_bottom(button: Button, margin: float) -> void:
+	for state in ["normal", "hover", "pressed", "hover_pressed"]:
+		if button.has_theme_stylebox_override(state):
+			var sb := button.get_theme_stylebox(state) as StyleBoxFlat
+			if sb != null:
+				sb.content_margin_bottom = margin
+	if button.has_meta(&"saved_hover"):
+		var saved: Dictionary = button.get_meta(&"saved_hover")
+		for key in ["hover", "hover_pressed"]:
+			if saved.get(key) is StyleBoxFlat:
+				saved[key].content_margin_bottom = margin
+
+
 ## Compact rounded pill badge for status, likes, or metadata.
 static func pill(text: String, color: Color, font_size := 18) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -347,7 +361,53 @@ func _theme() -> Theme:
 	theme.set_stylebox("focus", "Button", _focus_ring(10))
 	theme.set_stylebox("panel", "PanelContainer", box(PANEL, BORDER, 14, 18))
 	theme.set_stylebox("background", "ProgressBar", box(Color(0.06, 0.09, 0.16, 0.9), Color(BORDER, 0.6), 6, 0))
+	var slider_track := box(Color(0.06, 0.1, 0.19, 0.92), BORDER, 4, 0, 1)
+	var slider_fill := box(ACCENT, ACCENT, 4, 0, 0)
+	var slider_fill_hi := box(ACCENT.lightened(0.18), ACCENT, 4, 0, 0)
+	for sb in [slider_track, slider_fill, slider_fill_hi]:
+		sb.content_margin_top = 4
+		sb.content_margin_bottom = 4
+	theme.set_stylebox("slider", "HSlider", slider_track)
+	theme.set_stylebox("grabber_area", "HSlider", slider_fill)
+	theme.set_stylebox("grabber_area_highlight", "HSlider", slider_fill_hi)
+	theme.set_icon("grabber", "HSlider", _slider_grabber(ACCENT, INK))
+	theme.set_icon("grabber_highlight", "HSlider", _slider_grabber(ACCENT.lightened(0.25), Color.WHITE))
+	theme.set_icon("grabber_disabled", "HSlider", _slider_grabber(BORDER, INK_DIM))
+	var sb_grab := box(Color(ACCENT, 0.45), Color.TRANSPARENT, 4, 0, 0)
+	var sb_grab_hi := box(Color(ACCENT, 0.72), Color.TRANSPARENT, 4, 0, 0)
+	var sb_grab_pressed := box(ACCENT, Color.TRANSPARENT, 4, 0, 0)
+	for sb_type in ["VScrollBar", "HScrollBar"]:
+		var track := box(Color(0.04, 0.07, 0.14, 0.45), Color.TRANSPARENT, 4, 0, 0)
+		if sb_type == "VScrollBar":
+			track.content_margin_left = 4
+			track.content_margin_right = 4
+		else:
+			track.content_margin_top = 4
+			track.content_margin_bottom = 4
+		theme.set_stylebox("scroll", sb_type, track)
+		theme.set_stylebox("scroll_focus", sb_type, track)
+		theme.set_stylebox("grabber", sb_type, sb_grab)
+		theme.set_stylebox("grabber_highlight", sb_type, sb_grab_hi)
+		theme.set_stylebox("grabber_pressed", sb_type, sb_grab_pressed)
 	return theme
+
+
+static func _slider_grabber(ring: Color, core: Color, diameter := 22) -> ImageTexture:
+	var img := Image.create(diameter, diameter, false, Image.FORMAT_RGBA8)
+	var center := (diameter - 1) * 0.5
+	var outer_r := center - 0.5
+	var inner_r := outer_r - 3.0
+	for y in diameter:
+		for x in diameter:
+			var dist := Vector2(x - center, y - center).length()
+			var outer_a := clampf(outer_r + 0.5 - dist, 0.0, 1.0)
+			if outer_a <= 0.0:
+				continue
+			var core_t := clampf(inner_r + 0.5 - dist, 0.0, 1.0)
+			var col := ring.lerp(core, core_t)
+			col.a *= outer_a
+			img.set_pixel(x, y, col)
+	return ImageTexture.create_from_image(img)
 
 
 static func box(fill: Color, border: Color, radius: int, margin := 12, border_width := 2) -> StyleBoxFlat:

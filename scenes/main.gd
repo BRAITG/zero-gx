@@ -17,6 +17,8 @@ var page := Page.HOME
 
 var _column: VBoxContainer
 var _official: Button  # the home page's primary: it takes focus when HOME opens
+var _official_progress: PanelContainer  # progress & medal pill inside _official when >= 1 level cleared
+var _official_progress_row: HBoxContainer
 var _training_button: Button
 var _tally: HBoxContainer  # medal & clear tally in the list header
 var _levels: VBoxContainer  # the stage rows of OFFICIAL or TRAINING
@@ -61,6 +63,23 @@ func _build_home() -> void:
 	_column.add_child(_title("ZERO-GX"))
 	_official = Style.primary(_button("Official levels", Vector2(HOME_WIDTH, 96), 30))
 	_official.pressed.connect(_go_to.bind(Page.OFFICIAL))
+	_official_progress = PanelContainer.new()
+	_official_progress.name = "OfficialProgress"
+	_official_progress.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var pill_box := Style.box(Color(0.02, 0.06, 0.14, 0.42), Color.TRANSPARENT, 12, 0, 0)
+	pill_box.content_margin_left = 10
+	pill_box.content_margin_right = 10
+	pill_box.content_margin_top = 2
+	pill_box.content_margin_bottom = 2
+	_official_progress.add_theme_stylebox_override("panel", pill_box)
+	_official_progress.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 8)
+	_official_progress.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_official_progress.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_official_progress_row = HBoxContainer.new()
+	_official_progress_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_official_progress_row.add_theme_constant_override("separation", 10)
+	_official_progress.add_child(_official_progress_row)
+	_official.add_child(_official_progress)
 	_column.add_child(_official)
 	if Community.available():
 		var community := _button("Community levels", Vector2(HOME_WIDTH, 64), 24)
@@ -128,14 +147,53 @@ func _open_community() -> void:
 	get_tree().change_scene_to_node(CommunityScreen.new())
 
 
-## Brings the page up to date with the player's progress: the Training label on HOME, the stage buttons on a list.
+## Brings the page up to date with the player's progress: the Home progress badges, or the stage buttons on a list.
 func _refresh() -> void:
 	if page == Page.HOME:
 		var completed := Progress.training_completed()
 		_training_button.text = "Training · ✓ completed" if completed else "Training"
+		_refresh_official_progress()
 	else:
 		_list_levels()
 	_center_column()
+
+
+func _refresh_official_progress() -> void:
+	if _official_progress == null:
+		return
+	for old in _official_progress_row.get_children():
+		old.free()
+	var ids := Progress.levels()
+	var cleared := 0
+	var medals := {Progress.Medal.GOLD: 0, Progress.Medal.SILVER: 0, Progress.Medal.BRONZE: 0}
+	for id in ids:
+		var best := Progress.best_points(id)
+		if best < 0:
+			continue
+		cleared += 1
+		var data := LevelFormat.read(Progress.LEVELS_DIR + id + LevelFormat.EXTENSION)
+		var m := Progress.medal(best, int(data.get("par", 0)))
+		if medals.has(m):
+			medals[m] += 1
+	_official_progress.visible = cleared > 0
+	Style.set_padding_bottom(_official, 34.0 if cleared > 0 else 12.0)
+	if cleared == 0:
+		return
+	_official_progress_row.add_child(_label("%d / %d cleared" % [cleared, ids.size()], 16, Color(Style.INK, 0.92)))
+	_add_medal_pairs(_official_progress_row, medals, 16.0, 16, Color.WHITE, 3)
+
+
+func _add_medal_pairs(target: HBoxContainer, medals: Dictionary, icon_size: float, font_size: int, color: Color, sep: int) -> void:
+	for tier in [Progress.Medal.GOLD, Progress.Medal.SILVER, Progress.Medal.BRONZE]:
+		if medals[tier] > 0:
+			var pair := HBoxContainer.new()
+			pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			pair.add_theme_constant_override("separation", sep)
+			var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, tier, icon_size)
+			icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			pair.add_child(icon)
+			pair.add_child(_label(str(medals[tier]), font_size, color))
+			target.add_child(pair)
 
 
 func _list_levels() -> void:
@@ -182,15 +240,7 @@ func _update_tally(cleared: int, total_count: int, medals: Dictionary) -> void:
 		return
 	for old in _tally.get_children():
 		old.free()
-	for tier in [Progress.Medal.GOLD, Progress.Medal.SILVER, Progress.Medal.BRONZE]:
-		if medals[tier] > 0:
-			var pair := HBoxContainer.new()
-			pair.add_theme_constant_override("separation", 4)
-			var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, tier, 20.0)
-			icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			pair.add_child(icon)
-			pair.add_child(_label(str(medals[tier]), 20, Style.INK))
-			_tally.add_child(pair)
+	_add_medal_pairs(_tally, medals, 20.0, 20, Style.INK, 4)
 	_tally.add_child(_label("%d / %d cleared" % [cleared, total_count], 20, Style.INK_DIM))
 
 
