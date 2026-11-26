@@ -176,29 +176,24 @@ func _refresh_official_progress() -> void:
 		if medals.has(m):
 			medals[m] += 1
 	_official_progress.visible = cleared > 0
-	var bottom_pad := 34.0 if cleared > 0 else 12.0
-	for state in ["normal", "hover", "pressed", "hover_pressed"]:
-		var sb := _official.get_theme_stylebox(state) as StyleBoxFlat
-		if sb != null:
-			sb.content_margin_bottom = bottom_pad
-	if _official.has_meta(&"saved_hover"):
-		var saved: Dictionary = _official.get_meta(&"saved_hover")
-		for key in ["hover", "hover_pressed"]:
-			if saved.get(key) is StyleBoxFlat:
-				saved[key].content_margin_bottom = bottom_pad
+	Style.set_padding_bottom(_official, 34.0 if cleared > 0 else 12.0)
 	if cleared == 0:
 		return
 	_official_progress_row.add_child(_label("%d / %d cleared" % [cleared, ids.size()], 16, Color(Style.INK, 0.92)))
+	_add_medal_pairs(_official_progress_row, medals, 16.0, 16, Color.WHITE, 3)
+
+
+func _add_medal_pairs(target: HBoxContainer, medals: Dictionary, icon_size: float, font_size: int, color: Color, sep: int) -> void:
 	for tier in [Progress.Medal.GOLD, Progress.Medal.SILVER, Progress.Medal.BRONZE]:
 		if medals[tier] > 0:
 			var pair := HBoxContainer.new()
 			pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			pair.add_theme_constant_override("separation", 3)
-			var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, tier, 16.0)
+			pair.add_theme_constant_override("separation", sep)
+			var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, tier, icon_size)
 			icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			pair.add_child(icon)
-			pair.add_child(_label(str(medals[tier]), 16, Color.WHITE))
-			_official_progress_row.add_child(pair)
+			pair.add_child(_label(str(medals[tier]), font_size, color))
+			target.add_child(pair)
 
 
 func _list_levels() -> void:
@@ -245,15 +240,7 @@ func _update_tally(cleared: int, total_count: int, medals: Dictionary) -> void:
 		return
 	for old in _tally.get_children():
 		old.free()
-	for tier in [Progress.Medal.GOLD, Progress.Medal.SILVER, Progress.Medal.BRONZE]:
-		if medals[tier] > 0:
-			var pair := HBoxContainer.new()
-			pair.add_theme_constant_override("separation", 4)
-			var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, tier, 20.0)
-			icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-			pair.add_child(icon)
-			pair.add_child(_label(str(medals[tier]), 20, Style.INK))
-			_tally.add_child(pair)
+	_add_medal_pairs(_tally, medals, 20.0, 20, Style.INK, 4)
 	_tally.add_child(_label("%d / %d cleared" % [cleared, total_count], 20, Style.INK_DIM))
 
 

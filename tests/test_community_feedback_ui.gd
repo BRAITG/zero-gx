@@ -670,7 +670,7 @@ func test_the_audience_line_needs_a_difference_of_half_a_point() -> void:
 func test_the_sheet_ends_its_difficulty_section_with_the_known_limits() -> void:
 	var net := _fake()
 	await _signed_in(net)
-	_serve(_reply({"like_eligible": true, "liked": false, "attempts": 5}, {"players_started": 64}, null, {}, SHA, _rich()))
+	_serve(_reply({}, {"players_started": 64}, null, {}, SHA, _rich()))
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
@@ -681,12 +681,35 @@ func test_the_sheet_ends_its_difficulty_section_with_the_known_limits() -> void:
 		toggles[0].pressed.emit()
 		await frames(1)
 		check(_mentions(_texts(sheet), ["android play audience, not desktop players", "previous version's label is not carried over"]), "expanding shows the limits once: %s" % [_texts(sheet)])
+		toggles[0].pressed.emit()
+		await frames(1)
+		check(not _mentions(_texts(sheet), ["android play audience, not desktop players"]), "toggling again collapses the limits")
+
+
+func test_like_toggle_shows_live_count_syncs_hero_and_falls_back_without_count() -> void:
+	var net := _fake()
+	await _signed_in(net)
+	_serve(_reply({"like_eligible": true, "liked": false, "attempts": 5}, {"players_started": 64}, null, {}, SHA, _rich()))
+	var sheet: Overlay = await _sheet(_row())
+	if sheet == null:
+		return
 	var c := _controls(sheet)
 	check(c.like != null and c.like.text == "♥ 7", "Like toggle shows the live like count: %s" % (c.like.text if c.like else "null"))
 	if c.like != null:
 		_tap_toggle(c.like)
 		await frames(1)
-		check(c.like.text == "♥ 8", "toggling Like updates the count immediately: %s" % c.like.text)
+		check(c.like.text == "♥ 8" and _texts(sheet).any(func(t: String) -> bool: return t.begins_with("♥ 8 ·")), "toggling Like updates both button and hero meta: %s / %s" % [c.like.text, _texts(sheet)])
+		_tap_toggle(c.like)
+		await frames(1)
+		check(c.like.text == "♥ 7", "unliking decrements back to 7: %s" % c.like.text)
+	sheet.close()
+	await frames(2)
+	var no_likes := _row()
+	no_likes.erase("likes")
+	var bare: Overlay = await _sheet(no_likes)
+	if bare != null:
+		var bc := _controls(bare)
+		check(bc.like != null and bc.like.text == "♥ Like", "without a row like count, the button says ♥ Like: %s" % (bc.like.text if bc.like else "null"))
 
 
 func test_the_sheet_has_an_opaque_backdrop() -> void:

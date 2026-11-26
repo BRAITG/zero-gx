@@ -34,8 +34,7 @@ var _row := {}  # the catalogue-like row the sheet opened for
 var _to_you := false  # scroll to the You section once the first answer is in
 var _limits_open := false  # whether the rating-limits disclosure is expanded
 var _base_likes := -1  # like count from the row, adjusted optimistically when toggled
-var _initial_liked := false
-var _initial_liked_known := false
+var _initial_liked: Variant = null  # bool once the server's baseline you.liked is known
 var _chip_slot: HBoxContainer
 var _meta: Label
 var _difficulty: VBoxContainer
@@ -236,11 +235,12 @@ func _apply(reply: Dictionary) -> void:
 		_data = reply
 		var you: Dictionary = reply.get("you", {})
 		var adopt := _error == ""  # an online answer is current; a cached one only fills what is not confirmed yet
+		if _initial_liked == null and not _settled.has("like"):
+			_initial_liked = you.get("liked") == true
+		elif adopt and not _settled.has("like") and not _pending.like:
+			_initial_liked = you.get("liked") == true
 		if not _pending.like and (adopt or not _settled.has("like")):
 			_liked = you.get("liked") == true
-			if not _initial_liked_known:
-				_initial_liked = _liked
-				_initial_liked_known = true
 		if not _pending.difficulty and (adopt or not _settled.has("difficulty")):
 			var value: Variant = you.get("difficulty")
 			_vote = value if value is String and value in DIFFICULTIES else ""
@@ -257,11 +257,12 @@ func _alive() -> bool:
 
 ## Drops everything private to the shown player, including choices not settled yet.
 func _forget_owner() -> void:
+	if _base_likes >= 0 and _settled.has("like"):
+		_base_likes = _shown_like_count(_liked)
 	_account = ""
 	_data = {}
 	_liked = false
-	_initial_liked = false
-	_initial_liked_known = false
+	_initial_liked = null
 	_vote = ""
 	_settled.clear()
 	_pending = {"like": false, "difficulty": false}
@@ -484,9 +485,9 @@ func _show_hero(ready: bool) -> void:
 		chip.get_child(0).add_theme_font_size_override("font_size", 26)
 		_chip_slot.add_child(chip)
 	var meta := PackedStringArray()
-	var likes: Variant = _row.get("likes")
-	if likes is int or likes is float:
-		meta.append("♥ %d" % int(likes))
+	var shown_likes := _shown_like_count(_shown_like())
+	if shown_likes >= 0:
+		meta.append("♥ %d" % shown_likes)
 	var players: Variant = _counts().players if ready else _row.get("starters", _row.get("players"))
 	if players is int or players is float:
 		meta.append("%d %s" % [int(players), "player" if int(players) == 1 else "players"])
@@ -496,6 +497,8 @@ func _show_hero(ready: bool) -> void:
 
 ## Rated (or Estimating), Reviewed, the vote distribution, the disagreement line and the known limits.
 func _show_difficulty(ready: bool) -> void:
+	var focus := _overlay.get_viewport().gui_get_focus_owner()
+	var had_focus := focus != null and _difficulty.is_ancestor_of(focus)
 	for old in _difficulty.get_children():
 		old.free()
 	if not ready:
@@ -527,7 +530,7 @@ func _show_difficulty(ready: bool) -> void:
 	if gap != "":
 		_overlay.paragraph(gap, 22, Style.ACCENT, _difficulty)
 	if rated in DifficultyChip.LABELS:  # the limits qualify a rating; Estimating has none
-		var toggle := Style.subtle(_button(_difficulty, "ⓘ About this rating ▾" if _limits_open else "ⓘ About this rating ▸", func() -> void: pass))
+		var toggle := Style.subtle(_button(_difficulty, _limits_toggle_text()))
 		toggle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 		toggle.custom_minimum_size = Vector2(0, 40)
 		toggle.add_theme_font_size_override("font_size", 18)
@@ -536,16 +539,25 @@ func _show_difficulty(ready: bool) -> void:
 		toggle.pressed.connect(func() -> void:
 			_limits_open = not _limits_open
 			limits_label.visible = _limits_open
-			toggle.text = "ⓘ About this rating ▾" if _limits_open else "ⓘ About this rating ▸")
+			toggle.text = _limits_toggle_text())
+		if had_focus:
+			toggle.grab_focus(true)
+
+
+func _limits_toggle_text() -> String:
+	return "ⓘ About this rating " + ("▾" if _limits_open else "▸")
+
+
+func _shown_like_count(shown_like: bool) -> int:
+	if _base_likes < 0:
+		return -1
+	var delta := int(shown_like) - int(_initial_liked) if _initial_liked is bool else 0
+	return maxi(0, _base_likes + delta)
 
 
 func _like_button_text(shown_like: bool) -> String:
-	if _base_likes < 0:
-		return "♥ Like"
-	var delta := 0
-	if _initial_liked_known:
-		delta = (1 if shown_like else 0) - (1 if _initial_liked else 0)
-	return "♥ %d" % maxi(0, _base_likes + delta)
+	var count := _shown_like_count(shown_like)
+	return "♥ %d" % count if count >= 0 else "♥ Like"
 
 
 ## "A typical player clears it within 10 tries 35–55% of the time", plus a note while the published label no longer covers the interval.
@@ -710,13 +722,14 @@ static func reviewed_label(value: Variant) -> String:
 	return "Reviewed: " + _name(value, "Not rated")
 
 
-func _button(parent: Control, text: String, action: Callable, busy := "") -> Button:
+func _button(parent: Control, text: String, action := Callable(), busy := "") -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(160, 56)
 	button.add_theme_font_size_override("font_size", 22)
 	button.pressed.connect(Sfx.play.bind("tap"))
-	button.pressed.connect(action if busy == "" else Style.busy.bind(button, busy, action))
+	if action.is_valid():
+		button.pressed.connect(action if busy == "" else Style.busy.bind(button, busy, action))
 	parent.add_child(button)
 	return button
 

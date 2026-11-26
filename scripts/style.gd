@@ -207,6 +207,19 @@ func toggle_tint(button: Button, color: Color, radius := 10) -> Button:
 		INK_DIM, INK, color.lightened(0.35), Color.WHITE)
 
 
+## Adjusts bottom content margin across every state of a Style-managed button (including touch-saved hover).
+func set_padding_bottom(button: Button, margin: float) -> void:
+	for state in ["normal", "hover", "pressed", "hover_pressed"]:
+		var sb := button.get_theme_stylebox(state) as StyleBoxFlat
+		if sb != null:
+			sb.content_margin_bottom = margin
+	if button.has_meta(&"saved_hover"):
+		var saved: Dictionary = button.get_meta(&"saved_hover")
+		for key in ["hover", "hover_pressed"]:
+			if saved.get(key) is StyleBoxFlat:
+				saved[key].content_margin_bottom = margin
+
+
 ## Compact rounded pill badge for status, likes, or metadata.
 static func pill(text: String, color: Color, font_size := 18) -> PanelContainer:
 	var panel := PanelContainer.new()
@@ -348,14 +361,11 @@ func _theme() -> Theme:
 	theme.set_stylebox("panel", "PanelContainer", box(PANEL, BORDER, 14, 18))
 	theme.set_stylebox("background", "ProgressBar", box(Color(0.06, 0.09, 0.16, 0.9), Color(BORDER, 0.6), 6, 0))
 	var slider_track := box(Color(0.06, 0.1, 0.19, 0.92), BORDER, 4, 0, 1)
-	slider_track.content_margin_top = 4
-	slider_track.content_margin_bottom = 4
 	var slider_fill := box(ACCENT, ACCENT, 4, 0, 0)
-	slider_fill.content_margin_top = 4
-	slider_fill.content_margin_bottom = 4
 	var slider_fill_hi := box(ACCENT.lightened(0.18), ACCENT, 4, 0, 0)
-	slider_fill_hi.content_margin_top = 4
-	slider_fill_hi.content_margin_bottom = 4
+	for sb in [slider_track, slider_fill, slider_fill_hi]:
+		sb.content_margin_top = 4
+		sb.content_margin_bottom = 4
 	theme.set_stylebox("slider", "HSlider", slider_track)
 	theme.set_stylebox("grabber_area", "HSlider", slider_fill)
 	theme.set_stylebox("grabber_area_highlight", "HSlider", slider_fill_hi)
@@ -384,16 +394,18 @@ func _theme() -> Theme:
 static func _slider_grabber(ring: Color, core: Color, diameter := 22) -> ImageTexture:
 	var img := Image.create(diameter, diameter, false, Image.FORMAT_RGBA8)
 	var center := (diameter - 1) * 0.5
-	var outer_r := center
+	var outer_r := center - 0.5
 	var inner_r := outer_r - 3.0
 	for y in diameter:
 		for x in diameter:
 			var dist := Vector2(x - center, y - center).length()
-			if dist <= inner_r:
-				img.set_pixel(x, y, core)
-			elif dist <= outer_r:
-				var alpha := clampf(outer_r - dist + 0.5, 0.0, 1.0)
-				img.set_pixel(x, y, Color(ring, ring.a * alpha))
+			var outer_a := clampf(outer_r + 0.5 - dist, 0.0, 1.0)
+			if outer_a <= 0.0:
+				continue
+			var core_t := clampf(inner_r + 0.5 - dist, 0.0, 1.0)
+			var col := ring.lerp(core, core_t)
+			col.a *= outer_a
+			img.set_pixel(x, y, col)
 	return ImageTexture.create_from_image(img)
 
 
