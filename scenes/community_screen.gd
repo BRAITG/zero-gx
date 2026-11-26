@@ -162,24 +162,22 @@ func _load(sort: String, page: int, difficulty: String) -> void:
 		first.grab_focus(true)
 
 
-## A level row: the whole row button opens the details, and Play is its sibling so each is its own touch target. Returns Play.
+## A level row: a framed card with thumbnail, metadata, own status, Details, and Play. Returns Play.
 func _add_row(row: Dictionary) -> Button:
-	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 12)
-	_rows.add_child(line)
-	var button := Button.new()
-	button.name = "Row"
-	button.custom_minimum_size.y = ROW_HEIGHT
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.clip_contents = true
-	button.pressed.connect(Sfx.play.bind("tap"))
-	button.pressed.connect(_details.bind(row))
-	line.add_child(button)
+	var card := PanelContainer.new()
+	card.name = "Row"
+	card.mouse_filter = Control.MOUSE_FILTER_PASS  # a drag starting on the card scrolls the list
+	card.custom_minimum_size.y = ROW_HEIGHT
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var box := Style._box(Style.PANEL, Style.BORDER_SOFT, 12, 12)
+	box.content_margin_top = 8
+	box.content_margin_bottom = 8
+	card.add_theme_stylebox_override("panel", box)
+	_rows.add_child(card)
 	var content := HBoxContainer.new()
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 8)
-	content.add_theme_constant_override("separation", 16)
-	button.add_child(content)
+	content.add_theme_constant_override("separation", 14)
+	card.add_child(content)
 	var thumbnail := Thumbnail.of_sketch(row.get("sketch"))
 	thumbnail.custom_minimum_size = Vector2(128, 72)
 	thumbnail.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -189,20 +187,20 @@ func _add_row(row: Dictionary) -> Button:
 	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text.alignment = BoxContainer.ALIGNMENT_CENTER
-	text.add_theme_constant_override("separation", 0)
+	text.add_theme_constant_override("separation", 2)
 	content.add_child(text)
 	text.add_child(_label(row.get("title", "?"), 24, Style.INK, true))
 	text.add_child(_label("by %s" % row.get("author", "?"), 18, Style.INK_DIM, true))
 	var meta := HBoxContainer.new()
 	meta.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	meta.add_theme_constant_override("separation", 12)
+	meta.add_theme_constant_override("separation", 10)
 	text.add_child(meta)
 	var chip := DifficultyChip.of(row)
 	if chip:
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var box: StyleBoxFlat = chip.get_theme_stylebox("panel")
-		box.content_margin_top = 1  # three text lines must fit the 100 px row
-		box.content_margin_bottom = 1
+		var chip_box: StyleBoxFlat = chip.get_theme_stylebox("panel")
+		chip_box.content_margin_top = 1  # three text lines must fit the 100 px row
+		chip_box.content_margin_bottom = 1
 		meta.add_child(chip)
 	meta.add_child(Style.pill("♥ %d" % int(row.get("likes", 0)), Style.LIKE, false, 18))
 	var starters := int(row.get("starters", 0))
@@ -231,7 +229,11 @@ func _add_row(row: Dictionary) -> Button:
 		own.add_child(Style.pill("Cleared", Hud.GOAL_GREEN, false, 18))
 	elif tries > 0:
 		own.add_child(Style.pill("%d %s" % [tries, "try" if tries == 1 else "tries"], Style.INK_DIM, false, 18))
-	var play := Style.primary(_button(line, "Play", _play.bind(row), "Loading…"))
+	var details := Style.subtle(_button(content, "Details", _details.bind(row)))
+	details.custom_minimum_size = Vector2(120, 56)
+	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var play := Style.primary(_button(content, "Play", _play.bind(row), "Loading…"))
+	play.custom_minimum_size = Vector2(120, 56)
 	play.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	return play
 

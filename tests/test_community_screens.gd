@@ -283,10 +283,11 @@ func test_the_row_button_opens_details_and_play_is_its_sibling() -> void:
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [_row(_bytes())])
 	var screen := await _community()
-	var rows := screen.find_children("Row", "Button", true, false)
+	var rows := _buttons(screen, "Details")
 	var play: Button = _buttons(screen, "Play")[0]
 	check(rows.size() == 1 and rows[0].get_parent() == play.get_parent() and not rows[0].is_ancestor_of(play), "Play must be a sibling of the row button, not a child")
-	check(rows[0].size.y == 100 and play.focus_mode == Control.FOCUS_ALL, "the row is 100 px high and Play has its own focus stop: %s" % rows[0].size)
+	var card: Control = rows[0].get_parent().get_parent()
+	check(card.size.y >= 100 and rows[0].focus_mode == Control.FOCUS_ALL and play.focus_mode == Control.FOCUS_ALL, "the row card is at least 100 px high and Details/Play each have their own focus stop: %s" % card.size)
 	check(_sheets(screen).is_empty(), "control: no sheet yet")
 	rows[0].pressed.emit()
 	await frames(2)

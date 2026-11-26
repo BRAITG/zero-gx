@@ -379,7 +379,7 @@ func test_each_row_opens_details_and_shows_one_difficulty_label_but_no_vote_butt
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [_row({"reviewed_difficulty": "expert", "community_difficulty": {"value": "hard", "votes": 6}})])
 	var screen: CommunityScreen = await _community()
-	check(screen.find_children("Row", "Button", true, false).size() == 1, "each row is a button that opens Details: %s" % [_texts(screen)])
+	check(_buttons(screen, "Details").size() == 1, "each row has a Details button: %s" % [_texts(screen)])
 	var vote_buttons := screen._rows.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text.to_lower() in DIFFICULTIES)
 	check(vote_buttons.is_empty(), "the rows must not show a row of difficulty buttons")
 	var texts := _texts(screen)
@@ -392,7 +392,7 @@ func test_details_opens_one_sheet_and_back_returns_focus_to_its_row() -> void:
 	net.answer("GET", "/levels", 200, [_row()])
 	var screen: CommunityScreen = await _community()
 	_serve(_reply())
-	var details := screen.find_children("Row", "Button", true, false)
+	var details := _buttons(screen, "Details")
 	check(details.size() == 1, "each row opens Details: %s" % [_texts(screen)])
 	if details.is_empty():
 		return
@@ -420,7 +420,7 @@ func test_the_sheets_play_plays_the_stage_the_list_plays() -> void:
 	net.answer("GET", "/levels", 200, [_row({"sha256": sha})])
 	var screen: CommunityScreen = await _community()
 	_serve(_reply({}, {}, null, {}, sha))
-	var details := screen.find_children("Row", "Button", true, false)
+	var details := _buttons(screen, "Details")
 	if details.is_empty():
 		check(false, "each row offers Details")
 		return
@@ -1080,7 +1080,7 @@ func test_keys_and_pad_cannot_move_focus_out_of_the_sheet() -> void:
 	net.answer("GET", "/levels", 200, [_row()])
 	var screen: CommunityScreen = await _community()
 	_serve(_reply({"like_eligible": true, "difficulty_eligible": true, "attempts": 5}))
-	var details := screen.find_children("Row", "Button", true, false)
+	var details := _buttons(screen, "Details")
 	if details.is_empty():
 		check(false, "each row offers Details")
 		return
