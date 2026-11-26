@@ -28,14 +28,18 @@ func _ready() -> void:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 24)
 	_column.add_child(top)
-	_button(top, "Back", func() -> void: get_tree().change_scene_to_file(MENU))
+	Style.subtle(_button(top, "Back", func() -> void: get_tree().change_scene_to_file(MENU)))
 	var title := Label.new()
 	title.text = "My levels"
 	title.add_theme_font_override("font", Style.display_font)
 	title.add_theme_font_size_override("font_size", 36)
 	top.add_child(title)
-	_primary(_button(top, "New level", func() -> void: _edit(MyLevels.new_id())))
-	_button(top, "Import", _import)
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	top.add_child(spacer)
+	Style.subtle(_button(top, "Import", _import))
+	Style.primary(_button(top, "New level", func() -> void: _edit(MyLevels.new_id())))
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -94,8 +98,22 @@ func _add_row(id: String) -> void:
 	text.add_theme_constant_override("separation", 2)
 	content.add_child(text)
 	text.add_child(_label(str(data.get("title", "?")), 24, Style.INK))
-	var status := _status_line(id, data)
-	text.add_child(_label(status[0], 20, status[1]))
+	text.add_child(_status_badges(id, data))
+
+
+## Color-coded status pill (with optional detail text beside it) for a My Levels row.
+func _status_badges(id: String, data: Dictionary) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("separation", 10)
+	var parts := _status_parts(id, data)
+	row.add_child(Style.pill(parts.pill, parts.color, 18))
+	if parts.detail != "":
+		var extra := _label(parts.detail, 18, parts.detail_color)
+		extra.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		extra.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(extra)
+	return row
 
 
 func _label(text: String, font_size: int, color: Color) -> Label:
@@ -108,32 +126,43 @@ func _label(text: String, font_size: int, color: Color) -> Label:
 	return label
 
 
-## [text, colour] of a level's one status line. Desktop builds (no Community) know only the first three states.
-func _status_line(id: String, data: Dictionary) -> Array:
+## Structured status for a level: {pill, detail, separator, color, detail_color, sheet_color}.
+func _status_parts(id: String, data: Dictionary) -> Dictionary:
 	var problems := LevelFormat.validate(data)
 	if not problems.is_empty():
-		return ["Needs fixes: " + problems[0], FIX_COLOR]
+		return {"pill": "Needs fixes", "detail": problems[0], "separator": ": ", "color": FIX_COLOR, "detail_color": FIX_COLOR, "sheet_color": FIX_COLOR}
 	if Community.available():
 		var status: Dictionary = _statuses.get(Community.level_id_of(id), {})
 		match status.get("status"):
 			"open":
-				return ["In review", Style.INK_DIM]
+				return {"pill": "In review", "detail": "", "separator": "", "color": Style.AMBER, "detail_color": Style.INK_DIM, "sheet_color": Style.INK_DIM}
 			"rejected":
-				return ["Rejected: " + status.comment if status.get("comment", "") != "" else "Rejected", FIX_COLOR]
+				var raw_comment: Variant = status.get("comment")
+				var comment: String = raw_comment if raw_comment is String else ""
+				return {"pill": "Rejected", "detail": comment, "separator": ": ", "color": FIX_COLOR, "detail_color": FIX_COLOR, "sheet_color": FIX_COLOR}
 			"approved":
-				return [_published_line(data, status), Style.INK_DIM]
+				var version := "Published v%d" % int(status.get("version", 1))
+				var detail := _published_detail(data, status)
+				return {"pill": version, "detail": detail, "separator": " · ", "color": Hud.GOAL_GREEN, "detail_color": Style.INK_DIM, "sheet_color": Style.INK_DIM}
 		if MyLevels.is_submitted(id):
-			return ["Submitted", Style.INK_DIM]  # the server's word has not come yet, or cannot be reached
+			return {"pill": "Submitted", "detail": "", "separator": "", "color": Style.AMBER, "detail_color": Style.INK_DIM, "sheet_color": Style.INK_DIM}
 	if MyLevels.is_completed(id):
-		return ["Ready to publish", Hud.GOAL_GREEN]
-	return ["Not tested yet", Style.INK_DIM]
+		return {"pill": "Ready to publish", "detail": "", "separator": "", "color": Hud.GOAL_GREEN, "detail_color": Style.INK_DIM, "sheet_color": Hud.GOAL_GREEN}
+	return {"pill": "Not tested yet", "detail": "", "separator": "", "color": Style.INK_DIM, "detail_color": Style.INK_DIM, "sheet_color": Style.INK_DIM}
 
 
-## "Published v2 · Hard · 64 players · ♥ 42"; a part the status lacks (offline, no stats) is left out, and an edited draft says so instead of the numbers.
-func _published_line(data: Dictionary, status: Dictionary) -> String:
-	var parts := ["Published v%d" % int(status.get("version", 1))]
+## [text, colour] of a level's one status line for the detail sheet.
+func _status_line(id: String, data: Dictionary) -> Array:
+	var parts := _status_parts(id, data)
+	var text: String = parts.pill + (parts.separator + parts.detail if parts.detail != "" else "")
+	return [text, parts.sheet_color]
+
+
+## "Hard · 64 players · ♥ 42" or "edited since" after Published vN.
+func _published_detail(data: Dictionary, status: Dictionary) -> String:
 	if status.has("sha256") and LevelFormat.sha256(data) != status.sha256:
-		return parts[0] + " · edited since"
+		return "edited since"
+	var parts: Array[String] = []
 	var chip := DifficultyChip.text_of(status)  # "Rated Hard": the source word is the chip's, the line keeps the label
 	if chip != "":
 		parts.append(chip.get_slice(" ", 1))
@@ -161,14 +190,14 @@ func _open_sheet(id: String) -> void:
 	var o := Overlay.open(self, str(data.get("title", "?")), false, true)
 	var status := _status_line(id, data)
 	o.paragraph(status[0], 22, status[1])  # the row cuts a long moderator comment; here it is whole
-	_primary(_sheet_button(o, "Edit", _edit.bind(id)))
+	Style.primary(_sheet_button(o, "Edit", _edit.bind(id)))
 	var play := _sheet_button(o, "Play", func() -> void: Progress.open(id))
 	play.disabled = not LevelFormat.validate(data).is_empty()
 	if MyLevels.has_demo(id):
-		_sheet_button(o, "Watch", _watch.bind(id, data))
+		Style.subtle(_sheet_button(o, "Watch", _watch.bind(id, data)))
 	if Community.available() and not MyLevels.is_submitted(id):
 		_sheet_button(o, "Publish", _publish.bind(id)).disabled = play.disabled  # an invalid draft cannot be published
-	_sheet_button(o, "Export", _export.bind(id, str(data.get("title", "level"))))
+	Style.subtle(_sheet_button(o, "Export", _export.bind(id, str(data.get("title", "level")))))
 	var spacer := Control.new()  # sets the destructive action apart
 	spacer.custom_minimum_size.y = 24
 	o.body.add_child(spacer)
@@ -189,11 +218,6 @@ func _sheet_button(o: Overlay, text: String, action: Callable) -> Button:
 	return button
 
 
-## The row's primary action, styled as the pressed button.
-func _primary(button: Button) -> void:
-	button.add_theme_stylebox_override("normal", button.get_theme_stylebox("pressed"))
-
-
 ## The Publish sheet: 1. prove it, 2. suggest a difficulty, 3. submit. `proven` when a won proof flight just ended. Nothing uploads before Submit.
 func _publish(id: String, proven := false) -> void:
 	if not Community.available() or not _validate_publish(id):
@@ -203,17 +227,24 @@ func _publish(id: String, proven := false) -> void:
 	var proof := o.card()
 	var suggestion := o.card()
 	var send := o.card()
-	var state := {"proven": proven, "submit": null}  # a lambda copies a bool, so the flags live in a Dictionary
-	var option := CommunityLevelDetails.difficulty_option()
+	var state := {"proven": proven, "difficulty": "", "submit": null}  # a lambda copies values, so flags live in a Dictionary
 	var update := func() -> void:
-		state.submit.disabled = not state.proven or CommunityLevelDetails.chosen(option) == ""
+		state.submit.disabled = _busy or not state.proven or state.difficulty == ""
 	o.paragraph("2. Suggest a difficulty", 24, Style.INK, suggestion)
-	suggestion.add_child(option)
+	var pills := HBoxContainer.new()
+	pills.add_theme_constant_override("separation", 12)
+	suggestion.add_child(pills)
+	var group := ButtonGroup.new()
+	for difficulty: String in CommunityLevelDetails.DIFFICULTIES:
+		var pick := Style.toggle_tint(_button(pills, difficulty.capitalize(), func() -> void:
+			state.difficulty = difficulty
+			update.call()), DifficultyChip.COLORS[difficulty])
+		pick.toggle_mode = true
+		pick.button_group = group
 	o.paragraph("A moderator chooses the reviewed difficulty. Your suggestion is sent beside the level and does not change it.", 20, Style.INK_DIM, suggestion)
 	o.paragraph("3. Submit for review", 24, Style.INK, send)
 	o.paragraph("Submit this level and your finishing recording for moderator review. It will not be listed publicly until a moderator approves it.", 20, Style.INK_DIM, send)
-	state.submit = _button(send, "Submit for review", _submit.bind(id, o, option), "Submitting…")
-	option.item_selected.connect(func(_index: int) -> void: update.call())
+	state.submit = Style.primary(_button(send, "Submit for review", func() -> void: await _submit(id, o, state.difficulty), "Submitting…"))
 	_proof_step(o, proof, id, state, update)
 	update.call()
 
@@ -249,8 +280,7 @@ func _validate_publish(id: String) -> bool:
 	return false
 
 
-func _submit(id: String, confirmation: Overlay, option: OptionButton) -> void:
-	var difficulty := CommunityLevelDetails.chosen(option) if is_instance_valid(option) else ""
+func _submit(id: String, confirmation: Overlay, difficulty: String) -> void:
 	if _busy or difficulty == "" or not Community.available() or not _validate_publish(id):
 		return
 	_busy = true

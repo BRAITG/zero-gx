@@ -58,9 +58,13 @@ var _result_name: Label
 var _detail: Label
 var _score: VBoxContainer
 var _total: Label
-var _best: Label
+var _best_pill: PanelContainer
 var _medal: HBoxContainer  # three medal slots, filled as the total counts up; only on a stage with a par
 var _slots := {}  # Progress.Medal -> ScoreIcon
+var _slot_tweens := {}  # Progress.Medal -> Tween
+var _par_box: VBoxContainer
+var _par_bar: ParBar
+var _par_next: Label
 var _count: Tween
 var _parts := {}  # ScoreIcon.Kind -> value Label
 var _next: Button
@@ -183,38 +187,65 @@ func _ready() -> void:
 	body.add_theme_constant_override("separation", 24)
 	column.add_child(body)
 	_score = VBoxContainer.new()
-	_score.add_theme_constant_override("separation", 6)
+	_score.add_theme_constant_override("separation", 10)
 	_score.alignment = BoxContainer.ALIGNMENT_CENTER
 	_score.custom_minimum_size.x = 340
 	body.add_child(_score)
+	var score_head := HBoxContainer.new()
+	score_head.alignment = BoxContainer.ALIGNMENT_CENTER
+	score_head.add_theme_constant_override("separation", 12)
+	_score.add_child(score_head)
 	_total = Label.new()
 	_total.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_total.add_theme_font_override("font", Style.display_font)
 	_total.add_theme_font_size_override("font_size", 52)
-	_score.add_child(_total)
-	_best = Label.new()
-	_best.text = "New best!"
-	_best.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_best.add_theme_color_override("font_color", Style.ACCENT)
-	_score.add_child(_best)
+	score_head.add_child(_total)
+	_best_pill = Style.pill("New best!", Style.ACCENT, 16)
+	score_head.add_child(_best_pill)
 	_medal = HBoxContainer.new()
 	_medal.alignment = BoxContainer.ALIGNMENT_CENTER
-	_medal.add_theme_constant_override("separation", 14)
+	_medal.add_theme_constant_override("separation", 18)
 	_score.add_child(_medal)
 	for tier in [Progress.Medal.BRONZE, Progress.Medal.SILVER, Progress.Medal.GOLD]:
-		_slots[tier] = ScoreIcon.new(ScoreIcon.Kind.MEDAL, tier)
+		_slots[tier] = ScoreIcon.new(ScoreIcon.Kind.MEDAL, tier, 46.0)
 		_medal.add_child(_slots[tier])
-	var parts := GridContainer.new()  # three lines of icon + value
+	_par_box = VBoxContainer.new()
+	_par_box.add_theme_constant_override("separation", 4)
+	_score.add_child(_par_box)
+	_par_bar = ParBar.new()
+	_par_box.add_child(_par_bar)
+	_par_next = Label.new()
+	_par_next.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_par_next.add_theme_font_size_override("font_size", 17)
+	_par_next.add_theme_color_override("font_color", Style.INK_DIM)
+	_par_box.add_child(_par_next)
+	var breakdown := Style.inset_panel(10)
+	_score.add_child(breakdown)
+	var parts := GridContainer.new()  # three lines of icon + label + value
 	parts.columns = 1
-	parts.add_theme_constant_override("v_separation", 10)
-	parts.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	_score.add_child(parts)
+	parts.add_theme_constant_override("v_separation", 8)
+	parts.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	breakdown.add_child(parts)
+	var part_names := {ScoreIcon.Kind.FUEL: "Fuel", ScoreIcon.Kind.HULL: "Hull", ScoreIcon.Kind.TIME: "Time"}
 	for kind in [ScoreIcon.Kind.FUEL, ScoreIcon.Kind.HULL, ScoreIcon.Kind.TIME]:
 		var cell := HBoxContainer.new()
+		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		cell.add_theme_constant_override("separation", 10)
-		cell.add_child(ScoreIcon.new(kind))
+		var icon := ScoreIcon.new(kind, Progress.Medal.NONE, 22.0)
+		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		cell.add_child(icon)
+		var caption := Label.new()
+		caption.text = part_names[kind]
+		caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		caption.add_theme_font_size_override("font_size", 20)
+		caption.add_theme_color_override("font_color", Style.INK_DIM)
+		cell.add_child(caption)
 		var value := Label.new()
 		value.custom_minimum_size.x = 80
+		value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		value.add_theme_font_size_override("font_size", 20)
+		if kind == ScoreIcon.Kind.TIME:
+			value.add_theme_color_override("font_color", Color("#ff9a90"))
 		cell.add_child(value)
 		_parts[kind] = value
 		parts.add_child(cell)
@@ -242,12 +273,12 @@ func _ready() -> void:
 	actions.alignment = BoxContainer.ALIGNMENT_CENTER
 	actions.add_theme_constant_override("separation", 12)
 	column.add_child(actions)
-	_next = _button(actions, next_text, next_requested.emit)
+	_next = Style.primary(_button(actions, next_text, next_requested.emit))
 	_button(actions, "Retry", retry_requested.emit)
-	_replay = _button(actions, "Replay", replay_requested.emit)
-	_rate = _button(actions, "Rate level", rate_requested.emit)
-	_board = _button(actions, "Board", board_requested.emit)
-	_button(actions, menu_text, menu_requested.emit)
+	_replay = Style.subtle(_button(actions, "Replay", replay_requested.emit))
+	_rate = Style.subtle(_button(actions, "Rate level", rate_requested.emit))
+	_board = Style.subtle(_button(actions, "Board", board_requested.emit))
+	Style.subtle(_button(actions, menu_text, menu_requested.emit))
 	_pause = PauseCard.new()
 	_pause.process_mode = Node.PROCESS_MODE_ALWAYS
 	_pause.resume_requested.connect(toggle_pause)
@@ -338,15 +369,19 @@ func show_result(won: bool, result: Dictionary) -> void:
 	_result_name.text = result.name
 	_result_name.visible = result.name != ""
 	_result_label.text = "Course clear" if won else "Lost"
+	_result_label.add_theme_color_override("font_color", GOAL_GREEN if won else WARNING)
 	_score.visible = won
 	_detail.visible = not won
 	if won:
-		_best.visible = result.new_best
+		_best_pill.visible = result.new_best
 		_parts[ScoreIcon.Kind.FUEL].text = "+%d" % result.fuel_points
 		_parts[ScoreIcon.Kind.HULL].text = "+%d" % result.hull_points
 		_parts[ScoreIcon.Kind.TIME].text = "−%d" % result.time_points
 		_medal.visible = result.has_par
-		_count_up(result.points, result.get("par", 0))
+		_par_box.visible = result.has_par
+		var par: int = result.get("par", 0)
+		_update_par_caption(result.points, par)
+		_count_up(result.points, par)
 	else:
 		_detail.text = result.cause
 	_next.visible = won and result.has_next
@@ -390,6 +425,12 @@ func _focus_result() -> void:
 func _count_up(points: int, par: int) -> void:
 	if _count:
 		_count.kill()
+	for tier in _slot_tweens:
+		if is_instance_valid(_slot_tweens[tier]):
+			_slot_tweens[tier].kill()
+	_slot_tweens.clear()
+	for tier in _slots:
+		_slots[tier].scale = Vector2.ONE
 	_set_count(0, par)
 	_count = create_tween()
 	_count.tween_method(_set_count.bind(par), 0, points, COUNT_SECONDS).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
@@ -399,7 +440,63 @@ func _set_count(value: int, par: int) -> void:
 	_total.text = str(value)
 	var earned := Progress.medal(value, par)
 	for tier in _slots:
-		_slots[tier].empty = tier > earned
+		var slot: ScoreIcon = _slots[tier]
+		var was_empty := slot.empty
+		slot.empty = tier > earned
+		if value > 0 and was_empty and not slot.empty:
+			if _slot_tweens.has(tier) and is_instance_valid(_slot_tweens[tier]):
+				_slot_tweens[tier].kill()
+			slot.scale = Vector2.ONE * 1.28
+			var tween := create_tween()
+			tween.tween_property(slot, "scale", Vector2.ONE, 0.28).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+			_slot_tweens[tier] = tween
+	if par > 0:
+		_par_bar.set_progress(float(value) / float(par), earned)
+
+
+func _update_par_caption(points: int, par: int) -> void:
+	if par <= 0:
+		_par_next.text = ""
+		return
+	var next_pts := Progress.next_threshold(points, par)
+	if next_pts <= 0:
+		_par_next.text = "Gold medal earned!"
+		_par_next.add_theme_color_override("font_color", ScoreIcon.MEDAL_COLORS[Progress.Medal.GOLD])
+	else:
+		var next_tier := Progress.medal(next_pts, par)
+		var tier_name: String = Progress.Medal.keys()[next_tier].capitalize()
+		_par_next.text = "Next: %s %d (%d pts to go)" % [tier_name, next_pts, next_pts - points]
+		_par_next.add_theme_color_override("font_color", Style.INK_DIM)
+
+
+class ParBar extends Control:
+	var _ratio := 0.0
+	var _medal := Progress.Medal.NONE
+	var _track := StyleBoxFlat.new()
+	var _fill := StyleBoxFlat.new()
+
+	func _init() -> void:
+		custom_minimum_size = Vector2(0, 10)
+		size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_track.bg_color = Color(Style.BORDER, 0.35)
+		_track.set_corner_radius_all(5)
+		_fill.set_corner_radius_all(5)
+
+	func set_progress(ratio: float, earned: Progress.Medal) -> void:
+		_ratio = clampf(ratio, 0.0, 1.0)
+		_medal = earned
+		queue_redraw()
+
+	func _draw() -> void:
+		draw_style_box(_track, Rect2(Vector2.ZERO, size))
+		if _ratio > 0.0:
+			var fill_w := maxf(size.y, size.x * _ratio)
+			_fill.bg_color = ScoreIcon.MEDAL_COLORS.get(_medal, Style.ACCENT)
+			draw_style_box(_fill, Rect2(Vector2.ZERO, Vector2(minf(fill_w, size.x), size.y)))
+		for mark: float in [Progress.BRONZE_FRACTION, Progress.SILVER_FRACTION]:
+			var x := size.x * mark
+			draw_line(Vector2(x, 0), Vector2(x, size.y), Color(1, 1, 1, 0.45), 2.0)
 
 
 ## Everything the end panel shows, for tests.
@@ -407,8 +504,8 @@ func result_text() -> String:
 	var lines := [_result_name.text, _result_label.text]
 	if _score.visible:
 		lines.append(_total.text)
-		if _best.visible:
-			lines.append(_best.text)
+		if _best_pill.visible:
+			lines.append("New best!")
 		if _medal.visible:
 			lines.append("Medals: %s" % ", ".join(_slots.keys().filter(func(t: int) -> bool: return not _slots[t].empty).map(func(t: int) -> String: return Progress.Medal.keys()[t].capitalize())))
 		for kind in _parts:

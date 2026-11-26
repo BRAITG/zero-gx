@@ -33,7 +33,7 @@ func _ready() -> void:
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 24)
 	_column.add_child(top)
-	_button(top, "Back", _to_menu)
+	Style.subtle(_button(top, "Back", _to_menu))
 	var title := Label.new()
 	title.text = "Community"
 	title.add_theme_font_override("font", Style.display_font)
@@ -49,11 +49,12 @@ func _ready() -> void:
 		tab.toggle_mode = true
 		tab.button_group = tabs
 		tab.button_pressed = sort == _sort
+		Style.toggle_tint(tab, Style.ACCENT)
 	var spacer := Control.new()
 	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	top.add_child(spacer)
-	var gear := _button(top, "⚙", _open_settings)
+	var gear := Style.subtle(_button(top, "⚙", _open_settings))
 	gear.tooltip_text = "Community settings"
 	gear.custom_minimum_size.x = 56
 	gear.add_theme_font_size_override("font_size", 26)  # 26 makes the 56-px button, like Back; 28 would make it 58
@@ -67,6 +68,8 @@ func _ready() -> void:
 		chip.toggle_mode = true
 		chip.button_group = group
 		chip.button_pressed = label == "All"
+		var tint: Color = Style.ACCENT if label == "All" else DifficultyChip.COLORS[label.to_lower()]
+		Style.toggle_tint(chip, tint, 18)
 		_chips.append(chip)
 	_note = Label.new()  # the offline banner, the empty state or the reason a page failed
 	_note.add_theme_font_size_override("font_size", 24)
@@ -159,24 +162,22 @@ func _load(sort: String, page: int, difficulty: String) -> void:
 		first.grab_focus(true)
 
 
-## A level row: the whole row button opens the details, and Play is its sibling so each is its own touch target. Returns Play.
+## A level row: a framed card with thumbnail, metadata, own status, Details, and Play. Returns Play.
 func _add_row(row: Dictionary) -> Button:
-	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 12)
-	_rows.add_child(line)
-	var button := Button.new()
-	button.name = "Row"
-	button.custom_minimum_size.y = ROW_HEIGHT
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.clip_contents = true
-	button.pressed.connect(Sfx.play.bind("tap"))
-	button.pressed.connect(_details.bind(row))
-	line.add_child(button)
+	var card := PanelContainer.new()
+	card.name = "Row"
+	card.mouse_filter = Control.MOUSE_FILTER_PASS  # a drag starting on the card scrolls the list
+	card.custom_minimum_size.y = ROW_HEIGHT
+	card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var box := Style.box(Style.PANEL, Style.BORDER_SOFT, 12, 12)
+	box.content_margin_top = 8
+	box.content_margin_bottom = 8
+	card.add_theme_stylebox_override("panel", box)
+	_rows.add_child(card)
 	var content := HBoxContainer.new()
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	content.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 8)
-	content.add_theme_constant_override("separation", 16)
-	button.add_child(content)
+	content.add_theme_constant_override("separation", 14)
+	card.add_child(content)
 	var thumbnail := Thumbnail.of_sketch(row.get("sketch"))
 	thumbnail.custom_minimum_size = Vector2(128, 72)
 	thumbnail.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -186,43 +187,54 @@ func _add_row(row: Dictionary) -> Button:
 	text.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text.alignment = BoxContainer.ALIGNMENT_CENTER
-	text.add_theme_constant_override("separation", 0)
+	text.add_theme_constant_override("separation", 2)
 	content.add_child(text)
 	text.add_child(_label(row.get("title", "?"), 24, Style.INK, true))
 	text.add_child(_label("by %s" % row.get("author", "?"), 18, Style.INK_DIM, true))
 	var meta := HBoxContainer.new()
 	meta.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	meta.add_theme_constant_override("separation", 12)
+	meta.add_theme_constant_override("separation", 10)
 	text.add_child(meta)
 	var chip := DifficultyChip.of(row)
 	if chip:
 		chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var box: StyleBoxFlat = chip.get_theme_stylebox("panel")
-		box.content_margin_top = 1  # three text lines must fit the 100 px row
-		box.content_margin_bottom = 1
+		var chip_box: StyleBoxFlat = chip.get_theme_stylebox("panel")
+		chip_box.content_margin_top = 1  # three text lines must fit the 100 px row
+		chip_box.content_margin_bottom = 1
 		meta.add_child(chip)
-	meta.add_child(_label("♥ %d" % int(row.get("likes", 0)), 18, Style.INK_DIM))
+	meta.add_child(Style.pill("♥ %d" % int(row.get("likes", 0)), Style.LIKE, 18))
 	var starters := int(row.get("starters", 0))
-	meta.add_child(_label("%d %s" % [starters, "player" if starters == 1 else "players"], 18, Style.INK_DIM))
+	var players_label := _label("%d %s" % [starters, "player" if starters == 1 else "players"], 18, Style.INK_DIM)
+	players_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	meta.add_child(players_label)
 	var own := HBoxContainer.new()  # the player's own status, from this device
 	own.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	own.alignment = BoxContainer.ALIGNMENT_END
-	own.custom_minimum_size.x = 100
+	own.add_theme_constant_override("separation", 8)
+	own.custom_minimum_size.x = 120
 	content.add_child(own)
-	var medal := Progress.medal(Progress.best_points(Community.STAGE_PREFIX + row.sha256), Community.par_of(row))
+	var best_pts := Progress.best_points(Community.STAGE_PREFIX + row.sha256)
+	var medal := Progress.medal(best_pts, Community.par_of(row))
 	var mine := Community.play_progress(row.sha256)
 	var tries := maxi(int(mine.local_attempts), int(mine.confirmed_attempts))
 	if medal != Progress.Medal.NONE:
-		var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, medal)
+		var icon := ScoreIcon.new(ScoreIcon.Kind.MEDAL, medal, 26.0)
 		icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		own.add_child(icon)
+		var pts := _label(str(best_pts), 22, Style.INK)
+		pts.add_theme_font_override("font", Style.display_font)
+		pts.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		own.add_child(pts)
 	elif mine.cleared:
-		own.add_child(_label("Cleared", 18, Style.INK_DIM))
+		own.add_child(Style.pill("Cleared", Hud.GOAL_GREEN, 18))
 	elif tries > 0:
-		own.add_child(_label("%d %s" % [tries, "try" if tries == 1 else "tries"], 18, Style.INK_DIM))
-	var play := _button(line, "Play", _play.bind(row), "Loading…")
+		own.add_child(Style.pill("%d %s" % [tries, "try" if tries == 1 else "tries"], Style.INK_DIM, 18))
+	var details := Style.subtle(_button(content, "Details", _details.bind(row)))
+	details.custom_minimum_size = Vector2(120, 56)
+	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var play := Style.primary(_button(content, "Play", _play.bind(row), "Loading…"))
+	play.custom_minimum_size = Vector2(120, 56)
 	play.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	play.add_theme_stylebox_override("normal", play.get_theme_stylebox("pressed"))  # the row's primary action
 	return play
 
 

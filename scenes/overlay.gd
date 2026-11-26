@@ -119,6 +119,7 @@ func _build(title: String, opaque: bool) -> void:
 	_close.custom_minimum_size = Vector2(160, 56)
 	_close.pressed.connect(Sfx.play.bind("tap"))
 	_close.pressed.connect(close)
+	Style.subtle(_close)
 	top.add_child(_close)
 	var heading_label := Label.new()
 	heading_label.text = title

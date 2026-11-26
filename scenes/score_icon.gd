@@ -21,6 +21,7 @@ const SIZE := 30.0
 const MEDAL_LEFT := [Vector2(0.5, 0.06), Vector2(0.14, 0.24), Vector2(0.22, 0.66), Vector2(0.5, 0.94), Vector2(0.5, 0.54), Vector2(0.36, 0.62), Vector2(0.5, 0.30)]
 
 var kind := Kind.FUEL
+var _size := SIZE
 ## Which medal a Kind.MEDAL icon draws; NONE draws nothing.
 var tier := Progress.Medal.NONE:
 	set(value):
@@ -33,10 +34,12 @@ var empty := false:
 		queue_redraw()
 
 
-func _init(icon_kind: Kind, medal_tier := Progress.Medal.NONE) -> void:
+func _init(icon_kind: Kind, medal_tier := Progress.Medal.NONE, icon_size := SIZE) -> void:
 	kind = icon_kind
 	tier = medal_tier
-	custom_minimum_size = Vector2(SIZE, SIZE)
+	_size = icon_size
+	custom_minimum_size = Vector2(_size, _size)
+	pivot_offset = custom_minimum_size / 2.0
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
@@ -44,8 +47,9 @@ func _draw() -> void:
 	if kind == Kind.MEDAL:
 		_draw_medal()
 		return
-	var c := Vector2(SIZE, SIZE) / 2.0
-	var r := SIZE * 0.42
+	var c := Vector2(_size, _size) / 2.0
+	var r := _size * 0.42
+	var stroke := maxf(1.8, _size * 0.083)
 	var color: Color = COLORS[kind]
 	match kind:
 		Kind.FUEL:  # a drop
@@ -54,9 +58,9 @@ func _draw() -> void:
 		Kind.HULL:  # a shield
 			draw_colored_polygon(PackedVector2Array([c + Vector2(-r * 0.8, -r * 0.75), c + Vector2(r * 0.8, -r * 0.75), c + Vector2(r * 0.8, 0), c + Vector2(0, r), c + Vector2(-r * 0.8, 0)]), color)
 		Kind.TIME:  # a clock
-			draw_arc(c, r, 0.0, TAU, 32, color, 2.5, true)
-			draw_line(c, c + Vector2(0, -r * 0.65), color, 2.5, true)
-			draw_line(c, c + Vector2(r * 0.5, 0), color, 2.5, true)
+			draw_arc(c, r, 0.0, TAU, 32, color, stroke, true)
+			draw_line(c, c + Vector2(0, -r * 0.65), color, stroke, true)
+			draw_line(c, c + Vector2(r * 0.5, 0), color, stroke, true)
 
 
 ## Both halves of the medal in the tier's colour, or as a faint outline when `empty`; nothing for NONE.
@@ -67,9 +71,9 @@ func _draw_medal() -> void:
 	for mirrored in [false, true]:
 		var half := PackedVector2Array()
 		for point: Vector2 in MEDAL_LEFT:
-			half.append(Vector2(1.0 - point.x if mirrored else point.x, point.y) * SIZE)
+			half.append(Vector2(1.0 - point.x if mirrored else point.x, point.y) * _size)
 		if empty:
 			half.append(half[0])
-			draw_polyline(half, Color(color, 0.35), 1.5, true)
+			draw_polyline(half, Color(color, 0.38), maxf(1.5, _size * 0.05), true)
 		else:
 			draw_colored_polygon(half, color)

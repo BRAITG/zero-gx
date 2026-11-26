@@ -379,7 +379,7 @@ func test_each_row_opens_details_and_shows_one_difficulty_label_but_no_vote_butt
 	await _signed_in(net)
 	net.answer("GET", "/levels", 200, [_row({"reviewed_difficulty": "expert", "community_difficulty": {"value": "hard", "votes": 6}})])
 	var screen: CommunityScreen = await _community()
-	check(screen.find_children("Row", "Button", true, false).size() == 1, "each row is a button that opens Details: %s" % [_texts(screen)])
+	check(_buttons(screen, "Details").size() == 1, "each row has a Details button: %s" % [_texts(screen)])
 	var vote_buttons := screen._rows.find_children("*", "Button", true, false).filter(func(b: Button) -> bool: return b.text.to_lower() in DIFFICULTIES)
 	check(vote_buttons.is_empty(), "the rows must not show a row of difficulty buttons")
 	var texts := _texts(screen)
@@ -392,7 +392,7 @@ func test_details_opens_one_sheet_and_back_returns_focus_to_its_row() -> void:
 	net.answer("GET", "/levels", 200, [_row()])
 	var screen: CommunityScreen = await _community()
 	_serve(_reply())
-	var details := screen.find_children("Row", "Button", true, false)
+	var details := _buttons(screen, "Details")
 	check(details.size() == 1, "each row opens Details: %s" % [_texts(screen)])
 	if details.is_empty():
 		return
@@ -420,7 +420,7 @@ func test_the_sheets_play_plays_the_stage_the_list_plays() -> void:
 	net.answer("GET", "/levels", 200, [_row({"sha256": sha})])
 	var screen: CommunityScreen = await _community()
 	_serve(_reply({}, {}, null, {}, sha))
-	var details := screen.find_children("Row", "Button", true, false)
+	var details := _buttons(screen, "Details")
 	if details.is_empty():
 		check(false, "each row offers Details")
 		return
@@ -588,7 +588,7 @@ func test_the_curve_and_the_cleared_percentage_need_ten_starters() -> void:
 		return
 	var texts := _texts(few)
 	check(few.find_children("*", "ClearCurve", true, false).is_empty(), "nine starters draw no curve")
-	check("Players: 9" in texts and "Cleared: 1" in texts and _lines_with(texts, "cleared:").all(func(t: String) -> bool: return not t.contains("%")), "the counts show without a percentage: %s" % [texts])
+	check("9" in texts and "Players" in texts and "1" in texts and "Cleared" in texts and not texts.any(func(t: String) -> bool: return t.ends_with("%")), "the counts show without a percentage: %s" % [texts])
 	few.close()
 	await frames(2)
 	_serve(_reply({}, {"players_started": 10, "players_cleared": 4, "clear_rate": 0.4}, null, {}, SHA, _rich({"starters": 10, "clears": 4})))
@@ -597,7 +597,7 @@ func test_the_curve_and_the_cleared_percentage_need_ten_starters() -> void:
 		return
 	texts = _texts(ten)
 	check(ten.find_children("*", "ClearCurve", true, false).size() == 1, "ten starters draw the curve")
-	check("Cleared: 4 (40%)" in texts, "the percentage shows at ten: %s" % [texts])
+	check("40%" in texts and "Cleared (4)" in texts, "the percentage shows at ten: %s" % [texts])
 	check(not _mentions(texts, ["attempts per", "median", "unbeaten", "total attempts"]), "the removed statistics stay removed: %s" % [texts])
 
 
@@ -608,7 +608,8 @@ func test_not_cleared_names_those_who_tried_twenty_times() -> void:
 	var sheet: Overlay = await _sheet(_row())
 	if sheet == null:
 		return
-	check("42 not cleared, 9 of them after 20+ tries" in _texts(sheet), "not cleared: %s" % [_texts(sheet)])
+	var texts := _texts(sheet)
+	check("42" in texts and "Not cleared (9 at 20+)" in texts, "not cleared: %s" % [texts])
 
 
 func test_the_counts_and_the_curve_come_from_one_source() -> void:
@@ -620,7 +621,7 @@ func test_the_counts_and_the_curve_come_from_one_source() -> void:
 	if behind == null:
 		return
 	var texts := _texts(behind)
-	check("Players: 64" in texts and "Cleared: 22 (34%)" in texts and "42 not cleared, 9 of them after 20+ tries" in texts, "the three numbers come from the row the curve comes from: %s" % [texts])
+	check("64" in texts and "34%" in texts and "Cleared (22)" in texts and "42" in texts and "Not cleared (9 at 20+)" in texts, "the three numbers come from the row the curve comes from: %s" % [texts])
 	check(not _mentions(texts, ["after more than 30"]), "a clear the cron has not counted yet is no late clear: %s" % [texts])
 	behind.close()
 	await frames(2)
@@ -630,7 +631,7 @@ func test_the_counts_and_the_curve_come_from_one_source() -> void:
 	if fresh == null:
 		return
 	texts = _texts(fresh)
-	check("Players: 3" in texts and "Cleared: 1" in texts and "2 not cleared, 1 of them after 20+ tries" in texts and "Estimating · 3 players" in texts, "without a row the live stats show: %s" % [texts])
+	check("3" in texts and "1" in texts and "Cleared" in texts and "2" in texts and "Not cleared (1 at 20+)" in texts and "Estimating · 3 players" in texts, "without a row the live stats show: %s" % [texts])
 	check(fresh.find_children("*", "ClearCurve", true, false).is_empty() and not _mentions(texts, ["after more than 30"]), "and no curve: %s" % [texts])
 
 
@@ -1079,7 +1080,7 @@ func test_keys_and_pad_cannot_move_focus_out_of_the_sheet() -> void:
 	net.answer("GET", "/levels", 200, [_row()])
 	var screen: CommunityScreen = await _community()
 	_serve(_reply({"like_eligible": true, "difficulty_eligible": true, "attempts": 5}))
-	var details := screen.find_children("Row", "Button", true, false)
+	var details := _buttons(screen, "Details")
 	if details.is_empty():
 		check(false, "each row offers Details")
 		return
@@ -1156,13 +1157,15 @@ func test_submit_for_review_needs_an_explicit_suggested_difficulty() -> void:
 	if sheets.size() != 1 or _buttons(screen, "Submit for review").size() != 1:
 		check(false, "one confirmation with Submit for review: %s" % [sheets.map(_texts)])
 		return
-	var options := _options(sheets[0])
-	check(options.size() == 1, "the confirmation asks for a Suggested difficulty")
-	if options.size() != 1:
+	var picks := CommunityLevelDetails.DIFFICULTIES.map(func(d: String) -> Array: return _buttons(sheets[0], d.capitalize()))
+	check(picks.all(func(a: Array) -> bool: return a.size() == 1), "the confirmation asks for a Suggested difficulty")
+	if not picks.all(func(a: Array) -> bool: return a.size() == 1):
 		return
-	check(_choice(options[0]) == "", "A new publish confirmation must not preselect a difficulty: '%s'" % _choice(options[0]))
+	check(picks.all(func(a: Array) -> bool: return not a[0].button_pressed), "A new publish confirmation must not preselect a difficulty")
 	check(_buttons(screen, "Submit for review")[0].disabled, "Submit for review stays off until a difficulty is chosen")
-	_pick(options[0], "hard")
+	var hard: Button = _buttons(sheets[0], "Hard")[0]
+	hard.button_pressed = true
+	hard.pressed.emit()
 	await frames(1)
 	check(not _buttons(screen, "Submit for review")[0].disabled, "a chosen difficulty turns Submit on")
 	check(net.count("POST", "/submissions") == 0, "choosing uploads nothing")
@@ -1186,12 +1189,13 @@ func test_a_new_proof_run_uploads_only_after_submit_with_the_same_bytes() -> voi
 	if sheets.size() != 1 or _buttons(screen, "Submit for review").size() != 1:
 		check(false, "a won proof flight opens one confirmation: %s" % [sheets.map(_texts)])
 		return
-	var options := _options(sheets[0])
-	check(options.size() == 1, "the confirmation asks for a Suggested difficulty")
-	if options.size() != 1:
+	var experts := _buttons(sheets[0], "Expert")
+	check(experts.size() == 1, "the confirmation asks for a Suggested difficulty")
+	if experts.size() != 1:
 		return
 	check(net.count("POST", "/submissions") == 0 and not MyLevels.is_submitted(id), "the confirmation alone uploads nothing")
-	_pick(options[0], "expert")
+	experts[0].button_pressed = true
+	experts[0].pressed.emit()
 	await frames(1)
 	_buttons(screen, "Submit for review")[0].pressed.emit()
 	await frames(3)
@@ -1647,7 +1651,7 @@ func test_every_card_of_the_details_sheet_is_one_column_wide_with_a_pending_row(
 	Community.record_play_finish(Community.record_play_start(row.sha256), "cleared")  # a queued clear: the sync row shows
 	var sheet: Overlay = await _sheet(row)
 	var cards := sheet.body.find_children("*", "PanelContainer", false, false)
-	check(cards.size() == 4, "difficulty, facts, You and board each have a card: %d" % cards.size())
+	check(cards.size() == 5, "hero, difficulty, facts, You and board each have a card: %d" % cards.size())
 	check(cards.all(func(c: PanelContainer) -> bool: return c.size.x == Overlay.WIDTH), "each card is exactly the column wide: %s" % [cards.map(func(c: PanelContainer) -> float: return c.size.x)])
 	check(sheet.find_child("SyncIndicator", true, false).is_visible_in_tree(), "control: the pending row is showing")
 
