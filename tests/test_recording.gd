@@ -89,23 +89,6 @@ func test_a_run_lost_before_any_tick_has_a_frame() -> void:
 	check(lvl.demo.frame_count() == 1, "expected the final frame, got %d" % lvl.demo.frame_count())
 
 
-func test_shards_are_recorded_from_their_spawn() -> void:
-	var lvl := draft(blank_with({
-		"bodies": [{"kind": "planet", "position": [400, 0], "destructible": true, "health": 1}],
-		"asteroids": [{"position": [0, 0], "velocity": [400, 0]}],
-	}))
-	lvl.ship.start_boost()
-	await frames(120)
-	var spawned := lvl.demo.events().filter(func(e: Array) -> bool: return e[1] == Demo.Event.ASTEROID_SPAWNED)
-	check(spawned.size() >= GravityBody.SHARDS_MIN, "%d shards spawned" % spawned.size())
-	check(lvl.demo.events().any(func(e: Array) -> bool: return e[1] == Demo.Event.PLANET_SHATTERED), "no PLANET_SHATTERED event")
-	if not spawned.is_empty():
-		var shard: int = spawned[0][2][0]
-		var frame: int = spawned[0][0]
-		check(lvl.demo.asteroids_at(frame).has(shard), "shard %d missing on its spawn frame %d" % [shard, frame])
-		check(not lvl.demo.asteroids_at(maxi(frame - 1, 0)).has(shard) or frame == 0, "shard %d exists before it spawned" % shard)
-
-
 func test_tutorials_are_not_recorded() -> void:
 	var lvl := Progress.build("tutorial_1")
 	world.add_child(lvl)
@@ -136,7 +119,7 @@ func test_a_won_play_of_a_draft_keeps_no_best_demo() -> void:
 
 func test_the_demo_is_frozen_when_the_run_ends() -> void:
 	var lvl := draft(blank_with({
-		"bodies": [{"kind": "planet", "position": [400, 0], "destructible": true, "health": 1}],
+		"bodies": [{"kind": "black_hole", "position": [400, 0]}],
 		"asteroids": [{"position": [0, 0], "velocity": [400, 0]}],
 	}))
 	lvl.ship.start_boost()
@@ -145,8 +128,8 @@ func test_the_demo_is_frozen_when_the_run_ends() -> void:
 	var demo := lvl.demo
 	var events := demo.events().duplicate(true)
 	var count := demo.frame_count()
-	await frames(300)  # the world runs on: the planet shatters and shards spawn
-	check(lvl.get_children().filter(func(n: Node) -> bool: return n is Asteroid).size() > 1, "the planet did not shatter, so the test proves nothing")
+	await frames(180)  # the world runs on: the black hole swallows the asteroid
+	check(lvl.get_children().filter(func(n: Node) -> bool: return n is Asteroid).is_empty(), "the asteroid was not swallowed, so the test proves nothing")
 	lvl.free()
 	check(demo.frame_count() == count, "frames changed after the run ended")
 	check(demo.events() == events, "events changed after the run ended: %s" % [demo.events().slice(events.size())])

@@ -28,7 +28,6 @@ const BODY_RANGES: Record<string, Range> = {
   radius: [8, 3000],
   strength: [0, 6000000], // covers the heaviest, smallest black hole
   reach: [0, 10000],
-  health: [1, 10000],
 };
 // Per-kind limits, independent of each other; total_pull is the pull at 1000 px (like mass).
 // Black holes overlap stars in mass but always out-pull them at the surface.

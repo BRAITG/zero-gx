@@ -3,7 +3,6 @@ class_name GravityBody
 extends StaticBody2D
 ## A planet, black hole or star: a solid circle with inverse-square point gravity that ends at `reach`.
 
-signal shattered
 signal struck(by: Node)
 
 enum Preset { PLANET, BLACK_HOLE, STAR }
@@ -25,11 +24,6 @@ const FLAME_LENGTH := Vector2(25, 70)  # px, flickering between
 const PROMINENCE_SIZE := Vector2(50, 130)  # px radius, rising and falling
 const STAR_PROMINENCES := 7
 const DISK_COLORS := [Color("#ff9a4a"), Color("#c46cff"), Color("#ffd8a8")]
-const SHARDS_MIN := 12
-const SHARDS_MAX := 20
-const SHARD_SPEED_MIN := 100.0
-const SHARD_SPEED_MAX := 250.0
-const SHARD_GAP := 4.0  # px between neighbouring shards on the spawn ring
 ## Field ripples: opacity grows with the square root of the pull, so weak edges stay visible.
 const FIELD_REFERENCE_PULL := 4000.0  # px/s² drawn at full opacity
 const FIELD_MAX_ALPHA := 0.35
@@ -37,7 +31,6 @@ const RIPPLE_SHADER := preload("res://scenes/gravity_field.gdshader")
 const RIPPLE_TINT := Color(0.62, 0.72, 0.9)
 const RIPPLE_TINT_BLACK_HOLE := Color(0.5, 0.56, 0.85)
 
-var _shattering := false
 ## Seconds of animation shown: black holes spin and stars pulse with it. The replay viewer sets it
 ## from the replay's clock, since its frozen level never runs _process.
 var clock := 0.0:
@@ -57,9 +50,6 @@ var _ripples: Sprite2D
 @export var radius := -1.0
 @export var strength := -1.0
 @export var reach := -1.0
-## Only planets can be destroyed, and only by asteroid impacts.
-@export var destructible := false
-@export var health := 100.0
 
 
 func _ready() -> void:
@@ -153,31 +143,6 @@ func field_alpha(distance: float) -> float:
 
 func impact_multiplier() -> float:
 	return Impact.LETHAL if PRESETS[preset][3] else 1.0
-
-
-func take_damage(amount: float) -> void:
-	if not destructible or _shattering or preset != Preset.PLANET:
-		return
-	health -= amount
-	if health <= 0.0:
-		_shattering = true
-		_shatter.call_deferred()  # Bodies cannot be added from inside a physics callback.
-
-
-func _shatter() -> void:
-	var rng := RandomNumberGenerator.new()
-	var count := rng.randi_range(SHARDS_MIN, SHARDS_MAX)
-	# Ring large enough that neighbouring shards do not overlap at spawn.
-	var ring := maxf(radius + Asteroid.RADIUS + SHARD_GAP, count * (2.0 * Asteroid.RADIUS + SHARD_GAP) / TAU)
-	var scene: PackedScene = load("res://scenes/asteroid.tscn")
-	for k in count:
-		var direction := Vector2.RIGHT.rotated(TAU * k / count)
-		var shard: Asteroid = scene.instantiate()
-		shard.position = position + direction * ring
-		shard.linear_velocity = direction * rng.randf_range(SHARD_SPEED_MIN, SHARD_SPEED_MAX)
-		get_parent().add_child(shard)
-	shattered.emit()
-	queue_free()
 
 
 func _draw() -> void:

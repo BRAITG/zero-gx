@@ -1,12 +1,10 @@
 @tool
 class_name Asteroid
 extends RigidBody2D
-## A drifting rock with no pull of its own. Gravity bodies pull it; planets take damage when it hits them.
+## A drifting rock with no pull of its own. Gravity bodies pull it.
 
 const RADIUS := 20.0
 const MASS := 2.0
-const MIN_IMPACT_SPEED := 20.0  # px/s
-const PLANET_DAMAGE_PER_IMPULSE := 0.04
 const MAX_SPEED := 1200.0  # Same no-tunneling bound as the ship.
 const ORBIT_SPEED := 1.0  # rad/s for an orbit with no speed of its own, in the game and the editor
 
@@ -51,8 +49,6 @@ func _ready() -> void:
 		freeze = true
 		_place_on_orbit()
 		reset_physics_interpolation()  # don't streak in from the scene's authored position
-		if _parent.has_signal("shattered"):
-			_parent.shattered.connect(release.bind(Vector2.ZERO))
 
 
 func _physics_process(delta: float) -> void:
@@ -100,9 +96,6 @@ func _integrate_forces(state: PhysicsDirectBodyState2D) -> void:
 			queue_free()
 			return
 		body.struck.emit(self)
-		var speed_change := absf(velocity_change.dot(state.get_contact_local_normal(i)))
-		if speed_change >= MIN_IMPACT_SPEED:
-			body.take_damage(speed_change * mass * PLANET_DAMAGE_PER_IMPULSE)
 
 
 func _draw() -> void:

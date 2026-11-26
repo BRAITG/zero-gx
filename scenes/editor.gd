@@ -1397,23 +1397,9 @@ func _build_context_rows(rows: VBoxContainer, ref: Dictionary) -> void:
 			_menu_add_button(rows, "Colour", _open_menu_choices.bind("Colour", LevelFormat.WALL_KINDS, WALL_LABELS, _wall_ref(ref), "kind"))
 			_menu_add_button(rows, "Delete wall", _delete_menu_thing.bind(ref))
 		"body":
-			var body: Dictionary = doc.data.bodies[ref.index]
 			_menu_property(rows, ref, "Radius", "radius")
 			_menu_property(rows, ref, "Mass", "mass")
 			_menu_property(rows, ref, "Reach", "reach")
-			if body.kind == "planet":
-				var destructible := CheckButton.new()
-				destructible.text = "Destructible"
-				destructible.button_pressed = body.get("destructible", false)
-				destructible.flat = true
-				destructible.alignment = HORIZONTAL_ALIGNMENT_LEFT
-				destructible.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				destructible.custom_minimum_size = Vector2(0, _menu_row_height())
-				destructible.add_theme_font_size_override("font_size", _menu_font_size())
-				destructible.toggled.connect(_set_destructible.bind(ref))
-				rows.add_child(destructible)
-				_menu_content_height += _menu_row_height()
-				_menu_property(rows, ref, "Health", "health")
 			_menu_add_button(rows, "Delete", _delete_menu_thing.bind(ref))
 		"asteroid":
 			if doc.data.asteroids[ref.index].has("orbit"):
@@ -1527,16 +1513,6 @@ func _set_menu_property(ref: Dictionary, property: String, value: Variant) -> vo
 	_refresh()
 
 
-func _set_destructible(enabled: bool, ref: Dictionary) -> void:
-	_close_context_menu()
-	doc.begin_edit()
-	doc.set_property(ref, "destructible", enabled)
-	if enabled and not doc.data.bodies[ref.index].has("health"):
-		doc.set_property(ref, "health", 100)
-	doc.end_edit()
-	_refresh()
-
-
 func _delete_menu_thing(ref: Dictionary) -> void:
 	_close_context_menu()
 	doc.erase(_wall_ref(ref) if ref.type == "wall_point" else ref)
@@ -1591,7 +1567,7 @@ func _open_property_panel(ref: Dictionary, property: String) -> void:
 	var step := 1.0
 	var value := 0.0
 	match property:
-		"radius", "mass", "reach", "health":
+		"radius", "mass", "reach":
 			var body: Dictionary = doc.data.bodies[ref.index]
 			var limits: Dictionary = LevelFormat.KIND_LIMITS[body.kind]
 			_panel_radius = clampf(LevelFormat.body_value(body, "radius"), limits.radius.x, limits.radius.y)
@@ -1616,12 +1592,6 @@ func _open_property_panel(ref: Dictionary, property: String) -> void:
 					field = "reach"
 					bounds = limits.reach
 					value = LevelFormat.body_value(body, property)
-				"health":
-					title = "Health"
-					help = "hit points"
-					field = "health"
-					bounds = Vector2(1, 1000)
-					value = float(body.get("health", 100))
 		"orbit_speed":
 			title = "Orbit speed"
 			help = "rad/s · negative = clockwise"
@@ -1763,10 +1733,6 @@ func _apply_panel_value(field: String, value: float) -> void:
 			if value < bounds.x or value > bounds.y:
 				return
 			doc.set_property(ref, "reach", value)
-		"health":
-			if value < 1.0 or value > 1000.0:
-				return
-			doc.set_property(ref, "health", value)
 		"orbit_speed":
 			if value < -3.0 or value > 3.0:
 				return

@@ -1,7 +1,6 @@
 extends "res://tests/test_case.gd"
 ## Level-design checks. A failure here is a level to fix, not an engine bug.
 
-const SHARD_CLEARANCE := 60.0  # px between a destructible planet and any barrier
 const PICKUP_CLEARANCE := 16.0  # px between a pickup's edge and any barrier
 const IDLE_FRAMES := 12000  # 200 s with no input: longer than a slow first attempt
 const FLIGHT_LIMIT := 4800  # frames: 80 s
@@ -41,17 +40,6 @@ func test_levels_are_well_formed() -> void:
 				for i in points.size() - 1:
 					var gap := Geometry2D.get_closest_point_to_segment(pickup.position, wall.position + points[i], wall.position + points[i + 1]).distance_to(pickup.position)
 					check(gap >= Pickup.RADIUS + PICKUP_CLEARANCE, "%s: %s is %d px from %s" % [id, pickup.name, gap, wall.name])
-		for planet: GravityBody in of_type(root, GravityBody):
-			if not planet.destructible:
-				continue
-			var r: float = planet.radius if planet.radius > 0 else GravityBody.PRESETS[planet.preset][0]
-			for wall: Barrier in of_type(root, Barrier):
-				var points: PackedVector2Array = wall.get_node("Shape").points
-				for i in points.size() - 1:
-					var a := wall.position + points[i]
-					var b := wall.position + points[i + 1]
-					var gap := Geometry2D.get_closest_point_to_segment(planet.position, a, b).distance_to(planet.position)
-					check(gap >= r + SHARD_CLEARANCE, "%s: %s is %d px from %s (needs %d)" % [id, wall.name, gap, planet.name, r + SHARD_CLEARANCE])
 		root.free()
 
 

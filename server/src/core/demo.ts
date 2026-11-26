@@ -16,7 +16,7 @@ const POSITION_SCALE = 8;
 const ROTATION_SCALE = 1000;
 const FUEL_SCALE = 10;
 
-export const Event = { PICKUP_TAKEN: 1, PLANET_SHATTERED: 2, SHIP_LOST: 3, GOAL_REACHED: 4, ASTEROID_SPAWNED: 5, ASTEROID_REMOVED: 6, CLOCK_STARTED: 7 } as const;
+export const Event = { PICKUP_TAKEN: 1, PLANET_SHATTERED: 2, SHIP_LOST: 3, GOAL_REACHED: 4, ASTEROID_SPAWNED: 5, ASTEROID_REMOVED: 6, CLOCK_STARTED: 7 } as const; // PLANET_SHATTERED retired; code 2 stays reserved for wire compatibility
 
 const DELTA = 0;
 const ABSOLUTE = 1;
