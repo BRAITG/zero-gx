@@ -1,0 +1,129 @@
+{
+  "bodies": [
+    {
+      "kind": "planet",
+      "position": [
+        1800,
+        350
+      ],
+      "radius": 110,
+      "reach": 750,
+      "strength": 3600
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      4200,
+      200
+    ]
+  },
+  "hint": "You start already moving fast. Read your velocity arrow before launching, then use the planet to bend clear of the red wall.",
+  "par": 1012,
+  "route": {
+    "cruise": 360,
+    "points": [
+      [
+        900,
+        -150
+      ],
+      [
+        1800,
+        -250
+      ],
+      [
+        2800,
+        150
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 80,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ],
+    "velocity": [
+      360,
+      -120
+    ]
+  },
+  "title": "Skim",
+  "tour": [
+    {
+      "position": [
+        1500,
+        -550
+      ],
+      "text": "You launch already heading toward this red ceiling — curve early and let the planet bend your path."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -500,
+          -900
+        ],
+        [
+          4700,
+          -900
+        ],
+        [
+          4700,
+          1100
+        ],
+        [
+          -500,
+          1100
+        ],
+        [
+          -500,
+          -900
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          500,
+          -650
+        ],
+        [
+          2600,
+          -650
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          3200,
+          -900
+        ],
+        [
+          3200,
+          -150
+        ]
+      ]
+    },
+    {
+      "kind": "orange",
+      "points": [
+        [
+          3200,
+          550
+        ],
+        [
+          3200,
+          1100
+        ]
+      ]
+    }
+  ]
+}

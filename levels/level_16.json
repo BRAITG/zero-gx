@@ -1,0 +1,220 @@
+{
+  "asteroids": [
+    {
+      "orbit": {
+        "angle": 0,
+        "body": 0,
+        "radius": 220,
+        "speed": 1
+      },
+      "position": [
+        1820,
+        -520
+      ]
+    },
+    {
+      "orbit": {
+        "angle": 3.142,
+        "body": 0,
+        "radius": 220,
+        "speed": 1
+      },
+      "position": [
+        1380,
+        -520
+      ]
+    },
+    {
+      "orbit": {
+        "angle": 1.571,
+        "body": 1,
+        "radius": 220,
+        "speed": -1
+      },
+      "position": [
+        1600,
+        740
+      ]
+    },
+    {
+      "orbit": {
+        "angle": 4.712,
+        "body": 1,
+        "radius": 220,
+        "speed": -1
+      },
+      "position": [
+        1600,
+        300
+      ]
+    }
+  ],
+  "bodies": [
+    {
+      "kind": "planet",
+      "position": [
+        1600,
+        -520
+      ],
+      "radius": 90,
+      "reach": 520,
+      "strength": 3000
+    },
+    {
+      "kind": "planet",
+      "position": [
+        1600,
+        520
+      ],
+      "radius": 90,
+      "reach": 520,
+      "strength": 3000
+    },
+    {
+      "kind": "black_hole",
+      "position": [
+        5850,
+        -350
+      ]
+    }
+  ],
+  "format": "zero-gx-level",
+  "goal": {
+    "position": [
+      7050,
+      200
+    ]
+  },
+  "hint": "Read your launch drift, thread the twin rings, grab the thrust boost, and sling past the black hole.",
+  "par": 1178,
+  "pickups": [
+    {
+      "kind": "thrust_up",
+      "position": [
+        3150,
+        0
+      ]
+    }
+  ],
+  "route": {
+    "cruise": 360,
+    "points": [
+      [
+        1600,
+        0
+      ],
+      [
+        3150,
+        0
+      ],
+      [
+        3900,
+        150
+      ],
+      [
+        4600,
+        -150
+      ],
+      [
+        5850,
+        320
+      ]
+    ]
+  },
+  "ship": {
+    "fuel": 100,
+    "hull": 100,
+    "position": [
+      0,
+      0
+    ],
+    "velocity": [
+      240,
+      0
+    ]
+  },
+  "title": "Gauntlet",
+  "tour": [
+    {
+      "position": [
+        1600,
+        0
+      ],
+      "text": "Twin planets with orbiting rocks guard the opening gap."
+    },
+    {
+      "position": [
+        5850,
+        -100
+      ],
+      "text": "Carry your thrust boost through the red chicane and sling under the black hole."
+    }
+  ],
+  "version": 1,
+  "walls": [
+    {
+      "kind": "blue",
+      "points": [
+        [
+          -500,
+          -1500
+        ],
+        [
+          7550,
+          -1500
+        ],
+        [
+          7550,
+          1500
+        ],
+        [
+          -500,
+          1500
+        ],
+        [
+          -500,
+          -1500
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          3900,
+          -1500
+        ],
+        [
+          3900,
+          -220
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          4600,
+          220
+        ],
+        [
+          4600,
+          1500
+        ]
+      ]
+    },
+    {
+      "kind": "red",
+      "points": [
+        [
+          5250,
+          -1100
+        ],
+        [
+          6450,
+          -1100
+        ]
+      ]
+    }
+  ]
+}
