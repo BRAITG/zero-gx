@@ -134,7 +134,7 @@ func test_unlimited_resources_score_nothing() -> void:
 	data.ship.hull = "unlimited"
 	data.ship.velocity = [400, 0]
 	var lvl := LevelFormat.build(data)
-	lvl.level_id = "level_01"
+	lvl.level_id = "level_01_launch"
 	world.add_child(lvl)
 	lvl.launch()
 	await frames(500)
@@ -234,7 +234,7 @@ func test_hash_names_the_content() -> void:
 
 
 func test_sketch_keeps_shape_and_is_stable() -> void:
-	var data := LevelFormat.read(Progress.LEVELS_DIR + "level_08.json")
+	var data := LevelFormat.read(Progress.LEVELS_DIR + "level_08_rocks.json")
 	var sketch := LevelFormat.sketch(data)
 	check(sketch.walls.size() == data.walls.size() and sketch.bodies.size() == data.get("bodies", []).size(), "every wall and body survives: %s" % [sketch])
 	check(sketch.walls[0].kind == data.walls[0].kind, "wall kinds survive")

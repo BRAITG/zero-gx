@@ -3,9 +3,9 @@ extends "res://tests/test_case.gd"
 const FLIGHT_LIMIT := 4800  # frames: 80 s
 
 
-## Flies level_01 by autopilot and returns the won level, or null.
+## Flies level_01_launch by autopilot and returns the won level, or null.
 func won_level_01() -> Level:
-	var lvl := Progress.build("level_01")
+	var lvl := Progress.build("level_01_launch")
 	world.add_child(lvl)
 	var outcome := {"won": null}
 	lvl.finished.connect(func(won: bool): outcome.won = won)
@@ -52,7 +52,7 @@ func visible_asteroids(viewer: DemoViewer) -> int:
 
 func test_seek_places_every_object() -> void:
 	var lvl := await won_level_01()
-	check(lvl != null, "autopilot did not win level_01")
+	check(lvl != null, "autopilot did not win level_01_launch")
 	if lvl == null:
 		return
 	var demo := lvl.demo
@@ -143,7 +143,7 @@ func test_a_demo_without_frames_is_no_demo() -> void:
 	empty.level_sha256 = LevelFormat.sha256(MyLevels.load_level(id))
 	MyLevels.save_demo(id, empty)
 	check(MyLevels.demo(id) == null and not MyLevels.has_demo(id), "a zero-frame draft demo must not be offered")
-	Progress.save_best_demo("level_01", empty)
-	check(Progress.best_demo("level_01") == null, "a zero-frame best demo must not be offered")
-	DirAccess.remove_absolute(Progress.demos_dir + "level_01.demo.gz")
+	Progress.save_best_demo("level_01_launch", empty)
+	check(Progress.best_demo("level_01_launch") == null, "a zero-frame best demo must not be offered")
+	DirAccess.remove_absolute(Progress.demos_dir + "level_01_launch.demo.gz")
 	MyLevels.delete(id)

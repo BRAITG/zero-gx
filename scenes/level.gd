@@ -213,7 +213,7 @@ func _intro_title() -> String:
 
 ## The intro card's hint: level 1's names the controls in use; other levels keep their own words.
 func _intro_text() -> String:
-	return input.intro_hint() if level_id == "level_01" else hint
+	return input.intro_hint() if level_id.begins_with("level_01") else hint
 
 
 ## Settings can change on the pause card: the velocity arrow and the intro's controls follow at once.

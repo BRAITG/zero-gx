@@ -73,7 +73,7 @@ func test_a_won_publish_flight_is_a_test_flight_that_leaves_to_my_levels() -> vo
 
 
 func test_official_level_round_trips_through_import_and_export() -> void:
-	var source := "res://levels/level_05.json"
+	var source := "res://levels/level_05_swing.json"
 	var original := FileAccess.get_file_as_string(source)
 	check(MyLevels.import_file(source).is_empty(), "official level must import")
 	var ids := MyLevels.ids()
@@ -86,8 +86,8 @@ func test_official_level_round_trips_through_import_and_export() -> void:
 
 
 func test_import_never_overwrites() -> void:
-	MyLevels.import_file("res://levels/level_05.json")
-	MyLevels.import_file("res://levels/level_05.json")
+	MyLevels.import_file("res://levels/level_05_swing.json")
+	MyLevels.import_file("res://levels/level_05_swing.json")
 	check(MyLevels.ids().size() == 2, "two imports, two levels: %s" % MyLevels.ids())
 
 
@@ -115,7 +115,7 @@ func test_import_rejects_bad_files() -> void:
 
 
 func test_import_accepts_an_unfinished_draft() -> void:
-	var draft := LevelFormat.read("res://levels/level_05.json")
+	var draft := LevelFormat.read("res://levels/level_05_swing.json")
 	draft.title = ""  # fails validation, as a half-built level may
 	LevelFormat.write("user://draft.json", draft)
 	check(MyLevels.import_file("user://draft.json").is_empty(), "a draft must import")
@@ -126,7 +126,7 @@ func test_import_accepts_an_unfinished_draft() -> void:
 func test_import_reads_gzip_whatever_the_name() -> void:
 	var path := "user://disguised.json"  # a content:// path from Android's picker has no extension to go by
 	var file := FileAccess.open_compressed(path, FileAccess.WRITE, FileAccess.COMPRESSION_GZIP)
-	file.store_string(JSON.stringify(LevelFormat.read("res://levels/level_05.json")))
+	file.store_string(JSON.stringify(LevelFormat.read("res://levels/level_05_swing.json")))
 	file.close()
 	check(MyLevels.import_file(path).is_empty(), "a gzip level named .json must import")
 	check(MyLevels.ids().size() == 1 and MyLevels.load_level(MyLevels.ids()[0]).get("title") == "Swing", "imported level: %s" % [MyLevels.ids()])
@@ -134,7 +134,7 @@ func test_import_reads_gzip_whatever_the_name() -> void:
 
 
 func test_export_adds_json_extension() -> void:
-	MyLevels.import_file("res://levels/level_05.json")
+	MyLevels.import_file("res://levels/level_05_swing.json")
 	check(MyLevels.export_file(MyLevels.ids()[0], "user://my level") == OK, "export")
 	check(FileAccess.file_exists("user://my level.json"), "`.json` appended")
 	DirAccess.remove_absolute("user://my level.json")
@@ -169,7 +169,7 @@ func test_export_dialog_suggests_a_safe_file_name() -> void:
 
 
 func test_an_invalid_draft_says_why_play_is_off() -> void:
-	var draft := LevelFormat.read("res://levels/level_05.json")
+	var draft := LevelFormat.read("res://levels/level_05_swing.json")
 	draft.title = ""  # fails validation, as a half-built level may
 	MyLevels.save(MyLevels.new_id(), draft)
 	var problems := LevelFormat.validate(draft)
@@ -189,7 +189,7 @@ func test_an_invalid_draft_says_why_play_is_off() -> void:
 
 
 func test_imported_invalid_level_shows_its_thumbnail_and_keeps_play_disabled() -> void:
-	var draft := LevelFormat.read("res://levels/level_05.json")
+	var draft := LevelFormat.read("res://levels/level_05_swing.json")
 	draft.title = ""
 	var source := "user://invalid_thumbnail.json"
 	LevelFormat.write(source, draft)
@@ -227,7 +227,7 @@ func test_a_narrow_window_keeps_the_row_inside_and_the_title_ellipsises() -> voi
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(800, 720)
 	world.add_child(viewport)
-	var data: Dictionary = LevelFormat.read("res://levels/level_05.json")
+	var data: Dictionary = LevelFormat.read("res://levels/level_05_swing.json")
 	var long_title := "A very long level title ".repeat(20)
 	data.title = long_title
 	var id := MyLevels.new_id()

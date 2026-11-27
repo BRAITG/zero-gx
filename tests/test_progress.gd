@@ -23,60 +23,60 @@ func test_next_threshold() -> void:
 
 
 func test_record_and_reload() -> void:
-	check(Progress.record_win("level_01", 1500, 30.0), "a first win must be a new best")
+	check(Progress.record_win("level_01_launch", 1500, 30.0), "a first win must be a new best")
 	Progress.load_file()  # read back what was saved
-	check(Progress.best_points("level_01") == 1500, "best %d after reload, expected 1500" % Progress.best_points("level_01"))
-	check(is_equal_approx(Progress.best_time("level_01"), 30.0), "best time %f after reload" % Progress.best_time("level_01"))
+	check(Progress.best_points("level_01_launch") == 1500, "best %d after reload, expected 1500" % Progress.best_points("level_01_launch"))
+	check(is_equal_approx(Progress.best_time("level_01_launch"), 30.0), "best time %f after reload" % Progress.best_time("level_01_launch"))
 
 
 func test_best_keeps_fuel_and_hull_and_old_bests_have_none() -> void:
-	Progress.record_win("level_01", 1500, 30.0)  # saved before the breakdown was kept
-	check(Progress.best_fuel("level_01") < 0 and Progress.best_hull("level_01") < 0, "an old best must not invent fuel or hull")
-	Progress.record_win("level_01", 1600, 25.0, 40.0, 90.0)
+	Progress.record_win("level_01_launch", 1500, 30.0)  # saved before the breakdown was kept
+	check(Progress.best_fuel("level_01_launch") < 0 and Progress.best_hull("level_01_launch") < 0, "an old best must not invent fuel or hull")
+	Progress.record_win("level_01_launch", 1600, 25.0, 40.0, 90.0)
 	Progress.load_file()
-	check(is_equal_approx(Progress.best_fuel("level_01"), 40.0) and is_equal_approx(Progress.best_hull("level_01"), 90.0), "fuel %f hull %f after reload" % [Progress.best_fuel("level_01"), Progress.best_hull("level_01")])
-	Progress.record_win("level_01", 1000, 20.0, 99.0, 99.0)
-	check(is_equal_approx(Progress.best_fuel("level_01"), 40.0), "a lower run must not replace the best's fuel")
+	check(is_equal_approx(Progress.best_fuel("level_01_launch"), 40.0) and is_equal_approx(Progress.best_hull("level_01_launch"), 90.0), "fuel %f hull %f after reload" % [Progress.best_fuel("level_01_launch"), Progress.best_hull("level_01_launch")])
+	Progress.record_win("level_01_launch", 1000, 20.0, 99.0, 99.0)
+	check(is_equal_approx(Progress.best_fuel("level_01_launch"), 40.0), "a lower run must not replace the best's fuel")
 
 
 func test_version_1_bests_lose_the_base_once() -> void:
 	var file := FileAccess.open(Progress.path, FileAccess.WRITE)
-	file.store_string("[level_01]\nbest_points=1780\nbest_time=30.0\n[level_02]\nbest_points=100\nbest_time=90.0\n")
+	file.store_string("[level_01_launch]\nbest_points=1780\nbest_time=30.0\n[level_02_drift]\nbest_points=100\nbest_time=90.0\n")
 	file.close()
 	Progress.load_file()
-	check(Progress.best_points("level_01") == 780 and Progress.best_points("level_02") == 100, "migrated bests: %d, %d" % [Progress.best_points("level_01"), Progress.best_points("level_02")])
+	check(Progress.best_points("level_01_launch") == 780 and Progress.best_points("level_02_drift") == 100, "migrated bests: %d, %d" % [Progress.best_points("level_01_launch"), Progress.best_points("level_02_drift")])
 	Progress.load_file()
-	check(Progress.best_points("level_01") == 780, "a second load must not migrate again: %d" % Progress.best_points("level_01"))
-	check(Progress.record_win("level_01", 800, 20.0), "a run above the migrated best must be a new best")
+	check(Progress.best_points("level_01_launch") == 780, "a second load must not migrate again: %d" % Progress.best_points("level_01_launch"))
+	check(Progress.record_win("level_01_launch", 800, 20.0), "a run above the migrated best must be a new best")
 
 
 func test_lower_score_keeps_best() -> void:
-	Progress.record_win("level_01", 1500, 30.0)
-	check(not Progress.record_win("level_01", 1200, 20.0), "a lower score must not be a new best")
-	check(Progress.best_points("level_01") == 1500, "best %d, expected 1500" % Progress.best_points("level_01"))
+	Progress.record_win("level_01_launch", 1500, 30.0)
+	check(not Progress.record_win("level_01_launch", 1200, 20.0), "a lower score must not be a new best")
+	check(Progress.best_points("level_01_launch") == 1500, "best %d, expected 1500" % Progress.best_points("level_01_launch"))
 
 
 func test_corrupt_file_is_no_progress() -> void:
 	var file := FileAccess.open(Progress.path, FileAccess.WRITE)
-	file.store_string("[level_01\nbest_points = = {")
+	file.store_string("[level_01_launch\nbest_points = = {")
 	file.close()
 	Progress.load_file()
-	check(Progress.best_points("level_01") == -1, "a corrupt file must mean no progress")
-	check(Progress.is_unlocked("level_01") and not Progress.is_unlocked("level_02"), "only level 1 open after a corrupt file")
+	check(Progress.best_points("level_01_launch") == -1, "a corrupt file must mean no progress")
+	check(Progress.is_unlocked("level_01_launch") and not Progress.is_unlocked("level_02_drift"), "only level 1 open after a corrupt file")
 
 
 func test_training_and_levels_unlock_separately() -> void:
 	var trainings := Progress.trainings()
 	var levels := Progress.levels()
-	check(Progress.is_unlocked("tutorial_1") and Progress.is_unlocked("level_01"), "each track's first stage must always be open")
-	check(not Progress.is_unlocked("tutorial_2") and not Progress.is_unlocked("level_02"), "second stages open before any win")
+	check(Progress.is_unlocked("tutorial_1") and Progress.is_unlocked("level_01_launch"), "each track's first stage must always be open")
+	check(not Progress.is_unlocked("tutorial_2") and not Progress.is_unlocked("level_02_drift"), "second stages open before any win")
 	Progress.record_win("tutorial_1", 1000, 10.0)
 	check(Progress.is_unlocked("tutorial_2") and not Progress.is_unlocked("tutorial_3"), "winning training 1 must open training 2 only")
-	check(not Progress.is_unlocked("level_02"), "training wins must not open levels")
-	Progress.record_win("level_01", 1000, 10.0)
-	check(Progress.is_unlocked("level_02") and not Progress.is_unlocked("tutorial_3"), "level wins open levels only")
+	check(not Progress.is_unlocked("level_02_drift"), "training wins must not open levels")
+	Progress.record_win("level_01_launch", 1000, 10.0)
+	check(Progress.is_unlocked("level_02_drift") and not Progress.is_unlocked("tutorial_3"), "level wins open levels only")
 	check(Progress.next_level(trainings[-1]) == "", "the last training has no next stage")
-	check(Progress.next_level("level_01") == "level_02" and Progress.next_level(levels[-1]) == "", "levels follow each other, then end")
+	check(Progress.next_level("level_01_launch") == "level_02_drift" and Progress.next_level(levels[-1]) == "", "levels follow each other, then end")
 	Progress.unlock_all = true
 	check(Progress.is_unlocked(levels[-1]) and Progress.is_unlocked(trainings[-1]), "unlock all must open every stage")
 	Progress.reset()

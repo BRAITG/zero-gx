@@ -72,8 +72,8 @@ func test_every_official_autopilot_demo_passes() -> void:
 
 ## The ship drifts under gravity before the first thrust; the demo still starts at the level's start.
 func test_an_honest_run_after_idle_drift_passes() -> void:
-	var lvl := await fly_level(Progress.build("level_10"), 60)
-	check(lvl != null, "level_10: autopilot did not win after idling")
+	var lvl := await fly_level(Progress.build("level_10_sun"), 60)
+	check(lvl != null, "level_10_sun: autopilot did not win after idling")
 	if lvl == null:
 		return
 	var start := Vector2(lvl.level_data.ship.position[0], lvl.level_data.ship.position[1])
@@ -84,8 +84,8 @@ func test_an_honest_run_after_idle_drift_passes() -> void:
 
 
 func test_tampered_demos_fail() -> void:
-	var lvl := await fly_level(Progress.build("level_01"))
-	check(lvl != null, "level_01: autopilot did not win")
+	var lvl := await fly_level(Progress.build("level_01_launch"))
+	check(lvl != null, "level_01_launch: autopilot did not win")
 	if lvl == null:
 		return
 	var level := lvl.level_data
@@ -132,7 +132,7 @@ func test_tampered_demos_fail() -> void:
 
 
 func test_unlimited_fuel_skips_the_fuel_rule() -> void:
-	var data := LevelFormat.read(Progress.LEVELS_DIR + "level_01.json")
+	var data := LevelFormat.read(Progress.LEVELS_DIR + "level_01_launch.json")
 	data.ship.fuel = LevelFormat.UNLIMITED
 	var id := MyLevels.new_id()
 	MyLevels.save(id, data)

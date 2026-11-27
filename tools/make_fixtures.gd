@@ -4,7 +4,7 @@ extends SceneTree
 ##   godot --headless --path . -s tools/make_fixtures.gd
 
 const DIR := "res://fixtures/"
-const OFFICIAL := ["level_01", "level_05", "level_10"]
+const OFFICIAL := {"level_01": "level_01_launch", "level_05": "level_05_swing", "level_10": "level_10_sun"}
 const CLOCK_SHIFT := 30  # frames
 
 # Untyped and loaded after the first frame: a -s script compiles before the autoloads exist and
@@ -41,7 +41,7 @@ func _run() -> void:
 	root.add_child(pilot.world)
 	var flights := {}
 	for id in OFFICIAL:
-		var lvl = await pilot.fly_level(progress.build(id), 60 if id == "level_10" else 0)
+		var lvl = await pilot.fly_level(progress.build(OFFICIAL[id]), 60 if id == "level_10" else 0)
 		if lvl == null:
 			push_error("make_fixtures: the autopilot did not win %s" % id)
 			quit(1)

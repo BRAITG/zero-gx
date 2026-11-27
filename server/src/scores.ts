@@ -202,8 +202,8 @@ export async function postOfficial(request: Request, env: Env): Promise<Response
   );
   const statements = levels.map((entry) => {
     const { name, sha256 } = (entry ?? {}) as Record<string, unknown>;
-    if (typeof name !== "string" || !/^level_[0-9]{2}$/.test(name) || typeof sha256 !== "string" || !SHA256.test(sha256)) {
-      throw new HttpError(400, "Each level needs a name like level_01 and a lowercase 64-digit hex sha256.");
+    if (typeof name !== "string" || !/^level_[0-9]{2}(_[a-z0-9_]+)?$/.test(name) || typeof sha256 !== "string" || !SHA256.test(sha256)) {
+      throw new HttpError(400, "Each level needs a name like level_01 or level_01_launch and a lowercase 64-digit hex sha256.");
     }
     return upsert.bind(sha256, name, release);
   });

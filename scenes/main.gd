@@ -221,7 +221,7 @@ func _list_levels() -> void:
 			var m := Progress.medal(best, par)
 			if medals.has(m):
 				medals[m] += 1
-		var label := "Training %s" % id.get_slice("_", 1) if id.begins_with("tutorial_") else id.replace("_", " ").capitalize()
+		var label := "%s %s" % ["Training" if id.begins_with("tutorial_") else "Level", id.get_slice("_", 1)]
 		var sha := LevelFormat.sha256(data) if not training and Community.available() and best >= 0 else ""
 		var card := _row(id, "%s · %s" % [label, data.get("title", "")], unlocked, next, par, sha)
 		if not unlocked:
