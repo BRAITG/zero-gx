@@ -7,8 +7,8 @@ signal changed
 const TUTORIALS_DIR := "res://tutorials/"
 const LEVELS_DIR := "res://levels/"
 const MIN_POINTS := 100
-## The progress file's layout. 1: bests included a 1000-point base for reaching the goal. 2: no base.
-const VERSION := 2
+## The progress file's layout. 1: bests included a 1000-point base for reaching the goal. 2: no base. 3: level_NN_<slug> official keys.
+const VERSION := 3
 const OLD_BASE_POINTS := 1000
 ## Medal thresholds as shares of a level's par.
 const BRONZE_FRACTION := 0.4
@@ -187,10 +187,21 @@ func load_file() -> void:
 	if _file.load(path) != OK:
 		_file = ConfigFile.new()
 		_file.set_value("meta", "version", VERSION)
-	if _file.get_value("meta", "version", 1) < 2:  # bests counted the 1000-point base
+	var version: int = _file.get_value("meta", "version", 1)
+	if version < 2:  # bests counted the 1000-point base
 		for section in _file.get_sections():
 			if _file.has_section_key(section, "best_points"):
 				_file.set_value(section, "best_points", maxi(MIN_POINTS, _file.get_value(section, "best_points") - OLD_BASE_POINTS))
+	if version < 3:  # official level files gained name suffixes (level_01 -> level_01_launch)
+		for id in levels():
+			var legacy := "%s_%s" % [id.get_slice("_", 0), id.get_slice("_", 1)]
+			if legacy != id and _file.has_section(legacy) and not _file.has_section(id):
+				for key in _file.get_section_keys(legacy):
+					_file.set_value(id, key, _file.get_value(legacy, key))
+				_file.erase_section(legacy)
+			if legacy != id and FileAccess.file_exists(_demo_path(legacy)) and not FileAccess.file_exists(_demo_path(id)):
+				DirAccess.rename_absolute(_demo_path(legacy), _demo_path(id))
+	if version < VERSION:
 		_file.set_value("meta", "version", VERSION)
 		_save()
 	changed.emit()

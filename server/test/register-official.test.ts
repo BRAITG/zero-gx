@@ -93,7 +93,7 @@ it.each(["", "bad'release", "bad/release", "x".repeat(65), "release\nDROP TABLE 
   expect(result.status).not.toBe(0);
   expect(readdirSync(root)).not.toContain("capture.calls");
 });
-it.each(["level_1.json", "level_001.json", "level_01_Bad.json", "level_03';DROP.json", "unexpected.json"])("rejects invalid level name %j before network access", (name) => {
+it.each(["level_1.json", "level_001.json", "level_01_Bad.json", "level_01__.json", `level_01_${"a".repeat(60)}.json`, "level_03';DROP.json", "unexpected.json"])("rejects invalid level name %j before network access", (name) => {
   writeFileSync(join(levels, name), "{}");
   expect(run().status).not.toBe(0);
   expect(readdirSync(root)).not.toContain("capture.calls");
@@ -102,8 +102,8 @@ it.each(["level_1.json", "level_001.json", "level_01_Bad.json", "level_03';DROP.
 it("accepts official levels with lowercase name suffixes", () => {
   writeFileSync(join(levels, "level_03_brake.json"), "{\n  \"fixture\": 3\n}\n");
   expect(run().status).toBe(0);
-  const calls = readFileSync(join(root, "capture.calls"), "utf8");
-  expect(calls).toContain("official.sql");
+  const sql = readFileSync(join(root, "capture.sql"), "utf8");
+  expect(sql).toContain("'level_03_brake'");
 });
 
 it("refuses symlinked levels before network access", () => {

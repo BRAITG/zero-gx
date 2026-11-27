@@ -82,3 +82,21 @@ func test_training_and_levels_unlock_separately() -> void:
 	Progress.reset()
 	check(Progress.best_points("tutorial_1") == -1, "reset must clear bests")
 	check(Progress.unlock_all, "reset must not touch the session unlock switch")
+
+
+func test_v2_progress_migrates_legacy_level_ids_and_demos() -> void:
+	var old := ConfigFile.new()
+	old.set_value("meta", "version", 2)
+	old.set_value("level_01", "best_points", 1200)
+	old.set_value("level_01", "best_time", 8.5)
+	old.save(Progress.path)
+	DirAccess.make_dir_recursive_absolute(Progress.demos_dir)
+	var demo := Demo.new()
+	demo.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 100.0, "hull": 100.0}, {})
+	demo.save(Progress.demos_dir + "level_01.demo.gz")
+	Progress.load_file()
+	check(Progress.best_points("level_01_launch") == 1200, "legacy level_01 score must migrate to level_01_launch: %d" % Progress.best_points("level_01_launch"))
+	check(Progress.best_points("level_01") == -1, "legacy level_01 section must be erased")
+	check(Progress.is_unlocked("level_02_drift"), "migrated win must unlock level_02_drift")
+	check(Progress.best_demo("level_01_launch") != null, "legacy level_01.demo.gz must migrate to level_01_launch.demo.gz")
+	check(not FileAccess.file_exists(Progress.demos_dir + "level_01.demo.gz"), "legacy demo file must be renamed")
