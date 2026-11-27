@@ -41,7 +41,7 @@ describe("hashes", () => {
 });
 
 describe("validateLevel edge cases", () => {
-  const base = () => JSON.parse(readFileSync(join(root, "levels/level_01.json"), "utf8"));
+  const base = () => JSON.parse(readFileSync(join(root, "levels/level_01_launch.json"), "utf8"));
   it("rejects non-objects", () => {
     for (const bad of [null, [], "x", 3]) expect(validateLevel(bad)).toEqual(["not a zero-gx-level version 1 file"]);
   });

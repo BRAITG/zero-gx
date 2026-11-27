@@ -17,8 +17,8 @@ func test_base64url_is_url_safe_without_padding() -> void:
 
 func test_multipart_frames_fields_then_files_with_crlf() -> void:
 	var demo := Marshalls.base64_to_raw(fixture.demo_base64)
-	var body := CommunityWire.multipart({"title": "Hi"}, {"demo": ["level_01.demo.gz", demo]}, "XB")
-	var expected := "--XB\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nHi\r\n--XB\r\nContent-Disposition: form-data; name=\"demo\"; filename=\"level_01.demo.gz\"\r\nContent-Type: application/octet-stream\r\n\r\n".to_utf8_buffer()
+	var body := CommunityWire.multipart({"title": "Hi"}, {"demo": ["level_01_launch.demo.gz", demo]}, "XB")
+	var expected := "--XB\r\nContent-Disposition: form-data; name=\"title\"\r\n\r\nHi\r\n--XB\r\nContent-Disposition: form-data; name=\"demo\"; filename=\"level_01_launch.demo.gz\"\r\nContent-Type: application/octet-stream\r\n\r\n".to_utf8_buffer()
 	expected.append_array(demo)
 	expected.append_array("\r\n--XB--\r\n".to_utf8_buffer())
 	check(body == expected, "multipart body differs from the expected framing")

@@ -450,7 +450,7 @@ func test_community_rows_show_a_sketch_thumbnail() -> void:
 	var net := _fake()
 	await _signed_in(net)
 	var with_sketch := _row(_bytes())
-	with_sketch.sketch = LevelFormat.sketch(LevelFormat.read(Progress.LEVELS_DIR + "level_01.json"))
+	with_sketch.sketch = LevelFormat.sketch(LevelFormat.read(Progress.LEVELS_DIR + "level_01_launch.json"))
 	var without := _row(_bytes(), "Bare")
 	without.sketch = null
 	net.answer("GET", "/levels", 200, [with_sketch, without])

@@ -438,7 +438,7 @@ func test_shift_z_does_not_undo() -> void:
 
 func test_typing_in_a_text_field_is_not_a_shortcut() -> void:
 	var id := MyLevels.new_id()
-	MyLevels.save(id, LevelFormat.read("res://levels/level_05.json"))  # a valid level, so a T that gets through really starts a flight
+	MyLevels.save(id, LevelFormat.read("res://levels/level_05_swing.json"))  # a valid level, so a T that gets through really starts a flight
 	var e := LevelEditor.create(id)
 	world.add_child(e)
 	await frames(1)

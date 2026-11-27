@@ -68,8 +68,8 @@ func test_official_lists_every_level() -> void:
 
 
 func test_official_row_shows_the_best_medal() -> void:
-	var par := int(LevelFormat.read(Progress.LEVELS_DIR + "level_01" + LevelFormat.EXTENSION).get("par", 0))
-	check(par > 0, "level_01 must have a par for this test")
+	var par := int(LevelFormat.read(Progress.LEVELS_DIR + "level_01_launch" + LevelFormat.EXTENSION).get("par", 0))
+	check(par > 0, "level_01_launch must have a par for this test")
 	var cases := {
 		"unplayed": [-1, []],
 		"below bronze": [ceili(Progress.BRONZE_FRACTION * par) - 1, []],
@@ -80,7 +80,7 @@ func test_official_row_shows_the_best_medal() -> void:
 	for name in cases:
 		Progress.reset()
 		if cases[name][0] >= 0:
-			Progress.record_win("level_01", cases[name][0], 20.0, 50.0, 50.0)
+			Progress.record_win("level_01_launch", cases[name][0], 20.0, 50.0, 50.0)
 		var list := menu(MAIN.Page.OFFICIAL)
 		world.add_child(list)
 		var tiers := medal_tiers(stage_rows(list)["Level 01"])
@@ -93,7 +93,7 @@ func test_official_row_shows_the_best_medal() -> void:
 func scored_level(goal_at: Vector2, ship_props: Dictionary = {}) -> Level:
 	var root := Node2D.new()
 	root.set_script(load("res://scenes/level.gd"))
-	root.level_id = "level_01"
+	root.level_id = "level_01_launch"
 	root.title = "Launch"
 	var ship: Node = load(SHIP).instantiate()
 	for key in ship_props:
@@ -110,7 +110,7 @@ func test_win_saves_points() -> void:
 	var lvl := scored_level(Vector2(300, 0), {"linear_velocity": Vector2(300, 0)})
 	lvl.ship.start_boost()  # starts the clock without burning fuel
 	await frames(120)
-	var best := Progress.best_points("level_01")
+	var best := Progress.best_points("level_01_launch")
 	var expected := Progress.points(Ship.MAX_FUEL, Ship.MAX_HEALTH, lvl.ship.flight_time)
 	check(best == expected, "saved %d, expected %d" % [best, expected])
 	check(lvl.hud.result_text().contains(str(best)), "panel must show the points: %s" % lvl.hud.result_text())
@@ -122,7 +122,7 @@ func test_loss_saves_nothing() -> void:
 	var lvl := scored_level(Vector2(3000, 0))
 	lvl.ship.take_damage(Ship.MAX_HEALTH)
 	await frames(2)
-	check(Progress.best_points("level_01") == -1, "a loss saved %d points" % Progress.best_points("level_01"))
+	check(Progress.best_points("level_01_launch") == -1, "a loss saved %d points" % Progress.best_points("level_01_launch"))
 	check(lvl.hud.result_text().contains("Hull destroyed"), "loss cause missing: %s" % lvl.hud.result_text())
 	check(lvl.hud.result_text().contains("Level 1 · Launch"), "the panel must name the level: %s" % lvl.hud.result_text())
 
@@ -253,7 +253,7 @@ func toured_level() -> Level:
 	Tuning.set_value("tours", true)
 	var root := Node2D.new()
 	root.set_script(load("res://scenes/level.gd"))
-	root.level_id = "level_01"
+	root.level_id = "level_01_launch"
 	root.title = "Launch"
 	root.add_child(load(SHIP).instantiate())
 	var goal: Node2D = load(GOAL).instantiate()
@@ -281,11 +281,11 @@ func test_tour_walks_stops_then_plays() -> void:
 	lvl.tour.next()
 	await frames(2)
 	check(not tree.paused and lvl.tour == null, "Go! must end the tour and unpause")
-	check(Progress.toured.has("level_01"), "tour must be remembered for the session")
+	check(Progress.toured.has("level_01_launch"), "tour must be remembered for the session")
 
 
 func test_no_tour_once_won() -> void:
-	Progress.record_win("level_01", 1000, 10.0)
+	Progress.record_win("level_01_launch", 1000, 10.0)
 	var lvl := toured_level()
 	await frames(2)
 	check(lvl.tour == null and not tree.paused, "a won level must not tour")
@@ -713,12 +713,12 @@ func test_ui_pause_settings_keeps_flight_frozen_until_resume() -> void:
 
 
 func test_official_focus_advances_to_unfinished_level() -> void:
-	Progress.record_win("level_01", 1200, 10.0)
+	Progress.record_win("level_01_launch", 1200, 10.0)
 	var main := menu(MAIN.Page.OFFICIAL)
 	world.add_child(main)
 	var next := focused()
 	check(next is Button and row_title(next).begins_with("Level 02"), "returning after a clear must select the next unfinished level")
-	Progress.record_win("level_02", 1300, 9.0)
+	Progress.record_win("level_02_drift", 1300, 9.0)
 	await frames(1)
 	next = focused()
 	check(next is Button and row_title(next).begins_with("Level 03"), "progress refresh must advance the suggested stage")
@@ -767,8 +767,8 @@ func _wipe_results(folder: String) -> void:
 		DirAccess.remove_absolute(folder.path_join(file))
 
 
-func _result_level(id := "level_01", testing := false, publishing := false) -> Level:
-	var lvl := Progress.build("level_01")
+func _result_level(id := "level_01_launch", testing := false, publishing := false) -> Level:
+	var lvl := Progress.build("level_01_launch")
 	lvl.level_id = Community.STAGE_PREFIX + lvl.level_sha256 if id == "community" else id
 	lvl.testing = testing
 	lvl.publishing = publishing
@@ -813,9 +813,9 @@ func test_results_enqueue_only_signed_in_play_new_best_wins() -> void:
 			session.set_value("session", "token", "token")
 			session.set_value("session", "expires", int(Time.get_unix_time_from_system()) + 1000)
 			session.save(Community.session_path)
-		var id: String = {"community": "community", "training": "tutorial_1", "draft": "user_draft"}.get(case, "level_01")
+		var id: String = {"community": "community", "training": "tutorial_1", "draft": "user_draft"}.get(case, "level_01_launch")
 		if case == "not_best":
-			Progress.record_win("level_01", 99999, 0.0)
+			Progress.record_win("level_01_launch", 99999, 0.0)
 		var lvl := _result_level(id, case == "test" or case == "publish", case == "publish")
 		if case == "replay":
 			lvl.process_mode = Node.PROCESS_MODE_DISABLED
@@ -836,14 +836,14 @@ func test_result_queues_its_finalized_memory_demo_when_best_demo_save_fails() ->
 	_result_setup()
 	var old_dir := Progress.demos_dir
 	Progress.demos_dir = "user://test_results/blocked/"
-	DirAccess.make_dir_recursive_absolute(Progress.demos_dir + "level_01.demo.gz")
-	var blocker := FileAccess.open(Progress.demos_dir + "level_01.demo.gz/occupied", FileAccess.WRITE)
+	DirAccess.make_dir_recursive_absolute(Progress.demos_dir + "level_01_launch.demo.gz")
+	var blocker := FileAccess.open(Progress.demos_dir + "level_01_launch.demo.gz/occupied", FileAccess.WRITE)
 	blocker.store_string("keep directory nonempty")
 	blocker.close()
 	var lvl := _result_level()
 	lvl.ship.fuel = 31.0
 	lvl.finish(true)
-	check(Progress.best_demo("level_01") == null, "best-demo path cannot be saved")
+	check(Progress.best_demo("level_01_launch") == null, "best-demo path cannot be saved")
 	var disk := _result_disk()
 	var queued := disk.entry("p_me", lvl.level_sha256)
 	check(not queued.is_empty(), "valid finalized memory replay can queue despite best-demo save failure")
@@ -905,7 +905,7 @@ func test_final_fix_result_uses_current_completion_not_old_hash_historical_best(
 	_campaign_best("b".repeat(64), 9999)
 	var lvl := _result_level()
 	lvl.finish(true)
-	check(Progress.best_points("level_01") == 9999 and Progress.best_demo("level_01").level_sha256 == "b".repeat(64), "historical progress remains intact")
+	check(Progress.best_points("level_01_launch") == 9999 and Progress.best_demo("level_01_launch").level_sha256 == "b".repeat(64), "historical progress remains intact")
 	check(net.count("POST", "/scores") == 0 and _result_disk().entries("p_me").is_empty(), "current non-best completion is never retroactively queued")
 	var preview := lvl.hud.find_child("LeaderboardPreview", true, false)
 	var text := "\n".join(preview.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text))
@@ -1066,17 +1066,17 @@ func test_result_post_after_held_board_forces_fresh_preview_without_regressing_s
 	check(lvl.hud.result_text().contains("Rank #4 of 31") and not lvl.hud.result_text().contains("Rank #3"), "fresh post-upload board supersedes the provisional POST rank in the HUD too")
 
 
-func _campaign_sha(id := "level_01") -> String:
+func _campaign_sha(id := "level_01_launch") -> String:
 	return LevelFormat.sha256(LevelFormat.read(Progress.LEVELS_DIR + id + LevelFormat.EXTENSION))
 
 
 func _campaign_best(sha: String, points := 700) -> void:
-	Progress.record_win("level_01", points, 30.0, 25.0, 25.0)
+	Progress.record_win("level_01_launch", points, 30.0, 25.0, 25.0)
 	var run := Demo.new()
 	run.level_sha256 = sha
 	run.add_frame({"position": Vector2.ZERO, "rotation": 0.0, "firing": false, "fuel": 25.0, "hull": 25.0}, {})
 	run.add_event(Demo.Event.GOAL_REACHED)
-	Progress.save_best_demo("level_01", run)
+	Progress.save_best_demo("level_01_launch", run)
 
 
 func _campaign_badge(main: Node) -> Button:
@@ -1407,7 +1407,7 @@ func test_result_shows_next_medal_threshold_and_gold_earned_caption() -> void:
 
 
 func test_official_rows_show_play_button_for_cleared_and_next_levels_only() -> void:
-	Progress.record_win("level_01", 1200, 12.0, 50.0, 80.0)
+	Progress.record_win("level_01_launch", 1200, 12.0, 50.0, 80.0)
 	var list := menu(MAIN.Page.OFFICIAL)
 	world.add_child(list)
 	await frames(2)
@@ -1427,7 +1427,7 @@ func test_home_official_button_shows_progress_pill_when_levels_cleared() -> void
 	await frames(2)
 	check(home._official.text == "Official levels", "button text stays Official levels")
 	check(not home._official_progress.visible, "progress pill is hidden before any official level is cleared")
-	Progress.record_win("level_01", 2500, 5.0, 90.0, 100.0)
+	Progress.record_win("level_01_launch", 2500, 5.0, 90.0, 100.0)
 	await frames(2)
 	var texts: Array = home._official_progress.find_children("*", "Label", true, false).map(func(l: Label) -> String: return l.text)
 	check(home._official_progress.visible and ("1 / %d cleared" % Progress.levels().size()) in texts, "progress pill shows cleared count: %s" % [texts])

@@ -308,7 +308,7 @@ func touch_at(index: int, at: Vector2, down: bool) -> void:
 
 func test_level_one_introduction_follows_the_controls_in_use() -> void:
 	Settings.mouse_aims = true
-	var lvl := level_with({"level_id": "level_01", "title": "Drift"})
+	var lvl := level_with({"level_id": "level_01_launch", "title": "Drift"})
 	await frames(1)
 	mouse_move()
 	await frames(1)

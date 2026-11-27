@@ -315,7 +315,7 @@ func test_campaign_and_training_plays_create_no_report() -> void:
 	await _sign_in(net)
 	var row: Dictionary = await _download(net, _level())
 	var control: String = await _control_play(row)
-	await _idle(Progress.build("level_01"))
+	await _idle(Progress.build("level_01_launch"))
 	var training: Tutorial = Progress.build("tutorial_1")  # the real training 1, with its lesson script
 	world.add_child(training)
 	check(training.level_id == "tutorial_1", "training 1 must be the real training stage, not '%s'" % training.level_id)

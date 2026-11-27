@@ -22,7 +22,7 @@ function fail(message) { console.error(`::error::${message}`); process.exit(1); 
 if (!/^[A-Za-z0-9._-]{1,64}$/.test(release) || /[\r\n]/.test(release)) fail("Invalid release: use 1–64 letters, digits, dots, dashes or underscores.");
 const files = readdirSync("../levels", { withFileTypes: true }).filter((entry) => entry.name.endsWith(".json"));
 if (files.length < 1 || files.length > 200) fail("The bundle must contain 1–200 official level files.");
-if (files.some((entry) => !entry.isFile() || !/^level_[0-9]{2}\.json$/.test(entry.name))) fail("Official level files must be regular files named level_NN.json.");
+if (files.some((entry) => !entry.isFile() || entry.name.length > 69 || !/^level_[0-9]{2}(_[a-z0-9]+)*\.json$/.test(entry.name))) fail("Official level files must be regular files named level_NN.json or level_NN_name.json.");
 // All SQL values are either strictly allowlisted above or generated lowercase hex: none can contain a quote.
 const values = files.sort((a, b) => a.name.localeCompare(b.name)).map((entry) => {
   const sha256 = createHash("sha256").update(readFileSync(`../levels/${entry.name}`)).digest("hex");

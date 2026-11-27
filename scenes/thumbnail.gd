@@ -64,7 +64,8 @@ func _draw() -> void:
 	if stage_id.is_empty():
 		_draw_sketch()
 		return
-	match stage_id:
+	var art_id := "%s_%s" % [stage_id.get_slice("_", 0), stage_id.get_slice("_", 1)] if stage_id.begins_with("level_") else stage_id
+	match art_id:
 		"level_01":  # Launch: a firing ship, open space, the goal ahead.
 			_ship(Vector2(112, 111), -0.24, 2.25, true)
 			_goal(Vector2(253, 77), 36)

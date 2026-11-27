@@ -21,7 +21,7 @@ func blank_with(extra: Dictionary) -> Dictionary:
 
 
 func test_autopilot_run_is_recorded_frame_by_frame() -> void:
-	var lvl := Progress.build("level_01")
+	var lvl := Progress.build("level_01_launch")
 	world.add_child(lvl)
 	var route := lvl.get_node("Route") as Line2D
 	var waypoints: Array[Vector2] = []
@@ -46,13 +46,13 @@ func test_autopilot_run_is_recorded_frame_by_frame() -> void:
 			checked += 1
 		seen = count
 		before = lvl.ship.global_position
-	check(outcome.won == true, "autopilot must win level_01")
+	check(outcome.won == true, "autopilot must win level_01_launch")
 	check(checked > 0, "no frame was compared")
 	var events := lvl.demo.events()
 	check(not events.is_empty() and events.back()[1] == Demo.Event.GOAL_REACHED, "the last event must be GOAL_REACHED: %s" % [events.back() if events else null])
-	check(lvl.demo.level_sha256 == LevelFormat.sha256(LevelFormat.read("res://levels/level_01.json")), "wrong level hash")
-	check(lvl.level_data == LevelFormat.read("res://levels/level_01.json"), "level_data must be the file's data")
-	check(Progress.best_demo("level_01") != null, "a new best must store its demo")
+	check(lvl.demo.level_sha256 == LevelFormat.sha256(LevelFormat.read("res://levels/level_01_launch.json")), "wrong level hash")
+	check(lvl.level_data == LevelFormat.read("res://levels/level_01_launch.json"), "level_data must be the file's data")
+	check(Progress.best_demo("level_01_launch") != null, "a new best must store its demo")
 
 
 func test_a_lost_run_is_still_a_whole_demo() -> void:
